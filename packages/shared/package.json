@@ -1,0 +1,18 @@
+{
+  "name": "@gestion/shared",
+  "version": "1.0.0",
+  "description": "Types et utilitaires partagés entre frontend et backend",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,23 @@
+Vérifiez le flux complet d'affichage des données dans l'application de gestion commerciale, en testant la chaîne complète depuis la base de données PostgreSQL jusqu'au frontend Next.js :
+
+1. **Vérification de la base de données PostgreSQL :**
+   - Confirmez que les tables sont créées et contiennent des données (clients, produits, fournisseurs, commandes, factures)
+   - Vérifiez la connectivité Prisma avec la base de données
+
+2. **Test des API Backend (port 3001) :**
+   - Testez les endpoints REST pour chaque module (GET /api/v1/clients, /api/v1/products, /api/v1/suppliers, etc.)
+   - Vérifiez que les réponses JSON contiennent les données attendues
+   - Testez l'authentification et les headers CORS
+
+3. **Vérification du Frontend (port 3000) :**
+   - Naviguez vers chaque page de l'application (Dashboard, Clients, Produits, Fournisseurs, Commandes, Factures)
+   - Vérifiez que les données s'affichent correctement dans les tableaux et composants
+   - Testez les fonctionnalités de filtrage, pagination et recherche
+   - Vérifiez la gestion des états de chargement et d'erreur
+
+4. **Test de bout en bout :**
+   - Créez une nouvelle entrée (client, produit, etc.) via le frontend
+   - Vérifiez que la donnée apparaît immédiatement dans l'interface
+   - Confirmez que la donnée est persistée en base de données
+
+Documentez tout problème d'affichage, erreur de communication API, ou incohérence de données entre les couches.

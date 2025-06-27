@@ -1,0 +1,57 @@
+{
+  "timestamp": "2025-06-20T23:02:12.580Z",
+  "summary": {
+    "totalTests": 14,
+    "successfulTests": 4,
+    "successRate": 29,
+    "errorsCount": 3
+  },
+  "results": {
+    "backend": {
+      "health": true,
+      "cors": true,
+      "auth": false,
+      "routes": {
+        "Dashboard Stats": {
+          "status": "unauthorized"
+        },
+        "Clients List": {
+          "status": "unauthorized"
+        },
+        "Products List": {
+          "status": "unauthorized"
+        },
+        "Suppliers List": {
+          "status": "unauthorized"
+        },
+        "Orders List": {
+          "status": "unauthorized"
+        },
+        "Invoices List": {
+          "status": "unauthorized"
+        },
+        "Analytics KPI": {
+          "status": "error",
+          "code": 404
+        },
+        "Analytics Sales": {
+          "status": "success",
+          "format": "valid"
+        }
+      }
+    },
+    "frontend": {
+      "accessible": true,
+      "apiCalls": {}
+    },
+    "database": {
+      "connection": false,
+      "data": false
+    },
+    "errors": [
+      "Authentication failed: 401",
+      "Analytics KPI failed: 404",
+      "Database error: 401"
+    ]
+  }
+}

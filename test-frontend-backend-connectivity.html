@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Connectivité Frontend-Backend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Test Connectivité Frontend-Backend</h1>
+        
+        <div class="test-section info">
+            <h3>📋 Configuration</h3>
+            <p><strong>Frontend:</strong> http://localhost:3000 (ce fichier)</p>
+            <p><strong>Backend:</strong> http://localhost:3001</p>
+            <p><strong>Test depuis:</strong> <span id="currentUrl"></span></p>
+        </div>
+
+        <div class="test-section">
+            <h3>🏥 1. Test Health Check</h3>
+            <button onclick="testHealthCheck()">Tester Health Check</button>
+            <div id="healthResult" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔄 2. Test Requête OPTIONS (CORS Preflight)</h3>
+            <button onclick="testOptionsRequest()">Tester OPTIONS</button>
+            <div id="optionsResult" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔐 3. Test Login avec CORS</h3>
+            <button onclick="testLogin()">Tester Login</button>
+            <div id="loginResult" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 4. Résumé des Tests</h3>
+            <div id="summary" class="log">Aucun test exécuté</div>
+        </div>
+    </div>
+
+    <script>
+        // Afficher l'URL actuelle
+        document.getElementById('currentUrl').textContent = window.location.href;
+
+        const API_BASE_URL = 'http://localhost:3001';
+        let testResults = {
+            health: null,
+            options: null,
+            login: null
+        };
+
+        function log(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+            element.scrollTop = element.scrollHeight;
+        }
+
+        function updateSummary() {
+            const summary = document.getElementById('summary');
+            let text = 'Résultats des tests:\n';
+            text += `✅ Health Check: ${testResults.health ? 'SUCCÈS' : testResults.health === false ? 'ÉCHEC' : 'NON TESTÉ'}\n`;
+            text += `✅ OPTIONS (CORS): ${testResults.options ? 'SUCCÈS' : testResults.options === false ? 'ÉCHEC' : 'NON TESTÉ'}\n`;
+            text += `✅ Login: ${testResults.login ? 'SUCCÈS' : testResults.login === false ? 'ÉCHEC' : 'NON TESTÉ'}\n`;
+            
+            if (testResults.health && testResults.options && testResults.login) {
+                text += '\n🎉 TOUS LES TESTS RÉUSSIS !\nLe problème ne vient pas de CORS.';
+            } else if (testResults.health === false || testResults.options === false || testResults.login === false) {
+                text += '\n❌ PROBLÈME DÉTECTÉ\nVérifiez les logs ci-dessus.';
+            }
+            
+            summary.textContent = text;
+        }
+
+        async function testHealthCheck() {
+            const resultDiv = document.getElementById('healthResult');
+            resultDiv.textContent = '';
+            log('healthResult', '🏥 Début du test Health Check...');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+
+                log('healthResult', `📊 Status: ${response.status}`);
+                log('healthResult', `🔍 Headers CORS:`);
+                log('healthResult', `   Access-Control-Allow-Origin: ${response.headers.get('Access-Control-Allow-Origin') || 'NON DÉFINI'}`);
+                log('healthResult', `   Access-Control-Allow-Credentials: ${response.headers.get('Access-Control-Allow-Credentials') || 'NON DÉFINI'}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    log('healthResult', `✅ Health Check réussi: ${JSON.stringify(data)}`);
+                    testResults.health = true;
+                } else {
+                    log('healthResult', `❌ Health Check échoué: ${response.status}`);
+                    testResults.health = false;
+                }
+            } catch (error) {
+                log('healthResult', `❌ Erreur Health Check: ${error.message}`);
+                testResults.health = false;
+            }
+
+            updateSummary();
+        }
+
+        async function testOptionsRequest() {
+            const resultDiv = document.getElementById('optionsResult');
+            resultDiv.textContent = '';
+            log('optionsResult', '🔄 Début du test OPTIONS...');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+                    method: 'OPTIONS',
+                    mode: 'cors',
+                    credentials: 'include',
+                    headers: {
+                        'Access-Control-Request-Method': 'POST',
+                        'Access-Control-Request-Headers': 'Content-Type, Authorization'
+                    }
+                });
+
+                log('optionsResult', `📊 Status: ${response.status}`);
+                log('optionsResult', `🔍 Headers CORS:`);
+                log('optionsResult', `   Access-Control-Allow-Origin: ${response.headers.get('Access-Control-Allow-Origin') || 'NON DÉFINI'}`);
+                log('optionsResult', `   Access-Control-Allow-Methods: ${response.headers.get('Access-Control-Allow-Methods') || 'NON DÉFINI'}`);
+                log('optionsResult', `   Access-Control-Allow-Headers: ${response.headers.get('Access-Control-Allow-Headers') || 'NON DÉFINI'}`);
+                log('optionsResult', `   Access-Control-Allow-Credentials: ${response.headers.get('Access-Control-Allow-Credentials') || 'NON DÉFINI'}`);
+
+                if (response.ok || response.status === 204) {
+                    log('optionsResult', `✅ Requête OPTIONS réussie`);
+                    testResults.options = true;
+                } else {
+                    log('optionsResult', `❌ Requête OPTIONS échouée: ${response.status}`);
+                    testResults.options = false;
+                }
+            } catch (error) {
+                log('optionsResult', `❌ Erreur OPTIONS: ${error.message}`);
+                testResults.options = false;
+            }
+
+            updateSummary();
+        }
+
+        async function testLogin() {
+            const resultDiv = document.getElementById('loginResult');
+            resultDiv.textContent = '';
+            log('loginResult', '🔐 Début du test Login...');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@gestion-dz.com',
+                        password: 'admin123'
+                    })
+                });
+
+                log('loginResult', `📊 Status: ${response.status}`);
+                log('loginResult', `🔍 Headers CORS:`);
+                log('loginResult', `   Access-Control-Allow-Origin: ${response.headers.get('Access-Control-Allow-Origin') || 'NON DÉFINI'}`);
+                log('loginResult', `   Access-Control-Allow-Credentials: ${response.headers.get('Access-Control-Allow-Credentials') || 'NON DÉFINI'}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        log('loginResult', `✅ Login réussi: ${data.data.user.firstName} ${data.data.user.lastName}`);
+                        log('loginResult', `🔑 Token généré: ${data.data.tokens.accessToken ? 'OUI' : 'NON'}`);
+                        testResults.login = true;
+                    } else {
+                        log('loginResult', `❌ Login échoué: ${data.message}`);
+                        testResults.login = false;
+                    }
+                } else {
+                    const errorData = await response.text();
+                    log('loginResult', `❌ Login échoué: ${response.status} - ${errorData}`);
+                    testResults.login = false;
+                }
+            } catch (error) {
+                log('loginResult', `❌ Erreur Login: ${error.message}`);
+                testResults.login = false;
+            }
+
+            updateSummary();
+        }
+
+        // Test automatique au chargement
+        window.addEventListener('load', () => {
+            log('summary', 'Page chargée. Cliquez sur les boutons pour tester la connectivité.');
+        });
+    </script>
+</body>
+</html>

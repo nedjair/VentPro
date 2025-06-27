@@ -1,0 +1,515 @@
+// Schéma Prisma pour l'application de gestion commerciale TPE
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole @default(EMPLOYEE)
+  isActive  Boolean  @default(true)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientInteractions ClientInteraction[]
+  createdOrders   Order[]   @relation("OrderCreatedBy")
+  createdInvoices Invoice[] @relation("InvoiceCreatedBy")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+  @@index([email])
+  @@index([companyId])
+}
+
+model Company {
+  id          String  @id @default(cuid())
+  name        String
+  siret       String? @unique
+  address     String?
+  postalCode  String?
+  city        String?
+  country     String  @default("France")
+  phone       String?
+  email       String?
+  website     String?
+  vatNumber   String?
+
+  // Configuration
+  currency    String  @default("DZD")
+  timezone    String  @default("Africa/Algiers")
+
+  // Relations
+  users       User[]
+  clients     Client[]
+  categories  Category[]
+  products    Product[]
+  suppliers   Supplier[]
+  orders      Order[]
+  invoices    Invoice[]
+  stocks      Stock[]
+
+  // Audit
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("companies")
+  @@index([siret])
+}
+
+model Client {
+  id           String      @id @default(cuid())
+  type         ClientType  @default(INDIVIDUAL)
+
+  // Informations de base
+  firstName    String?
+  lastName     String?
+  companyName  String?
+  email        String?
+  phone        String?
+  mobile       String?
+  website      String?
+  fax          String?
+
+  // Adresse principale
+  address      String?
+  postalCode   String?
+  city         String?
+  country      String      @default("France")
+
+  // Adresse de facturation
+  billingAddress     String?
+  billingPostalCode  String?
+  billingCity        String?
+  billingCountry     String      @default("France")
+
+  // Informations professionnelles
+  siret        String?
+  vatNumber    String?
+
+  // Paramètres commerciaux
+  paymentTerms Int         @default(30) // Délai de paiement en jours
+  discount     Decimal     @default(0) @db.Decimal(5,2) // Remise par défaut
+  creditLimit  Decimal     @default(0) @db.Decimal(10,2) // Limite de crédit
+
+  // Statut et métadonnées
+  isActive     Boolean     @default(true)
+  notes        String?     @db.Text
+  tags         String[]    @default([])
+
+  // Relations
+  companyId    String
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders       Order[]
+  invoices     Invoice[]
+  interactions ClientInteraction[]
+
+  // Audit
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@map("clients")
+  @@index([email])
+  @@index([companyId])
+  @@index([siret])
+  @@index([isActive])
+  @@index([tags])
+}
+
+
+
+// ================================
+// HISTORIQUE DES INTERACTIONS CLIENTS
+// ================================
+
+model ClientInteraction {
+  id          String              @id @default(cuid())
+  type        InteractionType
+  subject     String
+  description String?             @db.Text
+  date        DateTime            @default(now())
+
+  // Relations
+  clientId    String
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  userId      String?
+  user        User?               @relation(fields: [userId], references: [id])
+
+  // Audit
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@map("client_interactions")
+  @@index([clientId])
+  @@index([type])
+  @@index([date])
+  @@index([userId])
+}
+
+enum InteractionType {
+  CALL        // Appel téléphonique
+  EMAIL       // Email
+  MEETING     // Rendez-vous
+  NOTE        // Note interne
+  ORDER       // Commande
+  INVOICE     // Facture
+}
+
+// Modèle Fournisseur
+model Supplier {
+  id            String       @id @default(cuid())
+  type          SupplierType @default(COMPANY)
+  name          String
+  email         String?
+  phone         String?
+  mobile        String?
+  address       String?
+  postalCode    String?
+  city          String?
+  country       String?      @default("France")
+  website       String?
+  siret         String?
+  vatNumber     String?
+  rcs           String?
+  contactName   String?
+  fax           String?
+  paymentTerms  Int?         @default(30)
+  discount      Float?       @default(0)
+  currency      String?      @default("EUR")
+  rating        Int?         @default(0)
+  isActive      Boolean      @default(true)
+  isPreferred   Boolean      @default(false)
+  notes         String?
+  tags          String?
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relations
+  products      Product[]    @relation("SupplierProducts")
+
+  @@map("suppliers")
+}
+
+// Modèle Catégorie
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String?
+  isActive    Boolean   @default(true)
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?
+  sku          String?     @unique
+  barcode      String?
+
+  // Prix et coûts
+  price        Decimal     @db.Decimal(10,2)
+  cost         Decimal?    @db.Decimal(10,2)
+  vatRate      Decimal     @default(20) @db.Decimal(5,2)
+
+  // Stock
+  stockQuantity Int        @default(0)
+  minStock     Int         @default(0)
+  maxStock     Int?
+
+  // Configuration
+  isActive     Boolean     @default(true)
+  isService    Boolean     @default(false)
+  unit         String      @default("pièce")
+
+  // Relations
+  categoryId   String?
+  category     Category?   @relation(fields: [categoryId], references: [id])
+
+  supplierId   String?
+  supplier     Supplier?   @relation("SupplierProducts", fields: [supplierId], references: [id])
+
+  companyId    String
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  images       ProductImage[]
+  variants     ProductVariant[]
+  orderItems   OrderItem[]
+  invoiceItems InvoiceItem[]
+  stockMovements StockMovement[]
+  stock        Stock?         @relation("ProductStock")
+
+  // Audit
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@map("products")
+  @@index([sku])
+  @@index([barcode])
+  @@index([companyId])
+  @@index([categoryId])
+  @@index([supplierId])
+}
+
+// ================================
+// IMAGES ET VARIANTES PRODUITS
+// ================================
+
+model ProductImage {
+  id          String   @id @default(cuid())
+  filename    String
+  originalName String
+  mimeType    String
+  size        Int      // Taille en bytes
+  url         String
+  altText     String?
+  isMain      Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  // Relations
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Audit
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("product_images")
+  @@index([productId])
+  @@index([isMain])
+}
+
+model ProductVariant {
+  id          String   @id @default(cuid())
+  name        String   // Ex: "Rouge - Taille M"
+  sku         String?  @unique
+  barcode     String?  @unique
+
+  // Attributs de variante
+  color       String?
+  size        String?
+  material    String?
+
+  // Prix et stock spécifiques
+  price       Decimal? @db.Decimal(10,2)
+  cost        Decimal? @db.Decimal(10,2)
+  stock       Int      @default(0)
+
+  // Configuration
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+
+  // Relations
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Audit
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("product_variants")
+  @@index([productId])
+  @@index([sku])
+  @@index([barcode])
+}
+
+// Modèle Commande
+model Order {
+  id          String      @id @default(cuid())
+  number      String      @unique
+  type        OrderType   @default(ORDER)
+  status      OrderStatus @default(DRAFT)
+  orderDate   DateTime    @default(now())
+  deliveryDate DateTime?
+  notes       String?
+  subtotal    Float       @default(0)
+  taxAmount   Float       @default(0)
+  total       Float       @default(0)
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id])
+  companyId   String
+  company     Company     @relation(fields: [companyId], references: [id])
+  createdById String
+  createdBy   User        @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  items    OrderItem[]
+  invoices Invoice[]
+
+  @@map("orders")
+}
+
+// Modèle Article de Commande
+model OrderItem {
+  id        String  @id @default(cuid())
+  quantity  Int
+  unitPrice Float
+  total     Float
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("order_items")
+}
+
+// Modèle Facture
+model Invoice {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  type        InvoiceType   @default(INVOICE)
+  status      InvoiceStatus @default(DRAFT)
+  invoiceDate DateTime      @default(now())
+  dueDate     DateTime
+  paidDate    DateTime?
+  notes       String?
+  subtotal    Float         @default(0)
+  taxAmount   Float         @default(0)
+  total       Float         @default(0)
+  paidAmount  Float         @default(0)
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id])
+  orderId     String?
+  order       Order?        @relation(fields: [orderId], references: [id])
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id])
+  createdById String
+  createdBy   User          @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  items InvoiceItem[]
+
+  @@map("invoices")
+}
+
+// Modèle Article de Facture
+model InvoiceItem {
+  id        String  @id @default(cuid())
+  quantity  Int
+  unitPrice Float
+  total     Float
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("invoice_items")
+}
+
+// Modèle Gestion de Stock
+model Stock {
+  id                String   @id @default(cuid())
+  quantiteActuelle  Int      @default(0)
+  quantiteMinimale  Int      @default(0)
+  quantiteMaximale  Int?
+  dateLastUpdate    DateTime @default(now())
+
+  // Relations
+  productId         String   @unique
+  product           Product  @relation("ProductStock", fields: [productId], references: [id], onDelete: Cascade)
+
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Audit
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("stocks")
+  @@index([companyId])
+  @@index([quantiteActuelle])
+  @@index([quantiteMinimale])
+}
+
+// Modèle Mouvement de Stock
+model StockMovement {
+  id          String            @id @default(cuid())
+  type        StockMovementType
+  quantity    Int
+  unitCost    Float?
+  reference   String?
+  comment     String?
+  productId   String
+  product     Product           @relation(fields: [productId], references: [id])
+  createdAt   DateTime          @default(now())
+
+  @@map("stock_movements")
+}
+
+// Énumérations
+enum UserRole {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum ClientType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum SupplierType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum OrderType {
+  QUOTE
+  ORDER
+}
+
+enum OrderStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+}
+
+enum InvoiceType {
+  QUOTE
+  INVOICE
+  CREDIT_NOTE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  TRANSFER
+}

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Création de données de test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        .step { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .step h3 { margin-top: 0; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Création de données de test pour l'application</h1>
+    
+    <div class="step">
+        <h3>Étape 1 : Authentification</h3>
+        <button onclick="login()">🔑 Se connecter</button>
+        <div id="auth-status"></div>
+    </div>
+    
+    <div class="step">
+        <h3>Étape 2 : Créer des fournisseurs de test</h3>
+        <button onclick="createTestSuppliers()" id="create-suppliers-btn" disabled>👥 Créer 3 fournisseurs</button>
+        <div id="suppliers-status"></div>
+    </div>
+    
+    <div class="step">
+        <h3>Étape 3 : Vérifier les données</h3>
+        <button onclick="listSuppliers()" id="list-suppliers-btn" disabled>📋 Lister les fournisseurs</button>
+        <div id="list-status"></div>
+    </div>
+    
+    <div class="step">
+        <h3>Étape 4 : Tester le frontend</h3>
+        <button onclick="openFrontend()">🌐 Ouvrir le frontend</button>
+        <p>Cliquez pour ouvrir l'application frontend et tester l'interface des fournisseurs.</p>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        let authToken = null;
+
+        function addResult(message, type = 'info', containerId = 'results') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = message;
+            document.getElementById(containerId).appendChild(div);
+        }
+
+        async function login() {
+            try {
+                addResult('🔄 Connexion en cours...', 'info', 'auth-status');
+                
+                const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@test.com',
+                        password: 'password123'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.data.tokens.accessToken;
+                    addResult(`✅ Connexion réussie ! Utilisateur: ${data.data.user.firstName} ${data.data.user.lastName}`, 'success', 'auth-status');
+                    
+                    // Activer les boutons suivants
+                    document.getElementById('create-suppliers-btn').disabled = false;
+                    document.getElementById('list-suppliers-btn').disabled = false;
+                } else {
+                    addResult(`❌ Échec de connexion: ${data.message}`, 'error', 'auth-status');
+                }
+            } catch (error) {
+                addResult(`❌ Erreur de connexion: ${error.message}`, 'error', 'auth-status');
+            }
+        }
+
+        async function createTestSuppliers() {
+            if (!authToken) {
+                addResult('❌ Veuillez vous connecter d\'abord', 'error', 'suppliers-status');
+                return;
+            }
+
+            const testSuppliers = [
+                {
+                    type: 'COMPANY',
+                    name: 'TechSupply France',
+                    contactName: 'Jean Dupont',
+                    email: 'contact@techsupply.fr',
+                    phone: '01 23 45 67 89',
+                    address: '123 Rue de la Technologie',
+                    city: 'Paris',
+                    country: 'France',
+                    paymentTerms: 30,
+                    discount: 5.0,
+                    currency: 'EUR',
+                    rating: 4,
+                    isActive: true,
+                    isPreferred: true,
+                    notes: 'Fournisseur principal pour le matériel informatique',
+                    tags: ['informatique', 'principal', 'france']
+                },
+                {
+                    type: 'COMPANY',
+                    name: 'Office Solutions International',
+                    contactName: 'Marie Martin',
+                    email: 'info@officesolutions.com',
+                    phone: '01 98 76 54 32',
+                    address: '456 Avenue des Bureaux',
+                    city: 'Lyon',
+                    country: 'France',
+                    paymentTerms: 45,
+                    discount: 3.0,
+                    currency: 'EUR',
+                    rating: 3,
+                    isActive: true,
+                    isPreferred: false,
+                    notes: 'Fournitures de bureau et mobilier',
+                    tags: ['bureautique', 'mobilier']
+                },
+                {
+                    type: 'INDIVIDUAL',
+                    name: 'ElectroMax GmbH',
+                    contactName: 'Hans Mueller',
+                    email: 'sales@electromax.de',
+                    phone: '+49 123 456 789',
+                    address: '789 Elektronikstraße',
+                    city: 'Berlin',
+                    country: 'Allemagne',
+                    paymentTerms: 60,
+                    discount: 7.5,
+                    currency: 'EUR',
+                    rating: 5,
+                    isActive: true,
+                    isPreferred: true,
+                    notes: 'Composants électroniques de haute qualité',
+                    tags: ['électronique', 'allemagne', 'premium']
+                }
+            ];
+
+            addResult('🔄 Création des fournisseurs de test...', 'info', 'suppliers-status');
+            
+            let successCount = 0;
+            
+            for (let i = 0; i < testSuppliers.length; i++) {
+                const supplier = testSuppliers[i];
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/v1/suppliers`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(supplier)
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        addResult(`✅ Fournisseur "${supplier.name}" créé avec succès`, 'success', 'suppliers-status');
+                        successCount++;
+                    } else {
+                        const errorData = await response.text();
+                        addResult(`❌ Erreur lors de la création de "${supplier.name}": ${errorData}`, 'error', 'suppliers-status');
+                    }
+                } catch (error) {
+                    addResult(`❌ Erreur réseau pour "${supplier.name}": ${error.message}`, 'error', 'suppliers-status');
+                }
+                
+                // Petite pause entre les créations
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            addResult(`🎉 Création terminée ! ${successCount}/${testSuppliers.length} fournisseurs créés`, 
+                     successCount === testSuppliers.length ? 'success' : 'info', 'suppliers-status');
+        }
+
+        async function listSuppliers() {
+            if (!authToken) {
+                addResult('❌ Veuillez vous connecter d\'abord', 'error', 'list-status');
+                return;
+            }
+
+            try {
+                addResult('🔄 Récupération de la liste des fournisseurs...', 'info', 'list-status');
+                
+                const response = await fetch(`${API_BASE}/api/v1/suppliers`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const suppliers = data.data?.suppliers || [];
+                    
+                    addResult(`✅ ${suppliers.length} fournisseur(s) trouvé(s)`, 'success', 'list-status');
+                    
+                    if (suppliers.length > 0) {
+                        let listHtml = '<h4>📋 Liste des fournisseurs :</h4><ul>';
+                        suppliers.forEach(supplier => {
+                            listHtml += `<li><strong>${supplier.name}</strong> (${supplier.city}, ${supplier.country}) - ${supplier.isActive ? '✅ Actif' : '❌ Inactif'}</li>`;
+                        });
+                        listHtml += '</ul>';
+                        addResult(listHtml, 'info', 'list-status');
+                    }
+                } else {
+                    const errorData = await response.text();
+                    addResult(`❌ Erreur lors de la récupération: ${errorData}`, 'error', 'list-status');
+                }
+            } catch (error) {
+                addResult(`❌ Erreur réseau: ${error.message}`, 'error', 'list-status');
+            }
+        }
+
+        function openFrontend() {
+            window.open('http://localhost:3000/suppliers', '_blank');
+        }
+    </script>
+</body>
+</html>

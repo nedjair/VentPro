@@ -1,0 +1,281 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 16 - Optimisé pour les performances
+  postgres:
+    image: postgres:16-alpine
+    container_name: gestion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gestion_commerciale
+      POSTGRES_USER: gestion_user
+      POSTGRES_PASSWORD: gestion_password_secure_2024
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+      # Optimisations PostgreSQL
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    networks:
+      - gestion-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gestion_user -d gestion_commerciale"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Limites de ressources pour éviter la surcharge
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    # Optimisations PostgreSQL via command
+    command: |
+      postgres
+      -c shared_buffers=128MB
+      -c effective_cache_size=256MB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.7
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_connections=100
+      -c log_statement=none
+      -c log_min_duration_statement=1000
+
+  # PgBouncer - Optimisé pour connection pooling
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: gestion-pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: 5432
+      DATABASES_USER: gestion_user
+      DATABASES_PASSWORD: gestion_password_secure_2024
+      DATABASES_DBNAME: gestion_commerciale
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      # Optimisations pour performance
+      MAX_CLIENT_CONN: 50
+      DEFAULT_POOL_SIZE: 15
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 3
+      SERVER_LIFETIME: 1800
+      SERVER_IDLE_TIMEOUT: 300
+      QUERY_TIMEOUT: 120
+      QUERY_WAIT_TIMEOUT: 120
+      CLIENT_IDLE_TIMEOUT: 300
+      IDLE_TRANSACTION_TIMEOUT: 600
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gestion-network
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.5'
+
+  # Redis 7 - Optimisé pour cache
+  redis:
+    image: redis:7-alpine
+    container_name: gestion-redis
+    restart: unless-stopped
+    command: |
+      redis-server
+      --appendonly yes
+      --requirepass redis_password_secure_2024
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --tcp-keepalive 300
+      --timeout 0
+      --databases 16
+      --hz 10
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - gestion-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.5'
+
+  # Backend - Configuration optimisée
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.optimized
+      target: development
+    container_name: gestion-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://gestion_user:gestion_password_secure_2024@pgbouncer:5432/gestion_commerciale
+      DIRECT_DATABASE_URL: postgresql://gestion_user:gestion_password_secure_2024@postgres:5432/gestion_commerciale
+      REDIS_URL: redis://:redis_password_secure_2024@redis:6379
+      JWT_SECRET: your_jwt_secret_key_here_2024
+      JWT_REFRESH_SECRET: your_jwt_refresh_secret_key_here_2024
+      PORT: 3001
+      HOST: 0.0.0.0
+      # Optimisations Node.js
+      NODE_OPTIONS: "--max-old-space-size=512 --optimize-for-size"
+      UV_THREADPOOL_SIZE: 4
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+    networks:
+      - gestion-network
+    volumes:
+      - ./apps/backend/src:/app/src:ro
+      - ./packages:/app/packages:ro
+      - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Frontend - Configuration optimisée  
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile.optimized
+      target: development
+    container_name: gestion-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      # Optimisations Next.js
+      NODE_OPTIONS: "--max-old-space-size=512"
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gestion-network
+    volumes:
+      - ./apps/frontend/src:/app/src:ro
+      - ./apps/frontend/public:/app/public:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Adminer - Interface d'administration (développement)
+  adminer:
+    image: adminer:latest
+    container_name: gestion-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gestion-network
+    profiles:
+      - dev
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.5'
+
+  # Redis Commander - Interface Redis (développement)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: gestion-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:redis_password_secure_2024
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin_password_2024
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gestion-network
+    profiles:
+      - dev
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.25'
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  gestion-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    driver_opts:
+      com.docker.network.bridge.name: br-gestion
+      com.docker.network.driver.mtu: 1500

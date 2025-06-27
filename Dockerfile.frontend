@@ -1,0 +1,41 @@
+FROM node:18-alpine
+
+# Installation des outils système
+RUN apk add --no-cache libc6-compat curl
+
+WORKDIR /app
+
+# Installation de pnpm
+RUN npm install -g pnpm
+
+# Copie du package.json principal
+COPY package.json pnpm-lock.yaml* ./
+
+# Copie du frontend
+COPY apps/frontend apps/frontend/
+
+# Installation des dépendances du frontend seulement
+RUN cd apps/frontend && pnpm install --no-frozen-lockfile
+
+# Variables d'environnement pour le build
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build NextJS
+RUN cd apps/frontend && pnpm run build
+
+# Variables d'environnement pour l'exécution
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Port exposé
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000 || exit 1
+
+# Commande de démarrage
+CMD ["pnpm", "--prefix", "apps/frontend", "start"]

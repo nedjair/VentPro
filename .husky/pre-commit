@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Exécuter lint-staged pour vérifier et formater le code avant commit
+npx lint-staged

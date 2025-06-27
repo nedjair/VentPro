@@ -1,0 +1,72 @@
+services:
+  # PostgreSQL - Base de données
+  postgres:
+    image: postgres:16-alpine
+    container_name: gestion_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gestion_commerciale
+      POSTGRES_USER: gestion_user
+      POSTGRES_PASSWORD: gestion_password_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gestion_user -d gestion_commerciale"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API - Version simple
+  backend:
+    image: node:18-alpine
+    container_name: gestion_backend
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://gestion_user:gestion_password_2024@postgres:5432/gestion_commerciale
+      JWT_SECRET: jwt-secret-production-2024-change-this-in-real-production
+      JWT_REFRESH_SECRET: jwt-refresh-secret-production-2024-change-this
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/backend:/app
+      - ./scripts:/scripts
+    command: >
+      sh -c "
+        apk add --no-cache curl &&
+        npm install -g tsx &&
+        cd /app &&
+        npm install --production --no-audit &&
+        echo 'Démarrage du serveur...' &&
+        npx tsx src/server-simple.ts
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend - Version statique
+  frontend:
+    image: nginx:alpine
+    container_name: gestion_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    volumes:
+      - ./nginx/frontend.conf:/etc/nginx/conf.d/default.conf
+      - ./static-app:/usr/share/nginx/html
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

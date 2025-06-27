@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Fournisseurs</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #007bff; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        textarea {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section {
+            border-left: 4px solid #007bff;
+            padding-left: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test API Fournisseurs</h1>
+    
+    <div class="container">
+        <h2>🔐 Authentification</h2>
+        <div>
+            <input type="email" id="email" placeholder="Email" value="admin@test.com">
+            <input type="password" id="password" placeholder="Mot de passe" value="password123">
+            <button onclick="authenticate()">Se connecter</button>
+        </div>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Tests CRUD Fournisseurs</h2>
+        <div>
+            <button onclick="getSuppliers()" id="btn-get">Récupérer les fournisseurs</button>
+            <button onclick="createSupplier()" id="btn-create" disabled>Créer un fournisseur</button>
+            <button onclick="updateSupplier()" id="btn-update" disabled>Modifier un fournisseur</button>
+            <button onclick="deleteSupplier()" id="btn-delete" disabled>Supprimer un fournisseur</button>
+        </div>
+        <div id="crud-result"></div>
+    </div>
+
+    <div class="container">
+        <h2>📊 Logs des requêtes</h2>
+        <button onclick="clearLogs()">Effacer les logs</button>
+        <textarea id="logs" readonly></textarea>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        let authToken = null;
+        let testSupplierId = null;
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logArea = document.getElementById('logs');
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+            logArea.value += `[${timestamp}] ${prefix} ${message}\n`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').value = '';
+        }
+
+        function updateButtons() {
+            const hasToken = !!authToken;
+            document.getElementById('btn-get').disabled = !hasToken;
+            document.getElementById('btn-create').disabled = !hasToken;
+            document.getElementById('btn-update').disabled = !hasToken || !testSupplierId;
+            document.getElementById('btn-delete').disabled = !hasToken || !testSupplierId;
+        }
+
+        async function makeRequest(url, options = {}) {
+            try {
+                log(`Requête: ${options.method || 'GET'} ${url}`);
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+                        ...options.headers
+                    },
+                    ...options
+                });
+
+                const data = await response.json().catch(() => null);
+                
+                log(`Réponse: ${response.status} ${response.statusText}`);
+                if (data) {
+                    log(`Données: ${JSON.stringify(data, null, 2)}`);
+                }
+
+                return { ok: response.ok, status: response.status, data };
+            } catch (error) {
+                log(`Erreur: ${error.message}`, 'error');
+                return { ok: false, error: error.message };
+            }
+        }
+
+        async function authenticate() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            log('🔐 Tentative d\'authentification...');
+            
+            const result = await makeRequest(`${API_BASE}/api/v1/auth/login`, {
+                method: 'POST',
+                body: JSON.stringify({ email, password })
+            });
+
+            const resultDiv = document.getElementById('auth-result');
+            
+            if (result.ok && result.data?.tokens?.accessToken) {
+                authToken = result.data.tokens.accessToken;
+                resultDiv.innerHTML = `<p class="success">✅ Authentification réussie!</p>
+                                     <p class="info">Token: ${authToken.substring(0, 50)}...</p>`;
+                log('Authentification réussie', 'success');
+                updateButtons();
+            } else {
+                resultDiv.innerHTML = `<p class="error">❌ Échec de l'authentification</p>
+                                     <p class="error">${result.data?.message || result.error}</p>`;
+                log(`Échec de l'authentification: ${result.data?.message || result.error}`, 'error');
+                authToken = null;
+                updateButtons();
+            }
+        }
+
+        async function getSuppliers() {
+            log('📋 Récupération des fournisseurs...');
+            
+            const result = await makeRequest(`${API_BASE}/api/v1/suppliers`);
+            const resultDiv = document.getElementById('crud-result');
+            
+            if (result.ok) {
+                const suppliers = result.data || [];
+                resultDiv.innerHTML = `<p class="success">✅ ${suppliers.length} fournisseurs récupérés</p>
+                                     <pre>${JSON.stringify(suppliers, null, 2)}</pre>`;
+                log(`${suppliers.length} fournisseurs récupérés`, 'success');
+            } else {
+                resultDiv.innerHTML = `<p class="error">❌ Erreur: ${result.data?.message || result.error}</p>`;
+                log(`Erreur lors de la récupération: ${result.data?.message || result.error}`, 'error');
+            }
+        }
+
+        async function createSupplier() {
+            log('➕ Création d\'un fournisseur...');
+            
+            const newSupplier = {
+                name: 'Test Supplier API',
+                email: 'test@supplier-api.com',
+                phone: '+33123456789',
+                address: '123 Test Street',
+                city: 'Test City',
+                postalCode: '12345',
+                country: 'France',
+                contactPerson: 'John Test',
+                paymentTerms: 30,
+                isActive: true
+            };
+
+            const result = await makeRequest(`${API_BASE}/api/v1/suppliers`, {
+                method: 'POST',
+                body: JSON.stringify(newSupplier)
+            });
+
+            const resultDiv = document.getElementById('crud-result');
+            
+            if (result.ok) {
+                testSupplierId = result.data.id;
+                resultDiv.innerHTML = `<p class="success">✅ Fournisseur créé avec l'ID: ${testSupplierId}</p>
+                                     <pre>${JSON.stringify(result.data, null, 2)}</pre>`;
+                log(`Fournisseur créé avec l'ID: ${testSupplierId}`, 'success');
+                updateButtons();
+            } else {
+                resultDiv.innerHTML = `<p class="error">❌ Erreur: ${result.data?.message || result.error}</p>`;
+                log(`Erreur lors de la création: ${result.data?.message || result.error}`, 'error');
+            }
+        }
+
+        async function updateSupplier() {
+            if (!testSupplierId) {
+                log('Aucun fournisseur à modifier', 'error');
+                return;
+            }
+
+            log(`✏️ Modification du fournisseur ${testSupplierId}...`);
+            
+            const updateData = {
+                name: 'Test Supplier API - Updated',
+                phone: '+33987654321'
+            };
+
+            const result = await makeRequest(`${API_BASE}/api/v1/suppliers/${testSupplierId}`, {
+                method: 'PUT',
+                body: JSON.stringify(updateData)
+            });
+
+            const resultDiv = document.getElementById('crud-result');
+            
+            if (result.ok) {
+                resultDiv.innerHTML = `<p class="success">✅ Fournisseur modifié avec succès</p>
+                                     <pre>${JSON.stringify(result.data, null, 2)}</pre>`;
+                log('Fournisseur modifié avec succès', 'success');
+            } else {
+                resultDiv.innerHTML = `<p class="error">❌ Erreur: ${result.data?.message || result.error}</p>`;
+                log(`Erreur lors de la modification: ${result.data?.message || result.error}`, 'error');
+            }
+        }
+
+        async function deleteSupplier() {
+            if (!testSupplierId) {
+                log('Aucun fournisseur à supprimer', 'error');
+                return;
+            }
+
+            log(`🗑️ Suppression du fournisseur ${testSupplierId}...`);
+            
+            const result = await makeRequest(`${API_BASE}/api/v1/suppliers/${testSupplierId}`, {
+                method: 'DELETE'
+            });
+
+            const resultDiv = document.getElementById('crud-result');
+            
+            if (result.ok) {
+                resultDiv.innerHTML = `<p class="success">✅ Fournisseur supprimé avec succès</p>`;
+                log('Fournisseur supprimé avec succès', 'success');
+                testSupplierId = null;
+                updateButtons();
+            } else {
+                resultDiv.innerHTML = `<p class="error">❌ Erreur: ${result.data?.message || result.error}</p>`;
+                log(`Erreur lors de la suppression: ${result.data?.message || result.error}`, 'error');
+            }
+        }
+
+        // Initialisation
+        updateButtons();
+        log('Interface de test chargée');
+    </script>
+</body>
+</html>

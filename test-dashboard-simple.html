@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Dashboard API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test de Connectivité Dashboard</h1>
+    <p>Frontend: <strong>http://localhost:3000</strong> → Backend: <strong>http://localhost:3001</strong></p>
+    
+    <div>
+        <button onclick="testHealth()">1. Test Santé Backend</button>
+        <button onclick="testLogin()">2. Test Authentification</button>
+        <button onclick="testDashboard()">3. Test Dashboard API</button>
+        <button onclick="testAllAnalytics()">4. Test Analytics</button>
+        <button onclick="clearResults()">Effacer</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        let authToken = null;
+        
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = message;
+            results.appendChild(div);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testHealth() {
+            try {
+                addResult('🔍 Test de santé du backend...', 'info');
+                const response = await fetch('http://localhost:3001/health');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult(`✅ Backend accessible: ${data.message}`, 'success');
+                } else {
+                    addResult(`❌ Backend inaccessible: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Erreur de connexion: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testLogin() {
+            try {
+                addResult('🔐 Test d\'authentification...', 'info');
+                const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@technocommerce.dz',
+                        password: 'Admin123!'
+                    }),
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    authToken = data.data.tokens.accessToken;
+                    addResult('✅ Authentification réussie', 'success');
+                    addResult(`🔑 Token obtenu: ${authToken.substring(0, 20)}...`, 'info');
+                } else {
+                    const errorData = await response.json();
+                    addResult(`❌ Échec authentification: ${errorData.message}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Erreur authentification: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testDashboard() {
+            if (!authToken) {
+                addResult('❌ Token requis - Effectuez d\'abord l\'authentification', 'error');
+                return;
+            }
+            
+            try {
+                addResult('📊 Test de l\'API dashboard...', 'info');
+                const response = await fetch('http://localhost:3001/api/v1/dashboard/stats', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult('✅ API dashboard accessible', 'success');
+                    
+                    if (data.success && data.data) {
+                        addResult(`📈 Données reçues:
+                        • Clients: ${data.data.clients?.total || 'N/A'}
+                        • Produits: ${data.data.products?.total || 'N/A'} 
+                        • CA du mois: ${data.data.sales?.currentMonth || 'N/A'} DZD
+                        • Commandes: ${data.data.orders?.total || 'N/A'}`, 'success');
+                        
+                        addResult(`<pre>${JSON.stringify(data.data, null, 2)}</pre>`, 'info');
+                    } else {
+                        addResult('❌ Structure de données invalide', 'error');
+                    }
+                } else {
+                    addResult(`❌ Erreur API dashboard: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Erreur dashboard: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testAllAnalytics() {
+            if (!authToken) {
+                addResult('❌ Token requis - Effectuez d\'abord l\'authentification', 'error');
+                return;
+            }
+            
+            const endpoints = [
+                { url: '/api/v1/analytics/kpi', name: 'KPI' },
+                { url: '/api/v1/analytics/sales', name: 'Ventes' },
+                { url: '/api/v1/analytics/clients', name: 'Clients' },
+                { url: '/api/v1/analytics/products', name: 'Produits' },
+                { url: '/api/v1/analytics/evolution', name: 'Évolution' }
+            ];
+            
+            addResult('🔍 Test des endpoints analytics...', 'info');
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(`http://localhost:3001${endpoint.url}`, {
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        addResult(`✅ ${endpoint.name} (${endpoint.url}) - OK`, 'success');
+                    } else {
+                        addResult(`❌ ${endpoint.name} (${endpoint.url}) - Erreur ${response.status}`, 'error');
+                    }
+                } catch (error) {
+                    addResult(`❌ ${endpoint.name} (${endpoint.url}) - ${error.message}`, 'error');
+                }
+            }
+        }
+        
+        // Test automatique au chargement
+        window.onload = function() {
+            addResult('🚀 Page de test chargée. Cliquez sur les boutons pour tester.', 'info');
+        };
+    </script>
+</body>
+</html>
