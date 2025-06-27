@@ -1,3 +1,4 @@
+HEAD
 # 🏢 Gestion Commerciale TPE - Phase 5 Analytics
 
 > **Application complète de gestion commerciale pour Très Petites Entreprises**
@@ -290,3 +291,6 @@ Pour toute question ou problème :
 - Ouvrir une [issue](../../issues)
 - Consulter la [documentation](./docs/)
 - Contacter l'équipe de développement
+# GCTPE
+Gestion Commerciale
+ 3db19ef70266ab57b5f09945f0888ecc80033959
