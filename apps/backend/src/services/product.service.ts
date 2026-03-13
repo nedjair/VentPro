@@ -1,6 +1,8 @@
-import { prisma, Prisma, Product, Category } from '@gestion/database'
+import { Prisma, Product } from '@gestion/database'
+import { prisma } from '../lib/prisma'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
+import { UnifiedStockService } from './unified-stock.service'
 
 export interface CreateProductData {
   name: string
@@ -55,24 +57,293 @@ export interface ProductVariantData {
   isActive?: boolean
 }
 
+interface CurrentSchemaProductRow {
+  id: string
+  name: string
+  description: string | null
+  sku: string
+  barcode: string | null
+  price: number | string
+  cost: number | string | null
+  tvaRate: number | null
+  minStock: number | string | null
+  maxStock: number | string | null
+  createdAt: Date
+  updatedAt: Date
+  userId: string
+  stockQuantity: number | string | null
+  stockUpdatedAt: Date | null
+  categoryId: string | null
+  categoryName: string | null
+  categoryDescription: string | null
+  categoryCreatedAt: Date | null
+  categoryUpdatedAt: Date | null
+}
+
 export class ProductService {
+  private static isPrismaUniqueConstraintError(error: unknown, fieldName?: string): boolean {
+    if (!error || typeof error !== 'object') {
+      return false
+    }
+
+    const prismaError = error as { code?: string; meta?: { target?: unknown } }
+    if (prismaError.code !== 'P2002') {
+      return false
+    }
+
+    if (!fieldName) {
+      return true
+    }
+
+    const rawTarget = prismaError.meta?.target
+    const normalizedTargets = Array.isArray(rawTarget)
+      ? rawTarget.map((value) => String(value))
+      : typeof rawTarget === 'string'
+        ? [rawTarget]
+        : []
+
+    return normalizedTargets.some((target) => target.includes(fieldName))
+  }
+
+  private static normalizeCurrentSchemaProduct(product: CurrentSchemaProductRow): Product {
+    const stockQuantity = Number(product.stockQuantity ?? 0)
+    const normalizedCategory = product.categoryId
+      ? {
+          id: product.categoryId,
+          name: product.categoryName || 'Catégorie',
+          description: product.categoryDescription || undefined,
+          createdAt: product.categoryCreatedAt || product.createdAt,
+          updatedAt: product.categoryUpdatedAt || product.updatedAt,
+        }
+      : undefined
+
+    return {
+      id: product.id,
+      name: product.name,
+      sku: product.sku,
+      reference: product.sku,
+      barcode: product.barcode || undefined,
+      description: product.description || undefined,
+      categoryId: product.categoryId || undefined,
+      category: normalizedCategory,
+      price: Number(product.price ?? 0),
+      costPrice: product.cost == null ? undefined : Number(product.cost),
+      stock: stockQuantity,
+      stockQuantity,
+      minStock: Number(product.minStock ?? 0),
+      maxStock: product.maxStock == null ? null : Number(product.maxStock),
+      unit: 'pièce',
+      isActive: true,
+      isService: false,
+      trackStock: true,
+      allowBackorder: false,
+      vatRate: Number(product.tvaRate ?? 20),
+      userId: product.userId,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+    } as unknown as Product
+  }
+
+  private static async getCurrentSchemaProductRow(id: string, ownerScopeId: string): Promise<CurrentSchemaProductRow | null> {
+    const rows = await prisma.$queryRaw<Array<CurrentSchemaProductRow>>`
+      SELECT
+        p.id,
+        p.name,
+        p.description,
+        p.sku,
+        p.barcode,
+        p.price,
+        p.cost,
+        p."tvaRate",
+        p."minStock",
+        p."maxStock",
+        p."createdAt",
+        p."updatedAt",
+        p."userId",
+        p."categoryId",
+        c.name AS "categoryName",
+        c.description AS "categoryDescription",
+        c."createdAt" AS "categoryCreatedAt",
+        c."updatedAt" AS "categoryUpdatedAt",
+        COALESCE(s.quantity, 0) AS "stockQuantity",
+        s."updatedAt" AS "stockUpdatedAt"
+      FROM "Product" p
+      LEFT JOIN "Stock" s
+        ON s."productId" = p.id
+       AND s."userId" = p."userId"
+      LEFT JOIN "Category" c
+        ON c.id = p."categoryId"
+      WHERE p.id = ${id}
+        AND p."userId" = ${ownerScopeId}
+      ORDER BY s."updatedAt" DESC NULLS LAST
+      LIMIT 1
+    `
+
+    return rows[0] ?? null
+  }
+
+  private static async assertCurrentSchemaCategoryExists(categoryId: string, ownerScopeId: string): Promise<void> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM "Category"
+      WHERE id = ${categoryId}
+        AND "userId" = ${ownerScopeId}
+      LIMIT 1
+    `
+
+    if (!rows[0]) {
+      throw new Error('Catégorie non trouvée')
+    }
+  }
+
+  private static buildCurrentSchemaSku(data: CreateProductData): string {
+    const explicitSku = data.sku?.trim()
+    if (explicitSku) {
+      return explicitSku
+    }
+
+    const normalizedBase = data.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 18)
+
+    const fallbackBase = normalizedBase || 'PRODUIT'
+    const uniqueSuffix = Date.now().toString().slice(-6)
+    return `${fallbackBase}-${uniqueSuffix}`
+  }
+
   /**
    * Créer un nouveau produit
    */
   static async createProduct(
     data: CreateProductData,
-    companyId: string
+    ownerScopeId: string
   ): Promise<Product> {
     try {
-      logger.info('Création d\'un nouveau produit', { companyId, name: data.name })
+      logger.info('Création d\'un nouveau produit', { ownerScopeId, name: data.name })
 
-      // Vérifier l'unicité du SKU dans l'entreprise
-      if (data.sku) {
+      const normalizedSku = this.buildCurrentSchemaSku(data)
+
+      try {
+        const existingSku = await prisma.product.findFirst({
+          where: {
+            sku: normalizedSku,
+            userId: ownerScopeId,
+          },
+          select: { id: true },
+        })
+
+        if (existingSku) {
+          throw new Error('Un produit avec ce SKU existe déjà')
+        }
+
+        if (data.barcode) {
+          const existingBarcode = await prisma.product.findFirst({
+            where: {
+              barcode: data.barcode,
+              userId: ownerScopeId,
+            },
+            select: { id: true },
+          })
+
+          if (existingBarcode) {
+            throw new Error('Un produit avec ce code-barres existe déjà')
+          }
+        }
+
+        if (data.categoryId) {
+          await this.assertCurrentSchemaCategoryExists(data.categoryId, ownerScopeId)
+        }
+
+        const createdRows = await prisma.$queryRaw<Array<{ id: string }>>`
+          INSERT INTO "Product" (
+            name,
+            description,
+            sku,
+            barcode,
+            price,
+            cost,
+            "tvaRate",
+            "minStock",
+            "maxStock",
+            "categoryId",
+            "userId"
+          )
+          VALUES (
+            ${data.name},
+            ${data.description?.trim() || null},
+            ${normalizedSku},
+            ${data.barcode?.trim() || null},
+            ${Number(data.price ?? 0)},
+            ${data.cost == null ? null : Number(data.cost)},
+            ${data.vatRate ?? 20},
+            ${Math.max(0, Number(data.minStock ?? 0))},
+            ${data.maxStock == null ? null : Math.max(0, Number(data.maxStock))},
+            ${data.categoryId || null},
+            ${ownerScopeId}
+          )
+          RETURNING id
+        `
+
+        const createdProductId = createdRows[0]?.id
+        if (!createdProductId) {
+          throw new Error('Produit non trouvé après création')
+        }
+
+        if ((data.stockQuantity ?? 0) > 0) {
+          await prisma.stock.create({
+            data: {
+              quantity: Math.max(0, Number(data.stockQuantity ?? 0)),
+              productId: createdProductId,
+              userId: ownerScopeId,
+            },
+          })
+        }
+
+        const createdProduct = await this.getCurrentSchemaProductRow(createdProductId, ownerScopeId)
+        if (!createdProduct) {
+          throw new Error('Produit non trouvé après création')
+        }
+
+        const currentSchemaProduct = this.normalizeCurrentSchemaProduct(createdProduct)
+
+        logger.info('Produit créé avec succès via le schéma local courant', { productId: createdProductId })
+        return currentSchemaProduct
+      } catch (currentSchemaError) {
+        if (this.isPrismaUniqueConstraintError(currentSchemaError, 'sku')) {
+          throw new Error('Un produit avec ce SKU existe déjà')
+        }
+
+        if (this.isPrismaUniqueConstraintError(currentSchemaError, 'barcode')) {
+          throw new Error('Un produit avec ce code-barres existe déjà')
+        }
+
+        if (
+          currentSchemaError instanceof Error &&
+          [
+            'Un produit avec ce SKU existe déjà',
+            'Un produit avec ce code-barres existe déjà',
+            'Catégorie non trouvée',
+            'Produit non trouvé après création',
+          ].includes(currentSchemaError.message)
+        ) {
+          throw currentSchemaError
+        }
+
+        logger.warn('Fallback createProduct vers schéma legacy', { error: currentSchemaError, ownerScopeId })
+      }
+
+      // Fallback robuste aligné sur le schéma Prisma courant généré.
+      if (normalizedSku) {
         const existingProduct = await prisma.product.findFirst({
           where: {
-            sku: data.sku,
-            companyId,
+            sku: normalizedSku,
+            userId: ownerScopeId,
           },
+          select: { id: true },
         })
 
         if (existingProduct) {
@@ -80,13 +351,13 @@ export class ProductService {
         }
       }
 
-      // Vérifier l'unicité du code-barres
       if (data.barcode) {
         const existingProduct = await prisma.product.findFirst({
           where: {
             barcode: data.barcode,
-            companyId,
+            userId: ownerScopeId,
           },
+          select: { id: true },
         })
 
         if (existingProduct) {
@@ -94,13 +365,13 @@ export class ProductService {
         }
       }
 
-      // Vérifier que la catégorie existe si spécifiée
       if (data.categoryId) {
         const category = await prisma.category.findFirst({
           where: {
             id: data.categoryId,
-            companyId,
+            userId: ownerScopeId,
           },
+          select: { id: true },
         })
 
         if (!category) {
@@ -110,36 +381,43 @@ export class ProductService {
 
       const product = await prisma.product.create({
         data: {
-          ...data,
-          companyId,
-          vatRate: data.vatRate || 20,
-          stockQuantity: data.stockQuantity || 0,
-          minStock: data.minStock || 0,
-          isActive: data.isActive !== false,
-          isService: data.isService || false,
-          unit: data.unit || 'pièce',
+          name: data.name,
+          description: data.description?.trim() || null,
+          sku: normalizedSku,
+          barcode: data.barcode?.trim() || null,
+          price: Number(data.price ?? 0),
+          cost: data.cost == null ? null : Number(data.cost),
+          tvaRate: data.vatRate ?? 20,
+          minStock: Math.max(0, Number(data.minStock ?? 0)),
+          maxStock: data.maxStock == null ? null : Math.max(0, Number(data.maxStock)),
+          categoryId: data.categoryId || null,
+          userId: ownerScopeId,
         },
-        include: {
-          category: true,
-        },
+        select: { id: true },
       })
 
-      // Créer un mouvement de stock initial si quantité > 0
-      if (product.stockQuantity > 0 && !product.isService) {
-        await prisma.stockMovement.create({
-          data: {
-            type: 'IN',
-            quantity: product.stockQuantity,
-            unitCost: product.cost,
-            reference: 'STOCK-INITIAL',
-            comment: 'Stock initial lors de la création du produit',
+      if ((data.stockQuantity ?? 0) > 0) {
+        await prisma.stock.upsert({
+          where: { productId: product.id },
+          update: {
+            quantity: Math.max(0, Number(data.stockQuantity ?? 0)),
+            userId: ownerScopeId,
+          },
+          create: {
+            quantity: Math.max(0, Number(data.stockQuantity ?? 0)),
             productId: product.id,
+            userId: ownerScopeId,
           },
         })
       }
 
-      logger.info('Produit créé avec succès', { productId: product.id })
-      return product
+      const createdProduct = await this.getCurrentSchemaProductRow(product.id, ownerScopeId)
+      if (!createdProduct) {
+        throw new Error('Produit non trouvé après création')
+      }
+
+      logger.info('Produit créé avec succès via le fallback Prisma courant', { productId: product.id })
+      return this.normalizeCurrentSchemaProduct(createdProduct)
     } catch (error) {
       logger.error('Erreur lors de la création du produit', { error, data })
       throw error
@@ -149,38 +427,28 @@ export class ProductService {
   /**
    * Récupérer un produit par ID
    */
-  static async getProductById(id: string, companyId: string): Promise<Product | null> {
+  static async getProductById(id: string, ownerScopeId: string): Promise<Product | null> {
     try {
-      const product = await prisma.product.findFirst({
+      try {
+        const product = await this.getCurrentSchemaProductRow(id, ownerScopeId)
+
+        if (product) {
+          return this.normalizeCurrentSchemaProduct(product)
+        }
+      } catch (currentSchemaError) {
+        logger.warn('Fallback getProductById vers schéma legacy', { error: currentSchemaError, id, ownerScopeId })
+      }
+
+      const product = await (prisma.product as any).findFirst({
         where: {
           id,
-          companyId,
+          companyId: ownerScopeId,
         },
         include: {
           category: true,
-          stock: true, // Inclure les données de stock
+          stock: true,
         },
       })
-
-      if (!product) {
-        return null
-      }
-
-      // Transformer pour utiliser les stocks comme source de vérité
-      if (product.stock && !product.isService) {
-        return {
-          ...product,
-          stockQuantity: product.stock.quantiteActuelle,
-          minStock: product.stock.quantiteMinimale,
-          maxStock: product.stock.quantiteMaximale,
-          unifiedStock: {
-            quantiteActuelle: product.stock.quantiteActuelle,
-            quantiteMinimale: product.stock.quantiteMinimale,
-            quantiteMaximale: product.stock.quantiteMaximale,
-            dateLastUpdate: product.stock.dateLastUpdate
-          }
-        } as Product
-      }
 
       return product
     } catch (error) {
@@ -223,94 +491,141 @@ export class ProductService {
     pagination?: PaginationParams
   ): Promise<PaginationResponse<Product>> {
     try {
-      const {
-        page = 1,
-        limit = 20,
-        sortBy = 'createdAt',
-        sortOrder = 'desc',
-      } = pagination || {};
+      const page = pagination?.page || 1
+      const limit = pagination?.limit || 20
+      const skip = (page - 1) * limit
+      const searchTerm = filters.search?.trim()
 
-      const { search, categoryId, isActive, isService, lowStock } = filters
+      // 1) Schéma PostgreSQL réellement observé en local :
+      //    tables PascalCase (`Product`, `Stock`) liées à l'utilisateur via `userId`.
+      //    On privilégie ce chemin car le client Prisma généré dans le projet reste
+      //    aligné sur un ancien schéma legacy et ne peut pas lire ces tables correctement.
+      try {
+        const searchCondition = searchTerm
+          ? Prisma.sql`
+              AND (
+                LOWER(p.name) LIKE LOWER(${`%${searchTerm}%`})
+                OR LOWER(COALESCE(p.sku, '')) LIKE LOWER(${`%${searchTerm}%`})
+                OR LOWER(COALESCE(c.name, '')) LIKE LOWER(${`%${searchTerm}%`})
+              )
+            `
+          : Prisma.empty
+        const categoryCondition = filters.categoryId
+          ? Prisma.sql`AND p."categoryId" = ${filters.categoryId}`
+          : Prisma.empty
+        const priceMinCondition = typeof filters.priceMin === 'number'
+          ? Prisma.sql`AND p.price >= ${filters.priceMin}`
+          : Prisma.empty
+        const priceMaxCondition = typeof filters.priceMax === 'number'
+          ? Prisma.sql`AND p.price <= ${filters.priceMax}`
+          : Prisma.empty
+        const inStockCondition = filters.inStock === true
+          ? Prisma.sql`AND COALESCE(s.quantity, 0) > 0`
+          : filters.inStock === false
+            ? Prisma.sql`AND COALESCE(s.quantity, 0) <= 0`
+            : Prisma.empty
+        const lowStockCondition = filters.lowStock
+          ? Prisma.sql`AND COALESCE(s.quantity, 0) <= COALESCE(p."minStock", 0) AND COALESCE(p."minStock", 0) > 0`
+          : Prisma.empty
 
-      // Construction de la clause WHERE
-      const where: Prisma.ProductWhereInput = {
-        companyId,
-        ...(categoryId && { categoryId }),
-        ...(isActive !== undefined && { isActive }),
-        ...(isService !== undefined && { isService }),
-        ...(lowStock && {
-          AND: [
-            { isService: false },
-            { stockQuantity: { lte: prisma.product.fields.minStock } },
-          ],
-        }),
-        ...(search && {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } },
-            { sku: { contains: search, mode: 'insensitive' } },
-            { barcode: { contains: search, mode: 'insensitive' } },
-          ],
-        }),
+        const products = await prisma.$queryRaw<Array<CurrentSchemaProductRow>>(Prisma.sql`
+          SELECT
+            p.id,
+            p.name,
+            p.description,
+            p.sku,
+            p.barcode,
+            p.price,
+            p.cost,
+            p."tvaRate",
+            p."minStock",
+            p."maxStock",
+            p."createdAt",
+            p."updatedAt",
+            p."userId",
+            p."categoryId",
+            c.name AS "categoryName",
+            c.description AS "categoryDescription",
+            c."createdAt" AS "categoryCreatedAt",
+            c."updatedAt" AS "categoryUpdatedAt",
+            COALESCE(s.quantity, 0) AS "stockQuantity",
+            s."updatedAt" AS "stockUpdatedAt"
+          FROM "Product" p
+          LEFT JOIN "Stock" s ON s."productId" = p.id AND s."userId" = p."userId"
+          LEFT JOIN "Category" c ON c.id = p."categoryId"
+          WHERE p."userId" = ${companyId}
+            ${searchCondition}
+            ${categoryCondition}
+            ${priceMinCondition}
+            ${priceMaxCondition}
+            ${inStockCondition}
+            ${lowStockCondition}
+          ORDER BY p."createdAt" DESC
+          LIMIT ${limit}
+          OFFSET ${skip}
+        `)
+
+        const totalRows = await prisma.$queryRaw<Array<{ count: bigint | number | string }>>(Prisma.sql`
+          SELECT COUNT(*) AS count
+          FROM "Product" p
+          LEFT JOIN "Stock" s ON s."productId" = p.id AND s."userId" = p."userId"
+          LEFT JOIN "Category" c ON c.id = p."categoryId"
+          WHERE p."userId" = ${companyId}
+            ${searchCondition}
+            ${categoryCondition}
+            ${priceMinCondition}
+            ${priceMaxCondition}
+            ${inStockCondition}
+            ${lowStockCondition}
+        `)
+
+        const total = Number(totalRows[0]?.count || 0)
+
+        const normalizedProducts = products.map((product) => this.normalizeCurrentSchemaProduct(product)) as Product[]
+
+        return {
+          data: normalizedProducts,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasNext: page * limit < total,
+            hasPrev: page > 1,
+          },
+        }
+      } catch (currentSchemaError) {
+        logger.warn('Fallback produits : schéma PostgreSQL actuel non accessible via SQL brut', { error: currentSchemaError })
       }
 
-      const skip = pagination ? (page - 1) * limit : undefined;
-      const take = pagination ? limit : undefined;
+      // 2) Fallback legacy vers l'ancien schéma Prisma généré dans le projet.
+      const products = await prisma.product.findMany({
+        where: { companyId },
+        take: limit,
+        skip,
+        include: {
+          category: true,
+        },
+      })
 
-      // Requêtes parallèles pour les données et le count
-      const [products, total] = await Promise.all([
-        prisma.product.findMany({
-          where,
-          skip,
-          take,
-          orderBy: {
-            [sortBy]: sortOrder,
-          },
-          include: {
-            category: true,
-            stock: true, // Inclure les données de stock unifiées
-          },
-        }),
-        prisma.product.count({ where }),
-      ])
-
-      const totalPages = pagination ? Math.ceil(total / limit) : 1;
-
-      // Transformer les données pour utiliser les stocks comme source de vérité
-      const unifiedProducts = products.map(product => {
-        if (product.stock && !product.isService) {
-          // Utiliser les données de la table stocks pour les produits physiques
-          return {
-            ...product,
-            stockQuantity: product.stock.quantiteActuelle,
-            minStock: product.stock.quantiteMinimale,
-            maxStock: product.stock.quantiteMaximale,
-            // Ajouter les données de stock pour référence
-            unifiedStock: {
-              quantiteActuelle: product.stock.quantiteActuelle,
-              quantiteMinimale: product.stock.quantiteMinimale,
-              quantiteMaximale: product.stock.quantiteMaximale,
-              dateLastUpdate: product.stock.dateLastUpdate
-            }
-          }
-        }
-        return product
+      const total = await prisma.product.count({
+        where: { companyId },
       })
 
       return {
-        data: unifiedProducts,
+        data: products,
         pagination: {
-          page: page,
-          limit: pagination ? limit : total,
+          page,
+          limit,
           total,
-          totalPages,
-          hasNext: pagination ? page < totalPages : false,
-          hasPrev: pagination ? page > 1 : false,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
         },
       }
     } catch (error) {
-      logger.error('Erreur lors de la récupération des produits', { error, filters })
-      throw error
+      logger.error('Erreur lors de la récupération des produits', { error })
+      throw new Error('Erreur lors de la récupération des produits')
     }
   }
 
@@ -320,25 +635,123 @@ export class ProductService {
   static async updateProduct(
     id: string,
     data: UpdateProductData,
-    companyId: string
+    ownerScopeId: string
   ): Promise<Product> {
     try {
-      logger.info('Mise à jour du produit', { productId: id, companyId })
+      logger.info('Mise à jour du produit', { productId: id, ownerScopeId })
+
+      try {
+        const existingProduct = await this.getCurrentSchemaProductRow(id, ownerScopeId)
+
+        if (existingProduct) {
+          if (data.sku && data.sku !== existingProduct.sku) {
+            const skuExists = await prisma.product.findFirst({
+              where: {
+                sku: data.sku,
+                userId: ownerScopeId,
+                id: { not: id },
+              },
+              select: { id: true },
+            })
+
+            if (skuExists) {
+              throw new Error('Un produit avec ce SKU existe déjà')
+            }
+          }
+
+          if (data.barcode && data.barcode !== existingProduct.barcode) {
+            const barcodeExists = await prisma.product.findFirst({
+              where: {
+                barcode: data.barcode,
+                userId: ownerScopeId,
+                id: { not: id },
+              },
+              select: { id: true },
+            })
+
+            if (barcodeExists) {
+              throw new Error('Un produit avec ce code-barres existe déjà')
+            }
+          }
+
+          if (data.categoryId !== undefined && data.categoryId !== (existingProduct.categoryId || undefined)) {
+            if (data.categoryId) {
+              await this.assertCurrentSchemaCategoryExists(data.categoryId, ownerScopeId)
+            }
+          }
+
+          const updateClauses: Prisma.Sql[] = []
+          if (data.name !== undefined) updateClauses.push(Prisma.sql`name = ${data.name}`)
+          if (data.description !== undefined) updateClauses.push(Prisma.sql`description = ${data.description || null}`)
+          if (data.sku !== undefined) updateClauses.push(Prisma.sql`sku = ${data.sku}`)
+          if (data.barcode !== undefined) updateClauses.push(Prisma.sql`barcode = ${data.barcode || null}`)
+          if (data.price !== undefined) updateClauses.push(Prisma.sql`price = ${Number(data.price)}`)
+          if (data.cost !== undefined) updateClauses.push(Prisma.sql`cost = ${data.cost == null ? null : Number(data.cost)}`)
+          if (data.vatRate !== undefined) updateClauses.push(Prisma.sql`"tvaRate" = ${data.vatRate}`)
+          if (data.categoryId !== undefined) updateClauses.push(Prisma.sql`"categoryId" = ${data.categoryId || null}`)
+
+          if (updateClauses.length > 0) {
+            await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+              UPDATE "Product"
+              SET ${Prisma.join(updateClauses, Prisma.sql`, `)},
+                  "updatedAt" = CURRENT_TIMESTAMP
+              WHERE id = ${id}
+                AND "userId" = ${ownerScopeId}
+              RETURNING id
+            `)
+          }
+
+          if (
+            data.stockQuantity !== undefined ||
+            data.minStock !== undefined ||
+            data.maxStock !== undefined
+          ) {
+            await UnifiedStockService.updateUnifiedStock(id, ownerScopeId, {
+              stockQuantity: data.stockQuantity,
+              minStock: data.minStock,
+              maxStock: data.maxStock,
+            })
+          }
+
+          const refreshedProduct = await this.getProductById(id, ownerScopeId)
+          if (!refreshedProduct) {
+            throw new Error('Produit non trouvé après mise à jour')
+          }
+
+          logger.info('Produit mis à jour avec succès via le schéma local courant', { productId: id })
+          return refreshedProduct
+        }
+      } catch (currentSchemaError) {
+        if (
+          currentSchemaError instanceof Error &&
+          [
+            'Produit non trouvé',
+            'Produit non trouvé après mise à jour',
+            'Un produit avec ce SKU existe déjà',
+            'Un produit avec ce code-barres existe déjà',
+            'Catégorie non trouvée',
+          ].includes(currentSchemaError.message)
+        ) {
+          throw currentSchemaError
+        }
+
+        logger.warn('Fallback updateProduct vers schéma legacy', { error: currentSchemaError, id, ownerScopeId })
+      }
 
       // Vérifier que le produit existe et appartient à l'entreprise
-      const existingProduct = await this.getProductById(id, companyId)
+      const existingProduct = await this.getProductById(id, ownerScopeId)
       if (!existingProduct) {
         throw new Error('Produit non trouvé')
       }
 
-      // Vérifier l'unicité du SKU si modifié
       if (data.sku && data.sku !== existingProduct.sku) {
         const skuExists = await prisma.product.findFirst({
           where: {
             sku: data.sku,
-            companyId,
+            userId: ownerScopeId,
             id: { not: id },
           },
+          select: { id: true },
         })
 
         if (skuExists) {
@@ -346,14 +759,14 @@ export class ProductService {
         }
       }
 
-      // Vérifier l'unicité du code-barres si modifié
       if (data.barcode && data.barcode !== existingProduct.barcode) {
         const barcodeExists = await prisma.product.findFirst({
           where: {
             barcode: data.barcode,
-            companyId,
+            userId: ownerScopeId,
             id: { not: id },
           },
+          select: { id: true },
         })
 
         if (barcodeExists) {
@@ -361,13 +774,13 @@ export class ProductService {
         }
       }
 
-      // Vérifier que la catégorie existe si modifiée
       if (data.categoryId && data.categoryId !== existingProduct.categoryId) {
         const category = await prisma.category.findFirst({
           where: {
             id: data.categoryId,
-            companyId,
+            userId: ownerScopeId,
           },
+          select: { id: true },
         })
 
         if (!category) {
@@ -375,16 +788,44 @@ export class ProductService {
         }
       }
 
-      const updatedProduct = await prisma.product.update({
+      await prisma.product.update({
         where: { id },
-        data,
-        include: {
-          category: true,
+        data: {
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(data.description !== undefined ? { description: data.description || null } : {}),
+          ...(data.sku !== undefined ? { sku: data.sku } : {}),
+          ...(data.barcode !== undefined ? { barcode: data.barcode || null } : {}),
+          ...(data.price !== undefined ? { price: Number(data.price) } : {}),
+          ...(data.cost !== undefined ? { cost: data.cost == null ? null : Number(data.cost) } : {}),
+          ...(data.vatRate !== undefined ? { tvaRate: data.vatRate } : {}),
+          ...(data.minStock !== undefined ? { minStock: Math.max(0, Number(data.minStock)) } : {}),
+          ...(data.maxStock !== undefined ? { maxStock: data.maxStock == null ? null : Math.max(0, Number(data.maxStock)) } : {}),
+          ...(data.categoryId !== undefined ? { categoryId: data.categoryId || null } : {}),
         },
       })
 
-      logger.info('Produit mis à jour avec succès', { productId: id })
-      return updatedProduct
+      if (data.stockQuantity !== undefined) {
+        await prisma.stock.upsert({
+          where: { productId: id },
+          update: {
+            quantity: Math.max(0, Number(data.stockQuantity ?? 0)),
+            userId: ownerScopeId,
+          },
+          create: {
+            quantity: Math.max(0, Number(data.stockQuantity ?? 0)),
+            productId: id,
+            userId: ownerScopeId,
+          },
+        })
+      }
+
+      const updatedProduct = await this.getCurrentSchemaProductRow(id, ownerScopeId)
+      if (!updatedProduct) {
+        throw new Error('Produit non trouvé après mise à jour')
+      }
+
+      logger.info('Produit mis à jour avec succès via le fallback Prisma courant', { productId: id })
+      return this.normalizeCurrentSchemaProduct(updatedProduct)
     } catch (error) {
       logger.error('Erreur lors de la mise à jour du produit', { error, id, data })
       throw error
@@ -394,12 +835,55 @@ export class ProductService {
   /**
    * Supprimer un produit
    */
-  static async deleteProduct(id: string, companyId: string): Promise<void> {
+  static async deleteProduct(id: string, ownerScopeId: string): Promise<void> {
     try {
-      logger.info('Suppression du produit', { productId: id, companyId })
+      logger.info('Suppression du produit', { productId: id, ownerScopeId })
+
+      try {
+        const existingProduct = await prisma.product.findFirst({
+          where: {
+            id,
+            userId: ownerScopeId,
+          },
+          select: { id: true },
+        })
+
+        if (existingProduct) {
+          const orderItemsCount = await prisma.orderItem.count({ where: { productId: id } })
+
+          if (orderItemsCount > 0) {
+            throw new Error(
+              'Impossible de supprimer ce produit car il est utilisé dans des commandes ou factures'
+            )
+          }
+
+          await prisma.stock.deleteMany({
+            where: {
+              productId: id,
+              userId: ownerScopeId,
+            },
+          })
+
+          await prisma.product.delete({
+            where: { id },
+          })
+
+          logger.info('Produit supprimé avec succès via le schéma local courant', { productId: id })
+          return
+        }
+      } catch (currentSchemaError) {
+        if (
+          currentSchemaError instanceof Error &&
+          currentSchemaError.message === 'Impossible de supprimer ce produit car il est utilisé dans des commandes ou factures'
+        ) {
+          throw currentSchemaError
+        }
+
+        logger.warn('Fallback deleteProduct vers schéma legacy', { error: currentSchemaError, id, ownerScopeId })
+      }
 
       // Vérifier que le produit existe et appartient à l'entreprise
-      const existingProduct = await this.getProductById(id, companyId)
+      const existingProduct = await this.getProductById(id, ownerScopeId)
       if (!existingProduct) {
         throw new Error('Produit non trouvé')
       }

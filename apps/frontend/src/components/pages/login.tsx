@@ -1,56 +1,51 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Building2, Eye, EyeOff, LogIn } from 'lucide-react'
 import { useAuth } from '@/stores/auth'
 
 export function LoginPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { login, isLoading, error, clearError } = useAuth()
 
   const [formData, setFormData] = useState({
-    email: 'admin@gctpe.dz',
+    // Identifiants de développement alignés sur la base PostgreSQL locale actuelle.
+    email: 'admin@example.com',
     password: 'admin123',
     rememberMe: false,
   })
 
   const [showPassword, setShowPassword] = useState(false)
+  const [redirectTo, setRedirectTo] = useState('/dashboard') // Valeur par défaut
+  const [isClient, setIsClient] = useState(false)
 
-  // Récupérer l'URL de redirection depuis les paramètres de recherche
-  const redirectTo = searchParams.get('redirect') || '/dashboard'
+  // Récupérer l'URL de redirection côté client uniquement
+  useEffect(() => {
+    setIsClient(true)
+    // Récupérer les paramètres de recherche côté client
+    const urlParams = new URLSearchParams(window.location.search)
+    const redirect = urlParams.get('redirect')
+    if (redirect) {
+      setRedirectTo(redirect)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
 
-    console.log('🔍 Début de la soumission du formulaire')
-    console.log('🔍 Données du formulaire:', { email: formData.email, password: '***' })
-
     try {
-      console.log('🔍 Appel de la fonction login...')
-      console.log('🚀 AVANT appel login() du store')
-      const result = await login({
+      // Utiliser le store évite d'avoir une logique parallèle de session.
+      await login({
         email: formData.email,
         password: formData.password,
         rememberMe: formData.rememberMe,
       })
-      console.log('🎯 APRÈS appel login() du store, résultat:', result)
-
-      // Vérifier si le token est stocké
-      const token = localStorage.getItem('token')
-      console.log('🔑 Token stocké après login:', token ? 'OUI' : 'NON')
-      console.log('🔑 Token value:', token?.substring(0, 20) + '...')
-
-      console.log(`✅ Login réussi, redirection vers ${redirectTo}`)
-      console.log(`🔄 Redirection avec router.push vers ${redirectTo}`)
-
-      // Utiliser router.push pour une navigation Next.js appropriée
-      router.push(redirectTo)
+      router.replace(redirectTo)
+      router.refresh()
     } catch (error) {
-      // L'erreur est déjà gérée par le store
       console.error('❌ Erreur de connexion dans handleSubmit:', error)
     }
   }
@@ -61,6 +56,42 @@ export function LoginPage() {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }))
+  }
+
+  // Éviter le rendu des éléments qui dépendent des paramètres de recherche jusqu'à ce que le composant soit hydraté côté client
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          {/* Logo */}
+          <div className="flex justify-center">
+            <div className="flex items-center">
+              <Building2 className="h-12 w-12 text-blue-600" />
+              <span className="ml-2 text-3xl font-bold text-gray-900">GC TPE</span>
+            </div>
+          </div>
+          
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            Connexion à votre compte
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Accédez à votre tableau de bord de gestion commerciale
+          </p>
+        </div>
+
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+            <div className="animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+              <div className="h-10 bg-gray-200 rounded mb-4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+              <div className="h-10 bg-gray-200 rounded mb-4"></div>
+              <div className="h-10 bg-gray-200 rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -209,8 +240,8 @@ export function LoginPage() {
             <div className="mt-4 bg-blue-50 border border-blue-200 rounded-md p-4">
               <div className="text-sm text-blue-700">
                 <p className="font-medium">Utilisez ces identifiants pour tester :</p>
-                <p className="mt-1">Email : admin@test.com</p>
-                <p>Mot de passe : password123</p>
+                <p className="mt-1">Email : admin@technocommerce.dz</p>
+                <p>Mot de passe : demo123</p>
               </div>
             </div>
           </div>

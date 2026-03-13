@@ -1,3 +1,4 @@
+import { ImportService } from '../services/import.service'
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { suppliersService, SupplierData, SupplierFilters } from '../services/suppliers.service'
 import { ExportService } from '../services/export.service'
@@ -27,6 +28,24 @@ interface SupplierQuery {
   tags?: string
 }
 
+/**
+ * Schéma volontairement souple pour les objets métier fournisseur.
+ *
+ * Pourquoi : Fastify sérialise la réponse selon le schéma `response`.
+ * Avec `data: { type: 'object' }`, les propriétés réelles du fournisseur sont
+ * supprimées et l'API renvoie `{}` sur le détail/POST/PUT. On autorise donc les
+ * propriétés dynamiques tant que le contrat exact n'est pas centralisé ailleurs.
+ */
+const supplierPayloadSchema = {
+  type: 'object',
+  additionalProperties: true,
+} as const
+
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.companyId || user?.id || user?.userId
+}
+
 export default async function supplierRoutes(server: FastifyInstance) {
   server.log.info('🔄 Enregistrement des routes fournisseurs...')
   
@@ -51,11 +70,11 @@ export default async function supplierRoutes(server: FastifyInstance) {
         }
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       server.log.info('📥 Requête GET /suppliers reçue avec authentification')
 
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
       const query = request.query as SupplierQuery
 
       const filters: SupplierFilters = {
@@ -76,7 +95,7 @@ export default async function supplierRoutes(server: FastifyInstance) {
         limit: parseInt(query.limit || '20')
       }
 
-      const result = await suppliersService.getSuppliers(companyId, filters, pagination)
+      const result = await suppliersService.getSuppliers(ownerScopeId, filters, pagination)
 
       server.log.info('✅ Retour des données de la base de données')
 
@@ -113,17 +132,17 @@ export default async function supplierRoutes(server: FastifyInstance) {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            data: { type: 'object' }
+            data: supplierPayloadSchema
           }
         }
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
       const { id } = request.params as SupplierParams
 
-      const supplier = await suppliersService.getSupplierById(companyId, id)
+      const supplier = await suppliersService.getSupplierById(ownerScopeId, id)
 
       return {
         success: true,
@@ -167,7 +186,9 @@ export default async function supplierRoutes(server: FastifyInstance) {
           address: { type: 'string' },
           postalCode: { type: 'string' },
           city: { type: 'string' },
-          country: { type: 'string', default: 'France' },
+          // Le marché local principal est l'Algérie : on aligne le défaut backend
+          // sur le formulaire frontend pour éviter des créations incohérentes.
+          country: { type: 'string', default: 'Algérie' },
           siret: { type: 'string' },
           vatNumber: { type: 'string' },
           rcs: { type: 'string' },
@@ -186,18 +207,18 @@ export default async function supplierRoutes(server: FastifyInstance) {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            data: { type: 'object' },
+            data: supplierPayloadSchema,
             message: { type: 'string' }
           }
         }
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
       const supplierData = request.body as SupplierData
 
-      const supplier = await suppliersService.createSupplier(companyId, supplierData)
+      const supplier = await suppliersService.createSupplier(ownerScopeId, supplierData)
 
       reply.code(201)
       return {
@@ -268,19 +289,19 @@ export default async function supplierRoutes(server: FastifyInstance) {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            data: { type: 'object' },
+            data: supplierPayloadSchema,
             message: { type: 'string' }
           }
         }
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
       const { id } = request.params as SupplierParams
       const supplierData = request.body as Partial<SupplierData>
 
-      const supplier = await suppliersService.updateSupplier(companyId, id, supplierData)
+      const supplier = await suppliersService.updateSupplier(ownerScopeId, id, supplierData)
 
       return {
         success: true,
@@ -329,12 +350,12 @@ export default async function supplierRoutes(server: FastifyInstance) {
         }
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
       const { id } = request.params as SupplierParams
 
-      const result = await suppliersService.deleteSupplier(companyId, id)
+      const result = await suppliersService.deleteSupplier(ownerScopeId, id)
 
       return result
     } catch (error: any) {
@@ -381,11 +402,11 @@ export default async function supplierRoutes(server: FastifyInstance) {
         }
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
 
-      const stats = await suppliersService.getSuppliersStats(companyId)
+      const stats = await suppliersService.getSuppliersStats(ownerScopeId)
 
       return {
         success: true,
@@ -409,12 +430,12 @@ export default async function supplierRoutes(server: FastifyInstance) {
       tags: ['Fournisseurs'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
 
       // Récupérer tous les fournisseurs pour l'export
-      const result = await suppliersService.getSuppliers(companyId, {}, { page: 1, limit: 10000 })
+      const result = await suppliersService.getSuppliers(ownerScopeId, {}, { page: 1, limit: 10000 })
       const suppliers = result.data
 
       // Utiliser le service d'export
@@ -467,12 +488,12 @@ export default async function supplierRoutes(server: FastifyInstance) {
       tags: ['Fournisseurs'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
 
       // Récupérer tous les fournisseurs pour l'export
-      const result = await suppliersService.getSuppliers(companyId, {}, { page: 1, limit: 10000 })
+      const result = await suppliersService.getSuppliers(ownerScopeId, {}, { page: 1, limit: 10000 })
       const suppliers = result.data
 
       // Utiliser le service d'export
@@ -526,11 +547,11 @@ export default async function supplierRoutes(server: FastifyInstance) {
       security: [{ bearerAuth: [] }],
       consumes: ['multipart/form-data'],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     let tempFilePath: string | null = null
 
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request.user as any).companyId || (request.user as any).id || (request.user as any).userId
 
       // Récupérer le fichier uploadé
       const data = await request.file()
@@ -557,7 +578,7 @@ export default async function supplierRoutes(server: FastifyInstance) {
       // Utiliser le service d'import
       const importService = new ImportService()
 
-      const result = await importService.importSuppliersFromExcel(tempFilePath, companyId)
+      const result = await importService.importSuppliersFromExcel(tempFilePath, ownerScopeId)
 
       server.log.info('✅ Import Excel fournisseurs traité avec succès')
 
@@ -623,7 +644,7 @@ export default async function supplierRoutes(server: FastifyInstance) {
       tags: ['Fournisseurs'],
       security: [{ bearerAuth: [] }]
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     // ...
   })
 
@@ -648,10 +669,17 @@ export default async function supplierRoutes(server: FastifyInstance) {
         required: ['format']
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
       const query = request.query as any
+
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
 
       const filters: SupplierFilters = {
         search: query.search,
@@ -662,7 +690,7 @@ export default async function supplierRoutes(server: FastifyInstance) {
         tags: query.tags ? query.tags.split(',') : undefined
       }
 
-      const result = await suppliersService.getSuppliers(companyId, filters)
+      const result = await suppliersService.getSuppliers(ownerScopeId, filters)
 
       // Mapper les données pour correspondre au modèle Supplier de base
       const suppliers = result.data.map((s: any) => ({
@@ -680,11 +708,15 @@ export default async function supplierRoutes(server: FastifyInstance) {
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         filename = `fournisseurs_${timestamp}.xlsx`;
       } else { // pdf
-        const company = await prisma.company.findUnique({ where: { id: companyId } });
-        if (!company) {
-          return reply.status(404).send({ success: false, message: "Informations de l'entreprise non trouvées." });
-        }
-        fileBuffer = await ExportService.generateSuppliersPdf(suppliers, company);
+        const companyId = (request.user as any)?.companyId
+        const company = companyId
+          ? await prisma.company.findUnique({ where: { id: companyId } })
+          : null
+
+        fileBuffer = await ExportService.generateSuppliersPdf(
+          suppliers,
+          (company || { name: 'Gestion Commerciale' }) as any
+        );
         contentType = 'application/pdf';
         filename = `fournisseurs_${timestamp}.pdf`;
       }

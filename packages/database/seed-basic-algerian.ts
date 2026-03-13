@@ -137,7 +137,7 @@ async function seedBasicAlgerianData() {
         
         const userCreateData: any = {
           email: data.email,
-          password,
+          passwordHash: password,
           firstName: data.firstName,
           lastName: data.lastName,
           role: data.role,

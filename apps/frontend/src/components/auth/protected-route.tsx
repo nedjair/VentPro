@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuthStore } from '@/stores/auth'
+import { ClientOnly } from '@/components/common/client-only'
+import dynamic from 'next/dynamic'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -11,91 +13,109 @@ interface ProtectedRouteProps {
   fallback?: React.ReactNode
 }
 
-// Hook simple pour vérifier l'authentification
-function useIsAuthenticated(): boolean {
-  const { isAuthenticated } = useAuthStore()
-  return isAuthenticated
+// Étapes d'hydratation
+enum HydrationStep {
+  SERVER_SIDE = 'SERVER_SIDE',
+  CLIENT_MOUNTED = 'CLIENT_MOUNTED',
+  AUTH_CHECKED = 'AUTH_CHECKED',
+  READY = 'READY'
 }
 
-export function ProtectedRoute({
+// Composant interne qui gère la logique d'authentification
+function ProtectedRouteInner({
   children,
   requiredRole,
   requiredPermission,
   fallback
 }: ProtectedRouteProps) {
-  console.log('🔍 ProtectedRoute: DÉBUT - Vérification de l\'authentification...')
-
   const router = useRouter()
   const pathname = usePathname()
-  const [isClient, setIsClient] = useState(false)
-  const [hasWaited, setHasWaited] = useState(false)
 
-  // Utiliser le store Zustand pour l'authentification
-  const { isAuthenticated, isLoading, user, isHydrated } = useAuthStore()
+  // États d'hydratation en 3 étapes
+  const [hydrationStep, setHydrationStep] = useState<HydrationStep>(HydrationStep.SERVER_SIDE)
+  const [authCheckComplete, setAuthCheckComplete] = useState(false)
 
-  console.log('📊 ProtectedRoute État DÉTAILLÉ:', {
+  // Store d'authentification
+  const { isAuthenticated, isLoading, user, checkAuth } = useAuthStore()
+
+  console.log('🔄 ProtectedRouteInner - Étape:', hydrationStep, {
     isAuthenticated,
     isLoading,
     user: user?.email,
-    isClient,
-    isHydrated,
-    hasWaited,
+    authCheckComplete,
     pathname,
-    timestamp: new Date().toISOString(),
-    localStorage_user: typeof window !== 'undefined' ? !!localStorage.getItem('auth-user') : 'N/A',
-    localStorage_tokens: typeof window !== 'undefined' ? !!localStorage.getItem('auth-tokens') : 'N/A',
-    cookie_token: typeof window !== 'undefined' ? document.cookie.includes('auth-token=') : 'N/A'
+    timestamp: new Date().toISOString()
   })
 
-  // Détecter l'hydratation côté client
+  // ÉTAPE 1: Détection du montage côté client
   useEffect(() => {
-    console.log('🔄 ProtectedRoute: Hydratation côté client')
-    setIsClient(true)
+    console.log('🚀 ÉTAPE 1: Montage côté client détecté')
+    setHydrationStep(HydrationStep.CLIENT_MOUNTED)
   }, [])
 
-  // Attendre un délai pour permettre à l'authentification de se charger
+  // ÉTAPE 2: Vérification d'authentification après montage
   useEffect(() => {
-    if (isClient) {
-      const timer = setTimeout(() => {
-        console.log('⏰ ProtectedRoute: Délai d\'attente écoulé')
-        setHasWaited(true)
-      }, 1000) // Attendre 1 seconde
+    if (hydrationStep === HydrationStep.CLIENT_MOUNTED && !authCheckComplete) {
+      console.log('🔍 ÉTAPE 2: Vérification d\'authentification...')
 
-      return () => clearTimeout(timer)
-    }
-  }, [isClient])
+      // Vérifier les données stockées
+      const hasStoredUser = localStorage.getItem('auth-user')
+      const hasStoredTokens = localStorage.getItem('auth-tokens')
 
-  // Vérifier l'authentification côté client SEULEMENT après hydratation ET délai
-  useEffect(() => {
-    if (isClient && hasWaited && isHydrated && !isLoading) {
-      console.log('🔄 ProtectedRoute useEffect DÉCLENCHÉ:', {
-        isAuthenticated,
-        isLoading,
-        isHydrated,
-        hasWaited,
-        localStorage_user: !!localStorage.getItem('auth-user'),
-        localStorage_tokens: !!localStorage.getItem('auth-tokens')
+      console.log('📦 Données stockées:', {
+        hasStoredUser: !!hasStoredUser,
+        hasStoredTokens: !!hasStoredTokens,
+        cookieToken: document.cookie.includes('auth-token=')
       })
 
-      if (!isAuthenticated) {
-        console.log('❌ ProtectedRoute: Non authentifié après vérification complète, redirection vers /login')
-        router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
+      if (hasStoredUser && hasStoredTokens && !isAuthenticated) {
+        console.log('🔄 Restauration de l\'authentification depuis le stockage...')
+        checkAuth().finally(() => {
+          setAuthCheckComplete(true)
+          setHydrationStep(HydrationStep.AUTH_CHECKED)
+        })
       } else {
-        console.log('✅ ProtectedRoute: Authentifié dans useEffect')
+        setAuthCheckComplete(true)
+        setHydrationStep(HydrationStep.AUTH_CHECKED)
       }
     }
-  }, [isClient, hasWaited, isHydrated, isAuthenticated, isLoading, router, pathname])
+  }, [hydrationStep, authCheckComplete, isAuthenticated, checkAuth])
 
-  // Afficher un loader pendant la vérification (attendre hydratation ET délai)
-  if (!isClient || isLoading || !isHydrated || !hasWaited) {
-    console.log('⏳ ProtectedRoute: CHARGEMENT - Affichage du loader...', {
-      isClient,
-      isLoading,
-      isHydrated,
-      hasWaited
-    })
+  // ÉTAPE 3: Finalisation après vérification d'authentification
+  useEffect(() => {
+    if (hydrationStep === HydrationStep.AUTH_CHECKED && authCheckComplete && !isLoading) {
+      console.log('✅ ÉTAPE 3: Finalisation de l\'hydratation')
+
+      if (!isAuthenticated) {
+        const hasStoredAuth = localStorage.getItem('auth-user') && localStorage.getItem('auth-tokens')
+        if (!hasStoredAuth) {
+          console.log('❌ Non authentifié - Redirection vers /login')
+          router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
+          return
+        }
+      }
+
+      setHydrationStep(HydrationStep.READY)
+    }
+  }, [hydrationStep, authCheckComplete, isLoading, isAuthenticated, router, pathname])
+
+  // Rendu conditionnel basé sur l'étape d'hydratation
+  if (hydrationStep === HydrationStep.SERVER_SIDE) {
+    console.log('⏳ RENDU: Hydratation côté serveur')
     return fallback || (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center" suppressHydrationWarning>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Initialisation...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (hydrationStep === HydrationStep.CLIENT_MOUNTED || !authCheckComplete || isLoading) {
+    console.log('⏳ RENDU: Vérification d\'authentification en cours')
+    return fallback || (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Vérification de l'authentification...</p>
@@ -104,33 +124,49 @@ export function ProtectedRoute({
     )
   }
 
-  // Si pas authentifié, ne rien afficher (redirection en cours)
-  if (!isAuthenticated) {
-    console.log('🚫 ProtectedRoute: NON AUTHENTIFIÉ - Redirection en cours...')
+  if (hydrationStep === HydrationStep.AUTH_CHECKED && !isAuthenticated) {
+    console.log('🚫 RENDU: Non authentifié - Redirection en cours')
     return null
   }
 
-  console.log('✅ ProtectedRoute: AUTHENTIFIÉ - Affichage du contenu enfant')
-  return <>{children}</>
+  if (hydrationStep === HydrationStep.READY && isAuthenticated) {
+    console.log('✅ RENDU: Authentifié - Affichage du contenu')
+    return <>{children}</>
+  }
+
+  // Fallback de sécurité
+  console.log('⚠️ RENDU: État inattendu - Affichage du loader')
+  return fallback || (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Chargement...</p>
+      </div>
+    </div>
+  )
 }
 
-// Hook pour vérifier les permissions
-export function useRequireAuth(requiredRole?: string, requiredPermission?: string) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const isAuthenticated = useIsAuthenticated()
-  const [isClient, setIsClient] = useState(false)
+// Composant dynamique qui force le rendu côté client uniquement
+const DynamicProtectedRouteInner = dynamic(
+  () => Promise.resolve(ProtectedRouteInner),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Chargement dynamique...</p>
+        </div>
+      </div>
+    )
+  }
+)
 
-  // Détecter l'hydratation côté client
-  useEffect(() => {
-    setIsClient(true)
-  }, [])
+// Composant principal qui utilise dynamic import pour forcer le rendu côté client
+export function ProtectedRoute(props: ProtectedRouteProps) {
+  console.log('🔄 ProtectedRoute: Début du rendu principal avec Dynamic Import')
 
-  useEffect(() => {
-    if (isClient && !isAuthenticated) {
-      router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthenticated, router, pathname, isClient])
-
-  return isClient && isAuthenticated
+  return <DynamicProtectedRouteInner {...props} />
 }
+
+

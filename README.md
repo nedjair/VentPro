@@ -2,7 +2,7 @@ HEAD
 # 🏢 Gestion Commerciale TPE - Phase 5 Analytics
 
 > **Application complète de gestion commerciale pour Très Petites Entreprises**
-> Architecture simplifiée avec Next.js 14 + Fastify + PostgreSQL + Redis
+> Architecture simplifiée avec Next.js 14 + Fastify + PostgreSQL
 > **Phase 5 : Analytics et Reporting Avancés avec KPI temps réel**
 
 [![Production](https://img.shields.io/badge/Status-Production%20Ready-success)](./GUIDE-CONNEXION-FRONTEND-BACKEND.md)
@@ -17,7 +17,6 @@ HEAD
 - **Frontend**: Next.js 14 + App Router + Tailwind CSS + Lucide Icons
 - **Backend**: Fastify + Node.js
 - **Base de données**: PostgreSQL 16 + PgBouncer
-- **Cache**: Redis 7
 - **État global**: Zustand + Axios
 - **Analytics**: Recharts + KPI temps réel
 - **Conteneurisation**: Docker + Docker Compose
@@ -38,7 +37,7 @@ HEAD
 gestion-commerciale-tpe/
 ├── frontend-nextjs-production/    # Frontend Next.js 14 UNIQUE (Port 3003)
 ├── production-backend.js          # API Fastify (Port 3001)
-├── docker/                        # PostgreSQL + Redis + PgBouncer
+├── docker/                        # PostgreSQL + PgBouncer
 ├── packages/
 │   ├── shared/                    # Types et utilitaires partagés
 │   └── database/                  # Schéma et migrations
@@ -65,7 +64,7 @@ gestion-commerciale-tpe/
 ### 🚀 Démarrage Manuel (3 étapes)
 
 ```powershell
-# 1. Démarrer l'infrastructure (PostgreSQL + Redis)
+# 1. Démarrer l'infrastructure (PostgreSQL)
 docker-compose up -d
 
 # 2. Démarrer le backend de production avec Analytics
@@ -92,7 +91,6 @@ L'application sera accessible sur :
 - **Métriques**: http://localhost:3001/metrics
 - **Analytics API**: http://localhost:3001/analytics/*
 - **Adminer** (DB): http://localhost:8080
-- **Redis Commander**: http://localhost:8081
 
 ### 🔐 Identifiants de Connexion
 
@@ -154,7 +152,7 @@ L'application utilise une architecture simplifiée avec deux composants principa
 ### Démarrage Manuel
 ```powershell
 # Infrastructure
-docker-compose up -d                    # Démarrer PostgreSQL + Redis
+docker-compose up -d                    # Démarrer PostgreSQL
 
 # Backend avec Analytics
 .\start-production-backend.ps1          # Démarrer le backend (port 3001)
@@ -186,9 +184,6 @@ Créer les fichiers `.env` dans chaque application :
 # Base de données
 DATABASE_URL="postgresql://gestion_user:gestion_password_secure_2024@localhost:6432/gestion_commerciale"
 DIRECT_DATABASE_URL="postgresql://gestion_user:gestion_password_secure_2024@localhost:5432/gestion_commerciale"
-
-# Redis
-REDIS_URL="redis://:redis_password_secure_2024@localhost:6379"
 
 # JWT
 JWT_SECRET="your-super-secret-jwt-key-change-in-production"

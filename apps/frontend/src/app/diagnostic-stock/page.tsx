@@ -233,7 +233,7 @@ export default function DiagnosticStockPage() {
                           </div>
                           <div className="grid grid-cols-3 gap-4 text-sm mb-2">
                             <div>
-                              <span className="font-medium">Dashboard:</span> {inconsistency.dashboard}
+                              <span className="font-medium">Tableau de bord :</span> {inconsistency.dashboard}
                             </div>
                             <div>
                               <span className="font-medium">Alertes:</span> {inconsistency.alerts}

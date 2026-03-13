@@ -6,17 +6,41 @@ import { Button } from '@/components/ui/button'
 import { ImportExportMessage } from '@/components/ui/import-export-buttons'
 import { KPIMetricsComponent } from '@/components/dashboard/kpi-metrics'
 import { BarChart3, Users, Package, TrendingUp, Download, FileText, Calendar } from 'lucide-react'
-import { api, KPIMetrics, SalesAnalytics } from '@/lib/api'
+import { api, KPIMetrics } from '@/lib/api'
+import { normalizeCurrencyCode } from '@/lib/currency'
 import { ExportService } from '@/lib/export'
 import Link from 'next/link'
 
 export function ReportsPage() {
   const [kpiData, setKpiData] = useState<KPIMetrics | null>(null)
-  const [salesData, setSalesData] = useState<SalesAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
+
+  const recentReports = [
+    {
+      name: 'Rapport mensuel - Novembre 2024',
+      type: 'Ventes',
+      date: '01/12/2024',
+      size: '2.4 MB',
+      status: 'Généré',
+    },
+    {
+      name: 'Analyse clients Q4 2024',
+      type: 'Clients',
+      date: '28/11/2024',
+      size: '1.8 MB',
+      status: 'Généré',
+    },
+    {
+      name: 'Performance produits - Novembre',
+      type: 'Produits',
+      date: '25/11/2024',
+      size: '3.1 MB',
+      status: 'Généré',
+    },
+  ]
 
   useEffect(() => {
     loadAnalyticsData()
@@ -27,22 +51,13 @@ export function ReportsPage() {
       setLoading(true)
       console.log('🔍 Chargement des données analytics...')
 
-      const [kpiResponse, salesResponse] = await Promise.all([
-        api.getKPIMetrics(),
-        api.getSalesAnalytics({ period: '3m' })
-      ])
+      const kpiResponse = await api.getKPIMetrics()
 
       console.log('📊 Réponse KPI:', kpiResponse)
-      console.log('💰 Réponse Sales:', salesResponse)
 
       if (kpiResponse.success && kpiResponse.data) {
         console.log('✅ KPI chargés:', kpiResponse.data)
         setKpiData(kpiResponse.data)
-      }
-
-      if (salesResponse.success && salesResponse.data) {
-        console.log('✅ Sales chargés:', salesResponse.data)
-        setSalesData(salesResponse.data)
       }
 
       setError(null)
@@ -54,11 +69,22 @@ export function ReportsPage() {
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
+  const formatCurrency = (amount: number, currency = 'DZD') => {
+    return new Intl.NumberFormat('fr-DZ', {
       style: 'currency',
-      currency: 'EUR'
+      currency: normalizeCurrencyCode(currency),
+      currencyDisplay: 'code',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount)
+  }
+
+  const formatGap = (value: number | null) => {
+    if (value === null) {
+      return 'Objectif non défini'
+    }
+
+    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
   }
 
   const reportCategories = [
@@ -67,10 +93,10 @@ export function ReportsPage() {
       description: 'Analyse des ventes par période avec graphiques et tendances',
       icon: TrendingUp,
       href: '/reports/sales',
-      color: 'bg-blue-500',
+      color: 'bg-primary',
       stats: [
-        { label: 'CA du mois', value: kpiData ? formatCurrency(kpiData.revenue.current) : 'Chargement...' },
-        { label: 'Évolution', value: '+12.5%' },
+        { label: 'CA du mois', value: kpiData ? formatCurrency(kpiData.revenue.current, kpiData.revenue.currency) : 'Chargement...' },
+        { label: 'Écart objectif', value: kpiData ? formatGap(kpiData.revenue.growth) : 'Chargement...' },
       ]
     },
     {
@@ -80,8 +106,8 @@ export function ReportsPage() {
       href: '/reports/clients',
       color: 'bg-green-500',
       stats: [
-        { label: 'Clients actifs', value: salesData ? salesData.topClients?.length.toString() || '0' : 'Chargement...' },
-        { label: 'Nouveaux', value: '+8' },
+        { label: 'Clients suivis', value: kpiData ? kpiData.clients.current.toString() : 'Chargement...' },
+        { label: 'Nouveaux ce mois', value: kpiData ? kpiData.clients.newThisMonth.toString() : 'Chargement...' },
       ]
     },
     {
@@ -91,9 +117,34 @@ export function ReportsPage() {
       href: '/reports/products',
       color: 'bg-purple-500',
       stats: [
-        { label: 'Produits vendus', value: '1 234' },
-        { label: 'Stock faible', value: '12' },
+        { label: 'Unités vendues', value: kpiData ? kpiData.products.soldThisMonth.toString() : 'Chargement...' },
+        { label: 'Stock faible', value: kpiData ? kpiData.products.lowStock.toString() : 'Chargement...' },
       ]
+    },
+  ]
+
+  const summaryCards = [
+    {
+      title: 'Factures payées',
+      value: kpiData ? kpiData.invoices.paid.toString() : 'Chargement...',
+      icon: FileText,
+      iconClassName: 'text-primary',
+      wrapperClassName: 'bg-primary/10',
+    },
+    {
+      title: 'Écart objectif CA',
+      value: kpiData ? formatGap(kpiData.revenue.growth) : 'Chargement...',
+      icon: TrendingUp,
+      iconClassName: 'text-green-600',
+      wrapperClassName: 'bg-green-100',
+      valueClassName: 'text-primary',
+    },
+    {
+      title: 'Clients suivis',
+      value: kpiData ? kpiData.clients.current.toString() : 'Chargement...',
+      icon: Users,
+      iconClassName: 'text-purple-600',
+      wrapperClassName: 'bg-purple-100',
     },
   ]
 
@@ -115,12 +166,41 @@ export function ReportsPage() {
     }
   }
 
+  const scrollToReportCategories = () => {
+    document.getElementById('report-categories')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   const handleNewReport = () => {
-    console.log('Nouveau rapport...')
+    scrollToReportCategories()
     setExportMessage({
       type: 'info',
-      message: 'Fonctionnalité de création de rapport personnalisé en cours de développement'
+      message: 'Sélectionnez une catégorie de rapport pour lancer un export adapté à votre besoin.'
     })
+  }
+
+  const handleRecentReportDownload = async (reportType: string) => {
+    setExporting(true)
+    try {
+      if (reportType === 'Ventes') {
+        await ExportService.downloadSalesReportPDF('1m')
+      } else if (reportType === 'Clients') {
+        await ExportService.downloadClientsPDF()
+      } else {
+        await ExportService.downloadProductsPDF()
+      }
+
+      setExportMessage({
+        type: 'success',
+        message: `Téléchargement du rapport ${reportType.toLowerCase()} lancé avec succès`,
+      })
+    } catch (error) {
+      setExportMessage({
+        type: 'error',
+        message: `Erreur lors du téléchargement du rapport: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+      })
+    } finally {
+      setExporting(false)
+    }
   }
 
   const quickActions = [
@@ -229,65 +309,39 @@ export function ReportsPage() {
         )}
 
         {/* KPI Metrics en temps réel */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Indicateurs Clés de Performance</h2>
+        <div className="bg-card rounded-lg shadow border border-border p-6">
+          <h2 className="text-xl font-bold text-card-foreground mb-6">Indicateurs Clés de Performance</h2>
           <KPIMetricsComponent refreshInterval={60000} />
         </div>
 
         {/* Vue d'ensemble */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="card">
-            <div className="card-content">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <BarChart3 className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Rapports générés</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {loading ? 'Chargement...' : '24'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          {summaryCards.map((card) => {
+            const Icon = card.icon
 
-          <div className="card">
-            <div className="card-content">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <TrendingUp className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Croissance CA</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {loading ? 'Chargement...' : '+12.5%'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-content">
-              <div className="flex items-center">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Users className="h-6 w-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Clients analysés</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {loading ? 'Chargement...' : (salesData?.topClients?.length || '156')}
-                  </p>
+            return (
+              <div key={card.title} className="card">
+                <div className="card-content">
+                  <div className="flex items-center">
+                    <div className={`p-2 rounded-lg ${card.wrapperClassName}`}>
+                      <Icon className={`h-6 w-6 ${card.iconClassName}`} />
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-muted-foreground">{card.title}</p>
+                      <p className={`text-2xl font-bold ${card.valueClassName || 'text-card-foreground'}`}>
+                        {loading ? 'Chargement...' : card.value}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            )
+          })}
         </div>
 
         {/* Catégories de rapports */}
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Catégories de rapports</h2>
+        <div id="report-categories">
+          <h2 className="text-xl font-bold text-card-foreground mb-6">Catégories de rapports</h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {reportCategories.map((category) => {
               const Icon = category.icon
@@ -306,18 +360,18 @@ export function ReportsPage() {
                     </div>
                     
                     <div className="mt-4">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      <h3 className="text-lg font-semibold text-card-foreground mb-2">
                         {category.title}
                       </h3>
-                      <p className="text-sm text-gray-600 mb-4">
+                      <p className="text-sm text-muted-foreground mb-4">
                         {category.description}
                       </p>
                       
                       <div className="grid grid-cols-2 gap-4">
                         {category.stats.map((stat, index) => (
                           <div key={index}>
-                            <p className="text-xs text-gray-500">{stat.label}</p>
-                            <p className="text-sm font-semibold text-gray-900">{stat.value}</p>
+                            <p className="text-xs text-muted-foreground">{stat.label}</p>
+                            <p className="text-sm font-semibold text-card-foreground">{stat.value}</p>
                           </div>
                         ))}
                       </div>
@@ -331,7 +385,7 @@ export function ReportsPage() {
 
         {/* Actions rapides */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Actions rapides</h2>
+          <h2 className="text-xl font-bold text-card-foreground mb-6">Actions rapides</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {quickActions.map((action) => {
               const Icon = action.icon
@@ -339,15 +393,15 @@ export function ReportsPage() {
                 <div key={action.title} className="card hover:shadow-md transition-shadow">
                   <div className="card-content">
                     <div className="flex items-center mb-4">
-                      <div className="p-2 bg-gray-100 rounded-lg">
-                        <Icon className="h-5 w-5 text-gray-600" />
+                      <div className="p-2 bg-secondary rounded-lg">
+                        <Icon className="h-5 w-5 text-muted-foreground" />
                       </div>
-                      <h3 className="ml-3 text-lg font-medium text-gray-900">
+                      <h3 className="ml-3 text-lg font-medium text-card-foreground">
                         {action.title}
                       </h3>
                     </div>
                     
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-sm text-muted-foreground mb-4">
                       {action.description}
                     </p>
                     
@@ -369,41 +423,19 @@ export function ReportsPage() {
 
         {/* Rapports récents */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Rapports récents</h2>
+          <h2 className="text-xl font-bold text-card-foreground mb-6">Rapports récents</h2>
           <div className="card">
             <div className="card-content">
               <div className="space-y-4">
-                {[
-                  {
-                    name: 'Rapport mensuel - Novembre 2024',
-                    type: 'Ventes',
-                    date: '01/12/2024',
-                    size: '2.4 MB',
-                    status: 'Généré',
-                  },
-                  {
-                    name: 'Analyse clients Q4 2024',
-                    type: 'Clients',
-                    date: '28/11/2024',
-                    size: '1.8 MB',
-                    status: 'Généré',
-                  },
-                  {
-                    name: 'Performance produits - Novembre',
-                    type: 'Produits',
-                    date: '25/11/2024',
-                    size: '3.1 MB',
-                    status: 'Généré',
-                  },
-                ].map((report, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                {recentReports.map((report, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 border border-border rounded-lg">
                     <div className="flex items-center space-x-4">
-                      <div className="p-2 bg-blue-100 rounded-lg">
-                        <FileText className="h-5 w-5 text-blue-600" />
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <FileText className="h-5 w-5 text-primary" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-medium text-gray-900">{report.name}</h4>
-                        <p className="text-xs text-gray-500">
+                        <h4 className="text-sm font-medium text-card-foreground">{report.name}</h4>
+                        <p className="text-xs text-muted-foreground">
                           {report.type} • {report.date} • {report.size}
                         </p>
                       </div>
@@ -413,7 +445,7 @@ export function ReportsPage() {
                       <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                         {report.status}
                       </span>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => handleRecentReportDownload(report.type)} disabled={exporting}>
                         <Download className="h-4 w-4 mr-1" />
                         Télécharger
                       </Button>
@@ -424,7 +456,7 @@ export function ReportsPage() {
               
               {/* Lien vers tous les rapports */}
               <div className="mt-6 text-center">
-                <Button variant="outline">
+                <Button variant="outline" onClick={scrollToReportCategories}>
                   Voir tous les rapports
                 </Button>
               </div>

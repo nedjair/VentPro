@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ImportExportMessage } from '@/components/ui/import-export-buttons'
 import { ArrowLeft, Download, Calendar, TrendingUp, DollarSign, ShoppingCart } from 'lucide-react'
 import { api, SalesAnalytics } from '@/lib/api'
+import { normalizeCurrencyCode } from '@/lib/currency'
 import { ExportService } from '@/lib/export'
 import Link from 'next/link'
 
@@ -16,6 +17,14 @@ export function SalesReportPage() {
   const [period, setPeriod] = useState('12m')
   const [exporting, setExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
+
+  const formatCurrency = (amount: number, currency = 'DZD') => new Intl.NumberFormat('fr-DZ', {
+    style: 'currency',
+    currency: normalizeCurrencyCode(currency),
+    currencyDisplay: 'code',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount || 0)
 
   useEffect(() => {
     loadSalesData()
@@ -171,12 +180,12 @@ export function SalesReportPage() {
           <div className="card-content">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <Calendar className="h-5 w-5 text-gray-400" />
-                <span className="text-sm font-medium text-gray-700">Période d'analyse:</span>
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm font-medium text-card-foreground">Période d'analyse:</span>
                 <select
                   value={period}
                   onChange={(e) => setPeriod(e.target.value)}
-                  className="px-3 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-1 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-card text-card-foreground"
                 >
                   <option value="3m">3 derniers mois</option>
                   <option value="6m">6 derniers mois</option>
@@ -192,12 +201,12 @@ export function SalesReportPage() {
           <div className="card">
             <div className="card-content">
               <div className="flex items-center">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <DollarSign className="h-6 w-6 text-blue-600" />
+                <div className="p-3 bg-primary/10 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-primary" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Chiffre d'affaires total</p>
-                  <p className="text-2xl font-bold text-gray-900">{Number(totalRevenue).toFixed(2)} €</p>
+                  <p className="text-sm font-medium text-muted-foreground">Chiffre d'affaires total</p>
+                  <p className="text-2xl font-bold text-card-foreground">{formatCurrency(totalRevenue)}</p>
                 </div>
               </div>
             </div>
@@ -210,8 +219,8 @@ export function SalesReportPage() {
                   <ShoppingCart className="h-6 w-6 text-green-600" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Nombre de factures</p>
-                  <p className="text-2xl font-bold text-gray-900">{totalInvoices}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Nombre de factures</p>
+                  <p className="text-2xl font-bold text-card-foreground">{totalInvoices}</p>
                 </div>
               </div>
             </div>
@@ -224,8 +233,8 @@ export function SalesReportPage() {
                   <TrendingUp className="h-6 w-6 text-purple-600" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Panier moyen</p>
-                  <p className="text-2xl font-bold text-gray-900">{Number(avgInvoice).toFixed(2)} €</p>
+                  <p className="text-sm font-medium text-muted-foreground">Panier moyen</p>
+                  <p className="text-2xl font-bold text-card-foreground">{formatCurrency(avgInvoice)}</p>
                 </div>
               </div>
             </div>
@@ -248,20 +257,20 @@ export function SalesReportPage() {
                     
                     return (
                       <div key={index} className="flex items-center space-x-4">
-                        <div className="w-20 text-sm font-medium text-gray-700">
+                        <div className="w-20 text-sm font-medium text-card-foreground">
                           {month.month}
                         </div>
-                        <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
-                          <div 
-                            className="bg-blue-600 h-6 rounded-full flex items-center justify-end pr-2"
+                        <div className="flex-1 bg-secondary rounded-full h-6 relative">
+                          <div
+                            className="bg-primary h-6 rounded-full flex items-center justify-end pr-2"
                             style={{ width: `${Math.max(barWidth, 5)}%` }}
                           >
                             <span className="text-xs text-white font-medium">
-                              {Number(month.revenue).toFixed(0)} €
+                              {formatCurrency(month.revenue)}
                             </span>
                           </div>
                         </div>
-                        <div className="w-16 text-sm text-gray-600 text-right">
+                        <div className="w-16 text-sm text-muted-foreground text-right">
                           {month.invoiceCount} fact.
                         </div>
                       </div>
@@ -270,7 +279,7 @@ export function SalesReportPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-center text-gray-500 py-8">Aucune donnée disponible pour cette période</p>
+              <p className="text-center text-muted-foreground py-8">Aucune donnée disponible pour cette période</p>
             )}
           </div>
         </div>
@@ -283,31 +292,31 @@ export function SalesReportPage() {
           <div className="card-content">
             {salesData?.topClients && salesData.topClients.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-secondary">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Client
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Type
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         CA total
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Nb factures
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Panier moyen
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-card divide-y divide-border">
                     {(salesData.topClients || []).map((client: any, index: number) => (
-                      <tr key={index} className="hover:bg-gray-50">
+                      <tr key={index} className="hover:bg-secondary">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{client.name}</div>
+                          <div className="text-sm font-medium text-card-foreground">{client.name}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -318,14 +327,14 @@ export function SalesReportPage() {
                             {client.type === 'COMPANY' ? 'Entreprise' : 'Particulier'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {Number(client.totalRevenue).toFixed(2)} €
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-card-foreground">
+                          {formatCurrency(client.totalRevenue)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                           {client.invoiceCount}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {Number(client.avgInvoice).toFixed(2)} €
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
+                          {formatCurrency(client.avgInvoice)}
                         </td>
                       </tr>
                     ))}
@@ -333,7 +342,7 @@ export function SalesReportPage() {
                 </table>
               </div>
             ) : (
-              <p className="text-center text-gray-500 py-8">Aucun client trouvé pour cette période</p>
+              <p className="text-center text-muted-foreground py-8">Aucun client trouvé pour cette période</p>
             )}
           </div>
         </div>
@@ -347,9 +356,9 @@ export function SalesReportPage() {
             {salesData?.clientTypeDistribution && salesData.clientTypeDistribution.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {(salesData.clientTypeDistribution || []).map((type: any, index: number) => (
-                  <div key={index} className="p-4 border border-gray-200 rounded-lg">
+                  <div key={index} className="p-4 border border-border rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-medium text-gray-900">
+                      <h4 className="text-sm font-medium text-card-foreground">
                         {type.type === 'COMPANY' ? 'Entreprises' : 'Particuliers'}
                       </h4>
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -360,17 +369,17 @@ export function SalesReportPage() {
                         {type.invoiceCount} factures
                       </span>
                     </div>
-                    <div className="text-2xl font-bold text-gray-900 mb-1">
-                      {Number(type.revenue).toFixed(2)} €
+                    <div className="text-2xl font-bold text-card-foreground mb-1">
+                      {formatCurrency(type.revenue)}
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-muted-foreground">
                       {((Number(type.revenue) / Number(totalRevenue)) * 100).toFixed(1)}% du CA total
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-gray-500 py-8">Aucune donnée de répartition disponible</p>
+              <p className="text-center text-muted-foreground py-8">Aucune donnée de répartition disponible</p>
             )}
           </div>
         </div>

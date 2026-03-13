@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
+import { ProductIdentifiersInline } from '@/components/ui/product-identifiers'
+import { ProductCategoryBadge } from '@/components/ui/category-display'
 import { ImportExportButtons, ImportExportMessage } from '@/components/ui/import-export-buttons'
 import { Plus, Search, Filter, Package } from 'lucide-react'
 import { api, Product } from '@/lib/api'
+import { ensureApiAuthentication } from '@/lib/auth-utils'
 import { formatCurrency } from '@/lib/utils'
 import {
   ensureArray,
@@ -24,23 +27,12 @@ import {
   formatStockThresholds,
   type ProductWithStock
 } from '@/lib/stock-utils'
-import {
-  useUnifiedStock,
-  calculateUnifiedStockStatus,
-  type UnifiedProduct
-} from '@/hooks/useUnifiedStock'
+
 
 export function ProductsPage() {
   const router = useRouter()
 
-  // Utilisation du hook unifié pour les données de stock
-  const {
-    products: unifiedProducts,
-    loading: unifiedLoading,
-    error: unifiedError,
-    refresh: refreshUnified,
-    unifyData
-  } = useUnifiedStock()
+
 
   // États locaux pour la compatibilité
   const [products, setProducts] = useState<Product[]>([])
@@ -59,40 +51,7 @@ export function ProductsPage() {
     loadProducts()
   }, [])
 
-  // Fonction d'authentification automatique
-  const ensureAuthentication = async () => {
-    const authToken = api.getAuthToken()
-    if (authToken) {
-      return true
-    }
-
-    try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gctpe.dz',
-        password: 'admin123'
-      })
-
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-
-        console.log('✅ Connexion automatique réussie')
-        return true
-      }
-    } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
-    }
-
-    return false
-  }
+  const ensureAuthentication = () => ensureApiAuthentication()
 
   const loadProducts = async () => {
     try {
@@ -208,14 +167,23 @@ export function ProductsPage() {
     const searchLower = searchTerm.toLowerCase()
 
     // Filtrage par recherche textuelle
+    const getCategorySearchText = (category: any): string => {
+      if (!category) return ''
+      if (typeof category === 'string') return category
+      if (typeof category === 'object' && category.name) return category.name
+      return ''
+    }
+
     const matchesSearch = (
       product.name?.toLowerCase().includes(searchLower) ||
+      product.sku?.toLowerCase().includes(searchLower) ||
       product.reference?.toLowerCase().includes(searchLower) ||
-      (typeof product.category === 'string' ? product.category.toLowerCase().includes(searchLower) : false)
+      getCategorySearchText(product.category).toLowerCase().includes(searchLower)
     )
 
     // Filtrage par catégorie
-    const matchesCategory = !filters.category || (typeof product.category === 'string' ? product.category.toLowerCase().includes(filters.category.toLowerCase()) : false)
+    const matchesCategory = !filters.category ||
+      getCategorySearchText(product.category).toLowerCase().includes(filters.category.toLowerCase())
 
     // Filtrage par statut de stock
     let matchesStockStatus = true
@@ -336,72 +304,12 @@ export function ProductsPage() {
     router.push(`/products/${productId}`)
   }
 
-  const actions = (
-    <div className="flex space-x-2">
-      <Button variant="outline" size="sm" onClick={handleFilters}>
-        <Filter className="h-4 w-4 mr-2" />
-        Filtres
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={unifyData}
-        className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-      >
-        🔄 Unifier
-      </Button>
-      <ImportExportButtons
-        type="products"
-        onImportSuccess={handleImportSuccess}
-        onImportError={handleImportError}
-        onExportError={handleExportError}
-        showPdfExport={true}
-        showImport={true}
-      />
-      <Button size="sm" onClick={handleNewProduct}>
-        <Plus className="h-4 w-4 mr-2" />
-        Nouveau produit
-      </Button>
-    </div>
-  )
-
   return (
     <MainLayout 
       title="Produits" 
       subtitle={`${filteredProducts.length} produit${filteredProducts.length > 1 ? 's' : ''} trouvé${filteredProducts.length > 1 ? 's' : ''}`}
-      actions={actions}
     >
       <div className="space-y-6">
-        {/* Barre de recherche et filtres */}
-        <div className="flex items-center space-x-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Rechercher un produit..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Filtre par statut de stock */}
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">Statut:</label>
-            <select
-              value={filters.stockStatus}
-              onChange={(e) => setFilters(prev => ({ ...prev, stockStatus: e.target.value }))}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Tous</option>
-              <option value="rupture">🔴 Rupture</option>
-              <option value="faible">🟠 Stock faible</option>
-              <option value="normal">🟢 Stock normal</option>
-              <option value="non-suivi">⚪ Non suivi</option>
-            </select>
-          </div>
-        </div>
-
         {/* Message d'import/export */}
         {importMessage && (
           <ImportExportMessage
@@ -442,23 +350,76 @@ export function ProductsPage() {
 
         {/* Liste des produits */}
         <div className="card">
+          <div className="border-b border-border px-6 py-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+              <div className="relative w-full lg:max-w-md lg:flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <input
+                  type="text"
+                  placeholder="Rechercher un Produit..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 w-full border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:flex-nowrap lg:justify-end">
+                <Button variant="outline" size="sm" onClick={handleFilters}>
+                  <Filter className="h-4 w-4 mr-2" />
+                  Filtres
+                </Button>
+                <ImportExportButtons
+                  type="products"
+                  onImportSuccess={handleImportSuccess}
+                  onImportError={handleImportError}
+                  onExportError={handleExportError}
+                  showPdfExport={true}
+                  showImport={true}
+                  className="flex-wrap lg:flex-nowrap"
+                />
+                <Button size="sm" onClick={handleNewProduct}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouveau Produit
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+              <label className="text-sm font-medium text-muted-foreground">Statut:</label>
+              <select
+                value={filters.stockStatus}
+                onChange={(e) => setFilters(prev => ({ ...prev, stockStatus: e.target.value }))}
+                className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
+              >
+                <option value="">Tous</option>
+                <option value="rupture">🔴 Rupture</option>
+                <option value="faible">🟠 Stock faible</option>
+                <option value="normal">🟢 Stock normal</option>
+                <option value="non-suivi">⚪ Non suivi</option>
+              </select>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-secondary">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Produit
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Référence & Code-barres
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Catégorie
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Prix
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Prix/Unité
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Stock
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Statut
                   </th>
                   <th className="relative px-6 py-3">
@@ -466,19 +427,19 @@ export function ProductsPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-4 text-center text-muted-foreground">
                       <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                         <span className="ml-2">Chargement...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-4 text-center text-muted-foreground">
                       {searchTerm ? 'Aucun produit trouvé pour cette recherche' : 'Aucun produit enregistré'}
                     </td>
                   </tr>
@@ -486,37 +447,46 @@ export function ProductsPage() {
                   safeMap(ensureArray(filteredProducts), (product) => {
                     const stockStatus = getStockStatus(product)
                     return (
-                      <tr key={safeTextRender(product.id, `product-${Math.random()}`)} className="hover:bg-gray-50">
+                      <tr key={safeTextRender(product.id, `product-${Math.random()}`)} className="hover:bg-secondary">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="h-10 w-10 bg-green-600 rounded-lg flex items-center justify-center">
-                              <Package className="h-5 w-5 text-white" />
+                            <div className="h-10 w-10 bg-primary rounded-lg flex items-center justify-center">
+                              <Package className="h-5 w-5 text-primary-foreground" />
                             </div>
                             <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">
+                              <div className="text-sm font-medium text-card-foreground">
                                 {safeTextRender(product.name, 'Produit sans nom')}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {safeTextRender(product.reference, 'Pas de référence')}
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                            {typeof product.category === 'string' ? product.category : 'Non catégorisé'}
-                          </span>
+                          <ProductIdentifiersInline
+                            sku={product.sku}
+                            barcode={product.barcode}
+                            reference={product.reference}
+                          />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatCurrency(product.price)}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <ProductCategoryBadge category={product.category} />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
+                          <div>
+                            <div className="font-medium">
+                              {formatCurrency(product.price)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              par {product.unit || 'pièce'}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                           <div>
                             <div className="font-medium">
                               {formatStockQuantity(adaptProductForStock(product))}
                             </div>
                             {!product.isService && (
-                              <div className="text-xs text-gray-500">
+                              <div className="text-xs text-muted-foreground">
                                 {formatStockThresholds(adaptProductForStock(product))}
                               </div>
                             )}
@@ -533,22 +503,22 @@ export function ProductsPage() {
                             )
                           })()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-card-foreground">
                           <button
                             onClick={() => handleViewProduct(safeTextRender(product.id, ''))}
-                            className="text-green-600 hover:text-green-900 mr-3"
+                            className="text-primary hover:text-card-foreground mr-3"
                           >
                             Voir
                           </button>
                           <button
                             onClick={() => handleEditProduct(safeTextRender(product.id, ''))}
-                            className="text-blue-600 hover:text-blue-900 mr-3"
+                            className="text-primary hover:text-card-foreground mr-3"
                           >
                             Modifier
                           </button>
                           <button
                             onClick={() => handleDeleteProduct(safeTextRender(product.id, ''))}
-                            className="text-red-600 hover:text-red-900"
+                            className="text-destructive hover:text-card-foreground"
                           >
                             Supprimer
                           </button>

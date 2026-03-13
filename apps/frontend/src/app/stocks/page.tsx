@@ -1,7 +1,7 @@
 'use client'
 
-import { StocksPage } from '@/components/pages/stocks'
+import { StocksPageSimple } from '@/components/pages/stocks-simple'
 
 export default function Stocks() {
-  return <StocksPage />
+  return <StocksPageSimple />
 }

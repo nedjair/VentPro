@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Edit, FileText, Download, Mail, Check, X, Clock, CreditCard, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Edit, FileText, Download, Mail, CreditCard, AlertCircle } from 'lucide-react'
 import { api, Invoice } from '@/lib/api'
+import { ExportService } from '@/lib/export'
+import { InvoiceStatusBadge } from './invoice-status-badge'
 import Link from 'next/link'
 
 interface InvoiceDetailPageProps {
@@ -14,7 +16,8 @@ interface InvoiceDetailPageProps {
 export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     loadInvoice()
@@ -27,37 +30,17 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
       
       if (response.success && response.data) {
         setInvoice(response.data)
-        setError(null)
+        setLoadError(null)
+        setActionError(null)
       } else {
         throw new Error('Facture non trouvée')
       }
     } catch (err) {
       console.error('Erreur lors du chargement de la facture:', err)
-      setError(err instanceof Error ? err.message : 'Erreur de chargement')
+      setLoadError(err instanceof Error ? err.message : 'Erreur de chargement')
     } finally {
       setLoading(false)
     }
-  }
-
-  const getStatusBadge = (status: Invoice['status']) => {
-    const statusConfig = {
-      DRAFT: { label: 'Brouillon', className: 'bg-gray-100 text-gray-800', icon: Clock },
-      SENT: { label: 'Envoyée', className: 'bg-blue-100 text-blue-800', icon: Mail },
-      PAID: { label: 'Payée', className: 'bg-green-100 text-green-800', icon: Check },
-      PARTIAL: { label: 'Partiellement payée', className: 'bg-yellow-100 text-yellow-800', icon: CreditCard },
-      OVERDUE: { label: 'En retard', className: 'bg-red-100 text-red-800', icon: AlertCircle },
-      CANCELLED: { label: 'Annulée', className: 'bg-gray-100 text-gray-800', icon: X },
-    }
-    
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.DRAFT
-    const Icon = config.icon
-    
-    return (
-      <span className={`inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full ${config.className}`}>
-        <Icon className="h-4 w-4 mr-1" />
-        {config.label}
-      </span>
-    )
   }
 
   const getTypeIcon = (type: string | undefined) => {
@@ -98,14 +81,35 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
     return method ? methods[method] || method : 'Non spécifié'
   }
 
-  const handleDownloadPDF = () => {
-    console.log('Téléchargement PDF de la facture:', invoiceId)
-    // TODO: Implémenter le téléchargement PDF
+  const handleDownloadPDF = async () => {
+    try {
+      setActionError(null)
+      await ExportService.downloadInvoicePDF(invoiceId)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erreur lors du téléchargement du PDF')
+    }
   }
 
   const handleSendEmail = () => {
-    console.log('Envoi par email de la facture:', invoiceId)
-    // TODO: Implémenter l'envoi par email
+    const recipientEmail = invoice?.client?.email
+
+    if (!recipientEmail) {
+      setActionError('Aucune adresse email client n’est disponible pour cette facture.')
+      return
+    }
+
+    setActionError(null)
+
+    const clientName = invoice?.client?.companyName
+      || [invoice?.client?.firstName, invoice?.client?.lastName].filter(Boolean).join(' ')
+      || 'client'
+
+    const subject = encodeURIComponent(`Facture ${invoice?.number} - ${clientName}`)
+    const body = encodeURIComponent(
+      `Bonjour,\n\nVeuillez trouver ci-joint la facture ${invoice?.number}.\n\nCordialement,`
+    )
+
+    window.open(`mailto:${recipientEmail}?subject=${subject}&body=${body}`, '_self')
   }
 
   const actions = invoice ? (
@@ -144,7 +148,7 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
     )
   }
 
-  if (error || !invoice) {
+  if (loadError || !invoice) {
     return (
       <MainLayout title="Erreur">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -152,7 +156,7 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
             <h3 className="text-lg font-medium text-red-800 mb-2">
               Erreur de chargement
             </h3>
-            <p className="text-red-700 mb-4">{error || 'Facture non trouvée'}</p>
+            <p className="text-red-700 mb-4">{loadError || 'Facture non trouvée'}</p>
             <Link href="/invoices">
               <Button variant="outline">
                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -169,9 +173,14 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
     <MainLayout 
       title={`${getTypeLabel(invoice.type)} ${invoice.number}`}
       subtitle={`Créée le ${new Date(invoice.createdAt).toLocaleDateString('fr-FR')}`}
-      actions={actions}
     >
       <div className="space-y-6">
+        {actionError && (
+          <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+            {actionError}
+          </div>
+        )}
+
         {/* En-tête avec statut */}
         <div className="card">
           <div className="card-content">
@@ -187,13 +196,13 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
                   </p>
                   {invoice.order && (
                     <p className="text-sm text-blue-600">
-                      Basée sur la commande {invoice.order.reference}
+                      Basée sur la commande {invoice.order.number}
                     </p>
                   )}
                 </div>
               </div>
               <div className="text-right">
-                {getStatusBadge(invoice.status)}
+                <InvoiceStatusBadge status={invoice.status} size="md" />
                 <div className="mt-2 text-2xl font-bold text-blue-600">
                   {Number(invoice.total).toFixed(2)} €
                 </div>
@@ -407,6 +416,20 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
             </div>
           </div>
         )}
+
+        <div className="card">
+          <div className="card-content">
+            <div className="flex flex-col gap-4 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-gray-500">
+                Vous pouvez revenir à la liste, télécharger le PDF, envoyer la facture par email ou ouvrir la modification du document.
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-3">
+                {actions}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </MainLayout>
   )

@@ -1,3 +1,23 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+
+# Windows: utilise un node_modules plat pour réduire les problèmes de symlinks
+# et améliorer la compatibilité des outils locaux.
+nodeLinker: hoisted
+
+# Évite que `pnpm install` lancé dans un sous-projet exécute une installation
+# récursive de tout le workspace, ce qui a aggravé les échecs côté Windows.
+recursiveInstall: false
+
+# Réduit encore l'usage de symlinks dans le virtual store. La doc pnpm indique
+# que ce réglage supprime les symlinks du store virtuel.
+symlink: false
+
+# Préfère la copie depuis le store pour éviter les comportements fragiles de
+# liens sur Windows. Compromis: plus d'I/O disque mais plus robuste localement.
+packageImportMethod: copy
+
+# Windows: réduit la longueur des chemins dans le virtual store pour limiter
+# les problèmes de chemins longs et certains renommages fragiles.
+virtualStoreDirMaxLength: 40

@@ -12,9 +12,19 @@ import invoiceRoutes from './invoices'
 import supplierRoutes from './suppliers'
 import analyticsRoutes from './analytics'
 import { autoSyncRoutes } from './auto-sync'
-import userRoutes from './users'
+import { userRoutes } from './users'
 import stockCorrectionRoutes from './stockCorrectionRoutes'
-// import { reportsRoutes } from './reports'
+import { reportsRoutes } from './reports'
+
+// Nouvelles routes pour les modules ventes et achats
+import quotesRoutes from './quotes'
+import paymentsRoutes from './payments'
+import purchaseOrdersRoutes from './purchase-orders'
+import goodsReceptionsRoutes from './goods-receptions'
+import auditLogsRoutes from './audit-logs'
+import algeriaConfigRoutes from './algeria-config'
+import companyRoutes from './companies'
+import settingsRoutes from './settings'
 
 export async function registerRoutes(server: FastifyInstance) {
   // Préfixe API pour toutes les routes avec persistance en base de données
@@ -37,6 +47,16 @@ export async function registerRoutes(server: FastifyInstance) {
     await server.register(supplierRoutes, { prefix: '/suppliers' })
     await server.register(userRoutes, { prefix: '/users' })
 
+    // Routes des modules ventes et achats
+    await server.register(quotesRoutes, { prefix: '/quotes' })
+    await server.register(paymentsRoutes, { prefix: '/payments' })
+    await server.register(purchaseOrdersRoutes, { prefix: '/purchase-orders' })
+    await server.register(goodsReceptionsRoutes, { prefix: '/purchase-orders/receptions' })
+    await server.register(auditLogsRoutes, { prefix: '/audit-logs' })
+    await server.register(algeriaConfigRoutes, { prefix: '/algeria-config' })
+    await server.register(companyRoutes, { prefix: '/companies' })
+    await server.register(settingsRoutes, { prefix: '/settings' })
+
     // Routes d'analytique
     await server.register(analyticsRoutes, { prefix: '/analytics' })
 
@@ -46,7 +66,7 @@ export async function registerRoutes(server: FastifyInstance) {
     // Routes de correction automatique
     await server.register(stockCorrectionRoutes, { prefix: '/stock-correction' })
 
-    // await server.register(reportsRoutes, { prefix: '/reports' })
+    await server.register(reportsRoutes, { prefix: '/reports' })
 
   }, { prefix: '/api/v1' })
 

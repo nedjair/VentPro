@@ -1,26 +1,24 @@
 /**
- * Configuration globale pour les tests Jest du frontend
+ * Configuration globale pour les tests Vitest du frontend.
  */
 
 import '@testing-library/jest-dom'
-import { jest } from '@jest/globals'
-
-// Configuration globale des timeouts
-jest.setTimeout(10000)
+import { afterEach, vi } from 'vitest'
 
 // Mock des variables d'environnement pour les tests
 process.env.NODE_ENV = 'test'
-process.env.NEXT_PUBLIC_API_URL = 'http://localhost:3001'
+delete process.env.NEXT_PUBLIC_API_URL
+delete process.env.NEXT_PUBLIC_API_BASE_URL
 
 // Mock de Next.js router
-jest.mock('next/navigation', () => ({
+vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-    forward: jest.fn(),
-    refresh: jest.fn(),
-    prefetch: jest.fn(),
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
   }),
   usePathname: () => '/test-path',
   useSearchParams: () => new URLSearchParams(),
@@ -28,10 +26,10 @@ jest.mock('next/navigation', () => ({
 
 // Mock de localStorage
 const localStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
 }
 Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
@@ -39,10 +37,10 @@ Object.defineProperty(window, 'localStorage', {
 
 // Mock de sessionStorage
 const sessionStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
 }
 Object.defineProperty(window, 'sessionStorage', {
   value: sessionStorageMock,
@@ -51,15 +49,15 @@ Object.defineProperty(window, 'sessionStorage', {
 // Mock de window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: jest.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation(query => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener: jest.fn(), // deprecated
-    removeListener: jest.fn(), // deprecated
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
+    addListener: vi.fn(), // deprecated
+    removeListener: vi.fn(), // deprecated
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
   })),
 })
 
@@ -92,7 +90,7 @@ global.ResizeObserver = class ResizeObserver {
 }
 
 // Mock de fetch pour les tests
-global.fetch = jest.fn()
+vi.stubGlobal('fetch', vi.fn())
 
 // Utilitaires de test
 export const createMockClient = (overrides = {}) => ({
@@ -139,7 +137,7 @@ export const mockApiCall = (response: any, delay = 0) => {
 
 // Helper pour nettoyer les mocks après chaque test
 afterEach(() => {
-  jest.clearAllMocks()
+  vi.clearAllMocks()
   localStorageMock.getItem.mockClear()
   localStorageMock.setItem.mockClear()
   localStorageMock.removeItem.mockClear()

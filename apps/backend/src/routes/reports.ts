@@ -1,11 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
-import { AuthenticatedRequest } from '../types/common'
+// AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
 import { ClientService } from '../services/client.service'
 import { ProductService } from '../services/product.service'
 import { OrderService } from '../services/order.service'
 import { InvoiceService } from '../services/invoice.service'
+import { ExportService } from '../services/export.service'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -13,20 +14,37 @@ const reportPeriodSchema = z.object({
   period: z.enum(['1m', '3m', '6m', '12m']).optional().default('12m'),
 })
 
+const reportPeriodQuerystringSchema = {
+  type: 'object',
+  properties: {
+    period: {
+      type: 'string',
+      enum: ['1m', '3m', '6m', '12m'],
+      default: '12m',
+    },
+  },
+}
+
+function parseReportPeriodQuery(query: unknown): z.infer<typeof reportPeriodSchema> {
+  // Valide et normalise la query string pour conserver le défaut `12m`
+  // tout en exposant à Fastify un JSON Schema compatible au démarrage.
+  return reportPeriodSchema.parse(query ?? {})
+}
+
 export async function reportsRoutes(server: FastifyInstance) {
   // Export PDF du rapport des ventes
   server.get('/sales/pdf', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Export PDF du rapport des ventes',
       tags: ['Rapports'],
       security: [{ bearerAuth: [] }],
-      querystring: reportPeriodSchema,
+      querystring: reportPeriodQuerystringSchema,
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
-      const { period } = request.query as z.infer<typeof reportPeriodSchema>
+      const { companyId } = (request as any).user
+      const { period } = parseReportPeriodQuery(request.query)
 
       // Calculer les dates selon la période
       const endDate = new Date()
@@ -69,7 +87,7 @@ export async function reportsRoutes(server: FastifyInstance) {
         endDate: endDate.toISOString(),
         totalOrders: orders.data.length,
         totalInvoices: invoices.data.length,
-        totalRevenue: invoices.data.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0),
+        totalRevenue: invoices.data.reduce((sum, inv) => sum + (inv.total || 0), 0),
         totalClients: clients.data.length,
         totalProducts: products.data.length,
         orders: orders.data,
@@ -78,8 +96,7 @@ export async function reportsRoutes(server: FastifyInstance) {
         topClients: [], // TODO: Calculer les meilleurs clients
       }
 
-      // Utiliser le service d'export
-      const ExportService = require('../services/export-service.js')
+      // Utiliser le service d'export centralisé pour éviter les handlers morts.
       const exportService = new ExportService()
 
       const filename = `rapport_ventes_${period}_${Date.now()}.pdf`
@@ -117,17 +134,17 @@ export async function reportsRoutes(server: FastifyInstance) {
 
   // Export Excel du rapport des ventes
   server.get('/sales/excel', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Export Excel du rapport des ventes',
       tags: ['Rapports'],
       security: [{ bearerAuth: [] }],
-      querystring: reportPeriodSchema,
+      querystring: reportPeriodQuerystringSchema,
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
-      const { period } = request.query as z.infer<typeof reportPeriodSchema>
+      const { companyId } = (request as any).user
+      const { period } = parseReportPeriodQuery(request.query)
 
       // Calculer les dates selon la période
       const endDate = new Date()
@@ -170,7 +187,7 @@ export async function reportsRoutes(server: FastifyInstance) {
         endDate: endDate.toISOString(),
         totalOrders: orders.data.length,
         totalInvoices: invoices.data.length,
-        totalRevenue: invoices.data.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0),
+        totalRevenue: invoices.data.reduce((sum, inv) => sum + (inv.total || 0), 0),
         totalClients: clients.data.length,
         totalProducts: products.data.length,
         orders: orders.data,
@@ -179,8 +196,7 @@ export async function reportsRoutes(server: FastifyInstance) {
         products: products.data,
       }
 
-      // Utiliser le service d'export
-      const ExportService = require('../services/export-service.js')
+      // Utiliser le service d'export centralisé pour éviter les handlers morts.
       const exportService = new ExportService()
 
       const filename = `rapport_ventes_${period}_${Date.now()}.xlsx`

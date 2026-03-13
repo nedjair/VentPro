@@ -107,13 +107,33 @@ async function seedSimpleAlgerianData() {
     try {
       // Essayer de créer un utilisateur admin
       const adminPassword = await bcrypt.hash('admin123', SALT_ROUNDS)
+
+      // D'abord, créer ou récupérer une entreprise
+      let company = await prisma.company.findFirst()
+      if (!company) {
+        company = await prisma.company.create({
+          data: {
+            name: 'Entreprise Test DZ',
+            email: 'contact@test.dz',
+            phone: '+213 21 123 456',
+            address: '123 Rue Didouche Mourad, Alger',
+            city: 'Alger',
+            postalCode: '16000',
+            country: 'Algérie',
+            currency: 'DZD',
+            timezone: 'Africa/Algiers',
+          },
+        })
+      }
+
       const admin = await prisma.user.create({
         data: {
-          email: 'admin@gestion-dz.com',
-          password: adminPassword,
-          firstName: getRandomElement(ALGERIAN_FIRST_NAMES),
-          lastName: getRandomElement(ALGERIAN_LAST_NAMES),
-          role: 'ADMIN'
+          email: 'admin@test.com',
+          passwordHash: adminPassword,
+          firstName: 'Admin',
+          lastName: 'Test',
+          role: 'ADMIN',
+          companyId: company.id
         }
       })
       users.push(admin)

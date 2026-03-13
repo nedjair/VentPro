@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import Fastify from 'fastify'
+// import Fastify from 'fastify' // Removed unused import
 import { createServer } from './server'
 import { logger } from './utils/logger'
 import { testDatabaseConnection, seedDatabase } from './lib/database'

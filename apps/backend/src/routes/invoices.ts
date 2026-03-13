@@ -1,9 +1,14 @@
-import { FastifyInstance, FastifyReply } from 'fastify'
-import { InvoiceService, CreateInvoiceData, UpdateInvoiceData, InvoiceFilters } from '../services/invoice.service'
-import { AuthenticatedRequest } from '@gestion/shared'
+import { ImportService } from '../services/import.service'
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { InvoiceService, CreateInvoiceData, UpdateInvoiceData, InvoiceFilters } from '../services/invoice-sales.service'
+// AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
 import { ExportService } from '../services/export.service'
-import { prisma } from '../lib/database'
+
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.id || user?.userId || user?.companyId
+}
 
 // Types pour la validation des données
 interface CreateInvoiceItem {
@@ -67,7 +72,7 @@ interface CreateFromOrderRequest {
 export default async function invoiceRoutes(server: FastifyInstance) {
   // Créer une facture
   server.post('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Créer une nouvelle facture',
       tags: ['Factures'],
@@ -120,10 +125,10 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = request.body as CreateInvoiceRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       // Validation basique
       if (!data.type || !data.clientId || !data.items || data.items.length === 0) {
@@ -157,7 +162,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Créer une facture depuis une commande
   server.post('/from-order', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Créer une facture depuis une commande',
       tags: ['Factures'],
@@ -170,10 +175,10 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { orderId } = request.body as CreateFromOrderRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       if (!orderId) {
         return reply.status(400).send({
@@ -199,7 +204,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Récupérer la liste des factures
   server.get('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer la liste des factures avec filtres et pagination',
       tags: ['Factures'],
@@ -222,10 +227,17 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = request.query as InvoiceFiltersRequest
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
+
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
 
       // Pagination avec valeurs par défaut
       const pagination = {
@@ -245,7 +257,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         dueDateTo: query.dueDateTo ? new Date(query.dueDateTo) : undefined,
       }
 
-      const result = await InvoiceService.getInvoices(companyId, invoiceFilters, pagination)
+      const result = await InvoiceService.getInvoices(ownerScopeId, invoiceFilters, pagination)
 
       return reply.send({
         success: true,
@@ -263,7 +275,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Récupérer une facture par ID
   server.get('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer une facture par son ID',
       tags: ['Factures'],
@@ -276,10 +288,10 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       const invoice = await InvoiceService.getInvoiceById(id, companyId)
 
@@ -305,7 +317,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Mettre à jour une facture
   server.put('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Mettre à jour une facture',
       tags: ['Factures'],
@@ -343,11 +355,11 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const data = request.body as UpdateInvoiceRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       // Convertir les dates string en Date objects
       const updateData: UpdateInvoiceData = {
@@ -373,7 +385,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Enregistrer un paiement
   server.post('/:id/payment', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Enregistrer un paiement sur une facture',
       tags: ['Factures'],
@@ -395,11 +407,11 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const { amount, paymentDate, paymentMethod } = request.body as RecordPaymentRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       // Validation basique
       if (!amount || !paymentDate || !paymentMethod) {
@@ -432,7 +444,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Changer le statut d'une facture
   server.patch('/:id/status', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Changer le statut d\'une facture',
       tags: ['Factures'],
@@ -452,11 +464,11 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const { status } = request.body as UpdateStatusRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       if (!status) {
         return reply.status(400).send({
@@ -482,7 +494,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Supprimer une facture
   server.delete('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Supprimer une facture',
       tags: ['Factures'],
@@ -495,10 +507,10 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       await InvoiceService.deleteInvoice(id, companyId)
 
@@ -517,18 +529,24 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Export Excel des factures
   server.get('/export/excel', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Export Excel des factures',
       tags: ['Factures'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
 
       // Récupérer toutes les factures pour l'export
-      const result = await InvoiceService.getInvoices(companyId, {}, { page: 1, limit: 10000 })
+      const result = await InvoiceService.getInvoices(ownerScopeId, {}, { page: 1, limit: 10000 })
       const invoices = result.data
 
       // Utiliser le service d'export
@@ -566,14 +584,14 @@ export default async function invoiceRoutes(server: FastifyInstance) {
       logger.error('Erreur lors de l\'export Excel des factures', { error: error.message })
       return reply.status(500).send({
         success: false,
-        message: 'Erreur lors de l\'export Excel des factures',
+        message: error.message || 'Erreur lors de l\'export Excel des factures',
       })
     }
   })
 
   // Export PDF d'une facture
   server.get('/:id/pdf', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Export PDF d\'une facture',
       tags: ['Factures'],
@@ -586,13 +604,26 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const sanitizedId = String(id || '').trim()
+      if (!sanitizedId) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Identifiant de facture invalide',
+        })
+      }
+      const ownerScopeId = getOwnerScopeId(request)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
 
       // Récupérer la facture avec tous les détails
-      const invoice = await InvoiceService.getInvoiceById(id, companyId)
+      const invoice = await InvoiceService.getInvoiceById(sanitizedId, ownerScopeId)
 
       if (!invoice) {
         return reply.status(404).send({
@@ -601,57 +632,44 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         })
       }
 
-      // Utiliser le service d'export
-      const exportService = new ExportService()
-
-      const filename = `facture_${invoice.number}_${Date.now()}.pdf`
-      const fs = require('fs')
-      const path = require('path')
-
-      // Créer le dossier exports s'il n'existe pas
-      const exportsDir = path.join(process.cwd(), 'exports')
-      if (!fs.existsSync(exportsDir)) {
-        fs.mkdirSync(exportsDir, { recursive: true })
+      const filename = ExportService.buildInvoicePdfFilename(invoice)
+      const pdfBuffer = await ExportService.generateInvoicePdfBuffer(invoice, {
+        ownerScopeId,
+        requestUser: (request as any).user,
+      })
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error('Le PDF généré est vide')
       }
-
-      const outputPath = path.join(exportsDir, filename)
-      await exportService.generateInvoicePDF(invoice, outputPath)
 
       reply.type('application/pdf')
       reply.header('Content-Disposition', `attachment; filename="${filename}"`)
-
-      const fileStream = fs.createReadStream(outputPath)
-      reply.send(fileStream)
-
-      // Nettoyer le fichier après envoi
-      fileStream.on('end', () => {
-        setTimeout(() => {
-          if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath)
-          }
-        }, 5000)
-      })
+      reply.header('Content-Length', String(pdfBuffer.length))
+      return reply.send(pdfBuffer)
 
     } catch (error: any) {
-      logger.error('Erreur lors de l\'export PDF de la facture', { error: error.message })
+      logger.error('Erreur lors de l\'export PDF de la facture', {
+        error: error.message,
+        stack: error.stack,
+        invoiceId: (request.params as any)?.id,
+      })
       return reply.status(500).send({
         success: false,
-        message: 'Erreur lors de l\'export PDF de la facture',
+        message: error.message || 'Erreur lors de l\'export PDF de la facture',
       })
     }
   })
 
   // Statistiques des factures
   server.get('/stats/overview', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Statistiques des factures',
       tags: ['Factures'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const stats = await InvoiceService.getInvoiceStats(companyId)
 
@@ -670,18 +688,24 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
   // Export PDF des factures
   server.get('/export/pdf', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Export PDF des factures',
       tags: ['Factures'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
 
       // Récupérer toutes les factures pour l'export
-      const result = await InvoiceService.getInvoices(companyId, {}, { page: 1, limit: 10000 })
+      const result = await InvoiceService.getInvoices(ownerScopeId, {}, { page: 1, limit: 10000 })
       const invoices = result.data
 
       // Utiliser le service d'export
@@ -720,25 +744,25 @@ export default async function invoiceRoutes(server: FastifyInstance) {
       logger.error('Erreur lors de l\'export PDF des factures', { error: error.message })
       return reply.status(500).send({
         success: false,
-        message: 'Erreur lors de l\'export PDF des factures',
+        message: error.message || 'Erreur lors de l\'export PDF des factures',
       })
     }
   })
 
   // Import Excel des factures
   server.post('/import/excel', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Import Excel des factures',
       tags: ['Factures'],
       security: [{ bearerAuth: [] }],
       consumes: ['multipart/form-data'],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     let tempFilePath: string | null = null
 
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       // Récupérer le fichier uploadé
       const data = await request.file()
@@ -844,9 +868,17 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         required: ['format']
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user;
+      const ownerScopeId = getOwnerScopeId(request)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const { companyId } = (request as any).user || {}
       const query = request.query as any;
 
       const filters: InvoiceFilters = {
@@ -860,7 +892,7 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         dueDateTo: query.dueDateTo ? new Date(query.dueDateTo) : undefined,
       };
 
-      const { data: invoices } = await InvoiceService.getInvoices(companyId, filters);
+      const { data: invoices } = await InvoiceService.getInvoices(ownerScopeId, filters);
 
       let fileBuffer: Buffer;
       let contentType: string;
@@ -872,11 +904,14 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         filename = `factures_${timestamp}.xlsx`;
       } else { // pdf
-        const company = await prisma.company.findUnique({ where: { id: companyId } });
-        if (!company) {
-          return reply.status(404).send({ success: false, message: "Informations de l'entreprise non trouvées." });
-        }
-        fileBuffer = await ExportService.generateInvoicesPdf(invoices as any, company);
+        const companyName = (request as any).user?.companyName
+          || (request as any).user?.fullName
+          || (request as any).user?.email
+          || 'Gestion Commerciale'
+        fileBuffer = await ExportService.generateInvoicesPdf(
+          invoices as any,
+          { id: companyId || ownerScopeId, name: companyName } as any
+        );
         contentType = 'application/pdf';
         filename = `factures_${timestamp}.pdf`;
       }
@@ -889,9 +924,8 @@ export default async function invoiceRoutes(server: FastifyInstance) {
       logger.error(`Erreur lors de l'export des factures:`, error);
       return reply.status(500).send({
         success: false,
-        message: "Erreur interne lors de l'exportation des factures.",
+        message: error.message || "Erreur interne lors de l'exportation des factures.",
       });
     }
   });
 }
-

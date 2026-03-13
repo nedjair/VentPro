@@ -71,14 +71,32 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
     }).format(value) + ' DA'
   }
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#F97316', '#84CC16']
+  // Utilisation des couleurs CSS variables pour le thème
+  const getThemeColors = () => {
+    if (typeof window !== 'undefined') {
+      const style = getComputedStyle(document.documentElement)
+      return [
+        `hsl(${style.getPropertyValue('--color-primary')})`,
+        `hsl(${style.getPropertyValue('--color-accent')})`,
+        `hsl(${style.getPropertyValue('--color-secondary')})`,
+        `hsl(${style.getPropertyValue('--color-destructive')})`,
+        `hsl(${style.getPropertyValue('--color-muted')})`,
+        `hsl(${style.getPropertyValue('--color-border')})`,
+        `hsl(${style.getPropertyValue('--color-primary')} / 0.8)`,
+        `hsl(${style.getPropertyValue('--color-accent')} / 0.8)`
+      ]
+    }
+    return ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#F97316', '#84CC16']
+  }
+
+  const COLORS = getThemeColors()
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow p-6 animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+        <div className="bg-card rounded-lg shadow border border-border p-6 animate-pulse">
+          <div className="h-6 bg-secondary rounded w-1/3 mb-4"></div>
+          <div className="h-64 bg-secondary rounded"></div>
         </div>
       </div>
     )
@@ -102,7 +120,7 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
     <div className="space-y-6">
       {/* En-tête avec contrôles */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Analytics Produits</h2>
+        <h2 className="text-2xl font-bold text-card-foreground">Analytics Produits</h2>
         <div className="flex space-x-2">
           {['1m', '3m', '6m', '12m'].map((p) => (
             <button
@@ -110,8 +128,8 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
               onClick={() => setSelectedPeriod(p)}
               className={`px-3 py-1 rounded text-sm font-medium ${
                 selectedPeriod === p
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-card-foreground hover:bg-secondary/80'
               }`}
             >
               {p}
@@ -122,11 +140,11 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
 
       {/* Métriques rapides */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+        <div className="bg-card rounded-lg shadow border border-border p-4 border-l-4 border-l-primary">
           <div className="flex items-center">
-            <Package className="h-8 w-8 text-blue-600 mr-3" />
+            <Package className="h-8 w-8 text-primary mr-3" />
             <div>
-              <p className="text-sm text-gray-600">Produits vendus</p>
+              <p className="text-sm text-muted-foreground">Produits vendus</p>
               <p className="text-xl font-bold">
                 {(productData.topProducts || []).reduce((sum, p) => sum + p.totalQuantity, 0)}
               </p>
@@ -134,11 +152,11 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+        <div className="bg-card rounded-lg shadow border border-border p-4 border-l-4 border-l-accent">
           <div className="flex items-center">
-            <TrendingUp className="h-8 w-8 text-green-600 mr-3" />
+            <TrendingUp className="h-8 w-8 text-accent mr-3" />
             <div>
-              <p className="text-sm text-gray-600">CA Produits</p>
+              <p className="text-sm text-muted-foreground">CA Produits</p>
               <p className="text-xl font-bold">
                 {formatCurrency((productData.topProducts || []).reduce((sum, p) => sum + p.totalRevenue, 0))}
               </p>
@@ -146,21 +164,21 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+        <div className="bg-card rounded-lg shadow border border-border p-4 border-l-4 border-l-secondary">
           <div className="flex items-center">
-            <Star className="h-8 w-8 text-purple-600 mr-3" />
+            <Star className="h-8 w-8 text-muted-foreground mr-3" />
             <div>
-              <p className="text-sm text-gray-600">Catégories</p>
+              <p className="text-sm text-muted-foreground">Catégories</p>
               <p className="text-xl font-bold">{(productData.categoryDistribution || []).length}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
+        <div className="bg-card rounded-lg shadow border border-border p-4 border-l-4 border-l-destructive">
           <div className="flex items-center">
-            <ShoppingCart className="h-8 w-8 text-orange-600 mr-3" />
+            <ShoppingCart className="h-8 w-8 text-destructive mr-3" />
             <div>
-              <p className="text-sm text-gray-600">Prix moyen</p>
+              <p className="text-sm text-muted-foreground">Prix moyen</p>
               <p className="text-xl font-bold">
                 {formatCurrency(
                   (productData.topProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0) /
@@ -173,8 +191,8 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
       </div>
 
       {/* Top produits par CA */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className="bg-card rounded-lg shadow border border-border p-6">
+        <h3 className="text-lg font-semibold text-card-foreground mb-4">
           Top {limit} Produits par Chiffre d'Affaires
         </h3>
         <ResponsiveContainer width="100%" height={400}>
@@ -194,14 +212,14 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
                 return [value, name]
               }}
             />
-            <Bar dataKey="totalRevenue" fill="#3B82F6" name="CA" />
+            <Bar dataKey="totalRevenue" fill="hsl(var(--color-primary))" name="CA" />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Répartition par catégorie */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className="bg-card rounded-lg shadow border border-border p-6">
+        <h3 className="text-lg font-semibold text-card-foreground mb-4">
           Répartition par Catégorie
         </h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -216,7 +234,7 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
                   `${category} (${(percent * 100).toFixed(0)}%)`
                 }
                 outerRadius={100}
-                fill="#8884d8"
+                fill="hsl(var(--color-primary))"
                 dataKey="totalRevenue"
               >
                 {(productData.categoryDistribution || []).map((entry, index) => (
@@ -228,7 +246,7 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
           </ResponsiveContainer>
           
           <div className="space-y-3">
-            <h4 className="font-medium text-gray-900">Détails par catégorie</h4>
+            <h4 className="font-medium text-card-foreground">Détails par catégorie</h4>
             <div className="max-h-64 overflow-y-auto">
               {(productData.categoryDistribution || []).map((item, index) => (
                 <div key={item.category} className="flex items-center justify-between py-2">
@@ -241,7 +259,7 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-medium">{formatCurrency(item.revenue || 0)}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       {item.quantity || 0} unités • {item.count || 0} produits
                     </div>
                   </div>
@@ -253,57 +271,57 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
       </div>
 
       {/* Tableau détaillé des top produits */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
+      <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h3 className="text-lg font-semibold text-card-foreground">
             Détail des Performances Produits
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-secondary">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Produit
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Catégorie
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Quantité
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   CA Total
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Prix Moyen
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Factures
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-card divide-y divide-border">
               {(productData.topProducts || []).map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50">
+                <tr key={product.id} className="hover:bg-secondary">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                    <div className="text-sm font-medium text-card-foreground">{product.name}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       {(product as any).category || 'Non catégorisé'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                     {product.totalQuantity}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-card-foreground">
                     {formatCurrency(product.totalRevenue)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                     {formatCurrency((product.totalRevenue / product.totalQuantity) || 0)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                     {(product as any).invoiceCount || 0}
                   </td>
                 </tr>

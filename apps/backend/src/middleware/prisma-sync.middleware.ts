@@ -206,15 +206,16 @@ export function createConfigurableSyncMiddleware(
 export function createStockMovementSyncMiddleware(): Prisma.Middleware {
   return async (params, next) => {
     const result = await next(params)
+    const modelName = String(params.model || '')
 
     // Synchronisation après création d'un mouvement de stock
-    if (params.model === 'StockMovement' && params.action === 'create') {
+    if (modelName === 'StockMovement' && params.action === 'create') {
       try {
         if (result?.productId && result?.companyId) {
           logger.debug('Synchronisation après mouvement de stock', { 
             productId: result.productId,
             type: result.type,
-            quantity: result.quantity
+            quantity: result.quantiteActuelle
           })
           
           // Recalculer et synchroniser le stock du produit

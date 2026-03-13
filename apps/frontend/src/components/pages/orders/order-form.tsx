@@ -1,12 +1,13 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
 import { Save, ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { api, Client, Product, Order, OrderItem } from '@/lib/api'
+import { ensureApiAuthentication } from '@/lib/auth-utils'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 interface OrderFormPageProps {
   orderId?: string
@@ -14,7 +15,9 @@ interface OrderFormPageProps {
 
 export function OrderFormPage({ orderId }: OrderFormPageProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const isEditing = !!orderId
+  const requestedType = searchParams?.get('type')?.toUpperCase() === 'QUOTE' ? 'QUOTE' : 'ORDER'
   
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -24,7 +27,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
   const [products, setProducts] = useState<Product[]>([])
   
   const [formData, setFormData] = useState({
-    type: 'QUOTE' as 'QUOTE' | 'ORDER',
+    type: requestedType as 'QUOTE' | 'ORDER',
     clientId: '',
     orderDate: new Date().toISOString().split('T')[0],
     validUntil: '',
@@ -32,8 +35,10 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
     notes: '',
     internalNotes: '',
   })
+  const formType = isEditing ? formData.type : requestedType
+  const isQuoteMode = formType === 'QUOTE'
   
-  // @ts-ignore - Nous initialisons avec un objet partiel, les valeurs manquantes seront calculées
+  // @ts-ignore - Nous initialisons avec un objet partiel, les valeurs manquantes seront calculees
   const [items, setItems] = useState<OrderItem[]>([
     {
       id: '',
@@ -41,7 +46,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
       productId: '',
       quantity: 1,
       unitPrice: 0,
-      vatRate: 19, // TVA algérienne
+      vatRate: 19, // TVA algerienne
       discount: 0,
       totalHT: 0,
       totalVAT: 0,
@@ -59,49 +64,26 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
     }
   }, [isEditing, orderId])
 
-  // Fonction d'authentification automatique
-  const ensureAuthentication = async () => {
-    const authToken = api.getAuthToken()
-    if (authToken) {
-      return true
+  useEffect(() => {
+    if (!isEditing) {
+      setFormData((prev) => ({
+        ...prev,
+        type: requestedType,
+        validUntil: requestedType === 'QUOTE' ? prev.validUntil : '',
+      }))
     }
+  }, [isEditing, requestedType])
 
-    try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gctpe.dz',
-        password: 'admin123'
-      })
-
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-
-        console.log('✅ Connexion automatique réussie')
-        return true
-      }
-    } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
-    }
-
-    return false
-  }
+  const ensureAuthentication = () => ensureApiAuthentication()
 
   const loadInitialData = async () => {
     try {
       setLoading(true)
 
-      // S'assurer que l'utilisateur est authentifié
+      // S'assurer que l'utilisateur est authentifie
       const isAuthenticated = await ensureAuthentication()
       if (!isAuthenticated) {
-        setError('Erreur d\'authentification. Impossible de charger les données.')
+        setError('Erreur d\'authentification. Impossible de charger les donnees.')
         return
       }
 
@@ -118,7 +100,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
         setProducts(productsResponse.data.data || productsResponse.data)
       }
     } catch (err) {
-      console.error('Erreur lors du chargement des données:', err)
+      console.error('Erreur lors du chargement des donnees:', err)
 
       let errorMessage = 'Erreur de chargement'
       if (err instanceof Error) {
@@ -139,7 +121,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
     if (!orderId) return
 
     try {
-      // S'assurer que l'utilisateur est authentifié
+      // S'assurer que l'utilisateur est authentifie
       const isAuthenticated = await ensureAuthentication()
       if (!isAuthenticated) {
         setError('Erreur d\'authentification. Impossible de charger la commande.')
@@ -150,7 +132,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
       if (response.success && response.data) {
         const order = response.data
         setFormData({
-          type: 'ORDER',
+          type: 'ORDER' as const,
           clientId: order.clientId,
           orderDate: new Date().toISOString().split('T')[0],
           validUntil: '',
@@ -177,14 +159,14 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
   }
 
   const addItem = () => {
-    // @ts-ignore - Nous initialisons avec un objet partiel, les valeurs manquantes seront calculées
+    // @ts-ignore - Nous initialisons avec un objet partiel, les valeurs manquantes seront calculees
     setItems([...items, {
       id: '',
       orderId: '',
       productId: '',
       quantity: 1,
       unitPrice: 0,
-      vatRate: 19, // TVA algérienne
+      vatRate: 19, // TVA algerienne
       discount: 0,
       totalHT: 0,
       totalVAT: 0,
@@ -202,7 +184,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
     const newItems = [...items]
     newItems[index] = { ...newItems[index], [field]: value }
     
-    // Si on change le produit, mettre à jour le prix
+    // Si on change le produit, mettre a jour le prix
     if (field === 'productId') {
       const product = products.find(p => p.id === value)
       if (product) {
@@ -238,7 +220,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
     e.preventDefault()
 
     if (!formData.clientId) {
-      setError('Veuillez sélectionner un client')
+      setError('Veuillez selectionner un client')
       return
     }
 
@@ -255,49 +237,58 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
       setSaving(true)
       setError(null)
 
-      // S'assurer que l'utilisateur est authentifié
+      // S'assurer que l'utilisateur est authentifie
       const isAuthenticated = await ensureAuthentication()
       if (!isAuthenticated) {
         setError('Erreur d\'authentification. Veuillez vous connecter.')
         return
       }
 
-      // @ts-ignore - Nous utilisons un type partiel pour la création/mise à jour
+      // @ts-ignore - Nous utilisons un type partiel pour la creation/mise a jour
       const orderData = {
         ...formData,
+        type: formType as 'QUOTE' | 'ORDER',
         items: validItems.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
-          vatRate: item.vatRate || 19, // TVA algérienne 19%
+          vatRate: item.vatRate || 19, // TVA algerienne 19%
           discount: item.discount || 0,
         }))
       }
 
-      console.log(`💾 ${isEditing ? 'Modification' : 'Création'} de la commande...`)
+      console.log(`[orders] ${isEditing ? 'Modification' : 'Creation'} de la commande...`)
 
       if (isEditing && orderId) {
-        // @ts-ignore - Nous utilisons un type partiel pour la mise à jour
+        // @ts-ignore - Nous utilisons un type partiel pour la mise a jour
         const response = await api.updateOrder(orderId, orderData)
-        console.log('✅ Commande modifiée avec succès:', response)
+        if (!response.success) {
+          setError(response.message || 'Erreur lors de la mise a jour de la commande')
+          return
+        }
+        console.log('[orders] Commande modifiee avec succes:', response)
       } else {
-        // @ts-ignore - Nous utilisons un type partiel pour la création
+        // @ts-ignore - Nous utilisons un type partiel pour la creation
         const response = await api.createOrder(orderData)
-        console.log('✅ Commande créée avec succès:', response)
+        if (!response.success) {
+          setError(response.message || `Erreur lors de la creation du ${isQuoteMode ? 'devis' : 'commande'}`)
+          return
+        }
+        console.log(`[orders] ${isQuoteMode ? 'Devis' : 'Commande'} cree(e) avec succes:`, response)
       }
 
-      router.push('/orders')
+      router.push(isQuoteMode ? '/orders?tab=quotes' : '/orders')
     } catch (err) {
-      console.error('❌ Erreur lors de la sauvegarde:', err)
+      console.error('[orders] Erreur lors de la sauvegarde:', err)
 
       let errorMessage = 'Erreur de sauvegarde'
       if (err instanceof Error) {
         if (err.message.includes('401')) {
           errorMessage = 'Erreur d\'authentification. Veuillez vous reconnecter.'
         } else if (err.message.includes('400')) {
-          errorMessage = 'Données invalides. Vérifiez les champs obligatoires.'
+          errorMessage = 'Donnees invalides. Verifiez les champs obligatoires.'
         } else if (err.message.includes('500')) {
-          errorMessage = 'Erreur serveur. Veuillez réessayer plus tard.'
+          errorMessage = 'Erreur serveur. Veuillez reessayer plus tard.'
         } else {
           errorMessage = err.message
         }
@@ -310,17 +301,6 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
   }
 
   const totals = calculateTotals()
-
-  const actions = (
-    <div className="flex space-x-2">
-      <Link href="/orders">
-        <Button variant="outline" size="sm">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Retour
-        </Button>
-      </Link>
-    </div>
-  )
 
   if (loading) {
     return (
@@ -335,11 +315,11 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
 
   return (
     <MainLayout 
-      title={isEditing ? 'Modifier la commande' : 'Nouvelle commande'}
-      subtitle={isEditing ? `Modification de la commande ${orderId}` : 'Créer une nouvelle commande ou devis'}
-      actions={actions}
+      title={isEditing ? `Modifier le ${isQuoteMode ? 'devis' : 'commande'}` : `Nouveau ${isQuoteMode ? 'devis' : 'commande'}`}
+      subtitle={isEditing ? `Modification du ${isQuoteMode ? 'devis' : 'commande'} ${orderId}` : `Creer un nouveau ${isQuoteMode ? 'devis' : 'commande'}`}
     >
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="mx-auto max-w-4xl">
+        <form onSubmit={handleSubmit} className="space-y-8">
         {/* Message d'erreur */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -347,26 +327,39 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
           </div>
         )}
 
-        {/* Informations générales */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="text-lg font-medium">Informations générales</h3>
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex flex-wrap justify-end gap-3">
+            <Link href="/orders">
+              <Button type="button" variant="outline" disabled={saving}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Retour
+              </Button>
+            </Link>
+            <Button type="submit" disabled={saving}>
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Sauvegarde...' : (isEditing ? 'Modifier' : 'Creer')}
+            </Button>
           </div>
-          <div className="card-content">
+        </div>
+
+        {/* Informations generales */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-medium">Informations generales</h3>
+          </div>
+          <div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Type *
                 </label>
-                <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as 'QUOTE' | 'ORDER' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="QUOTE">Devis</option>
-                  <option value="ORDER">Commande</option>
-                </select>
+                <input
+                  type="text"
+                  value={isQuoteMode ? 'Devis' : 'Commande'}
+                  readOnly
+                  aria-readonly="true"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 cursor-not-allowed"
+                />
               </div>
 
               <div>
@@ -379,7 +372,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
-                  <option value="">Sélectionner un client</option>
+                      <option value="">Selectionner un client</option>
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.type === 'COMPANY' 
@@ -404,7 +397,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
                 />
               </div>
 
-              {formData.type === 'QUOTE' && (
+              {isQuoteMode && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Valide jusqu'au
@@ -434,8 +427,8 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
         </div>
 
         {/* Articles */}
-        <div className="card">
-          <div className="card-header">
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="mb-4">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-medium">Articles</h3>
               <Button type="button" variant="outline" size="sm" onClick={addItem}>
@@ -444,7 +437,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
               </Button>
             </div>
           </div>
-          <div className="card-content">
+          <div>
             <div className="space-y-4">
               {items.map((item, index) => (
                 <div key={index} className="grid grid-cols-12 gap-4 items-end p-4 border border-gray-200 rounded-lg">
@@ -458,7 +451,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     >
-                      <option value="">Sélectionner un produit</option>
+                      <option value="">Selectionner un produit</option>
                       {products.map((product) => (
                         <option key={product.id} value={product.id}>
                           {product.name} - {new Intl.NumberFormat('fr-DZ', {
@@ -473,7 +466,7 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
 
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Quantité *
+                      Quantite *
                     </label>
                     <input
                       type="number"
@@ -581,11 +574,11 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
         </div>
 
         {/* Notes */}
-        <div className="card">
-          <div className="card-header">
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="mb-4">
             <h3 className="text-lg font-medium">Notes</h3>
           </div>
-          <div className="card-content">
+          <div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -616,24 +609,8 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
           </div>
         </div>
 
-        {/* Boutons d'action */}
-        <div className="flex justify-end space-x-4 pt-6 border-t">
-          <Link href="/orders">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Retour
-            </Button>
-          </Link>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={saving}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Sauvegarde...' : (isEditing ? 'Modifier' : 'Créer')}
-          </Button>
-        </div>
-      </form>
+        </form>
+      </div>
     </MainLayout>
   )
 }

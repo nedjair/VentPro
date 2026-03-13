@@ -1,3 +1,4 @@
+import { Product } from '@gestion/database'
 import { prisma } from '../lib/database'
 import { logger } from '../utils/logger'
 

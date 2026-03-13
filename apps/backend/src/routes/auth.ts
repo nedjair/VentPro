@@ -1,22 +1,29 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { AuthenticatedRequest } from '../types/common'
+import { FastifyInstance, FastifyRequest, FastifyReply, FastifyRequest } from 'fastify'
 import { logger } from '../utils/logger'
 import { AuthService } from '../services/auth.service'
-
-interface LoginRequest extends FastifyRequest {
-  body: {
-    email: string
-    password: string
-  }
-}
 
 // Instance du service d'authentification
 const authService = new AuthService()
 
+// Schémas pour la validation
+const loginSchema = {
+  body: {
+    type: 'object',
+    required: ['email', 'password'],
+    properties: {
+      email: { type: 'string', format: 'email' },
+      password: { type: 'string', minLength: 1 }
+    }
+  }
+}
+
 export default async function authRoutes(server: FastifyInstance) {
   // Connexion avec PostgreSQL
-  // @ts-ignore - Problème de compatibilité de types avec Fastify
-  server.post('/login', async (request: LoginRequest, reply: FastifyReply) => {
+  server.post('/login', {
+    schema: loginSchema
+  }, async (request: FastifyRequest<{
+    Body: { email: string; password: string }
+  }>, reply: FastifyReply) => {
     try {
       const { email, password } = request.body
 
@@ -193,10 +200,10 @@ export default async function authRoutes(server: FastifyInstance) {
 
   // Profil utilisateur avec PostgreSQL
   server.get('/profile', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    preHandler: [(server as any).authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { userId } = request.user
+      const { userId } = (request as any).user
 
       // Récupérer l'utilisateur depuis PostgreSQL
       const user = await authService.getUserById(userId)
@@ -229,11 +236,11 @@ export default async function authRoutes(server: FastifyInstance) {
 
   // Déconnexion
   server.post('/logout', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    preHandler: [(server as any).authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       // Dans une vraie application, on invaliderait le token
-      logger.info('User logged out', { userId: request.user.userId })
+      logger.info('User logged out', { userId: (request as any).user.userId })
 
       return reply.send({
         success: true,

@@ -3,7 +3,7 @@
  * Source de vérité unique basée sur la table products
  */
 
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import { FastifyInstance, FastifyRequest, FastifyReply, FastifyRequest } from 'fastify'
 import { UnifiedStockAlertsService } from '../services/unified-stock-alerts.service'
 import { logger } from '../utils/logger'
 
@@ -48,7 +48,7 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { companyId } = request.user
 
@@ -120,7 +120,7 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { companyId } = request.user
       const query = request.query as any
@@ -185,7 +185,7 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { companyId } = request.user
 
@@ -233,7 +233,7 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { companyId } = request.user
 
@@ -274,7 +274,7 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { companyId } = request.user
 
@@ -314,7 +314,7 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
       tags: ['Unified Stock Alerts'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { companyId } = request.user
 

@@ -57,7 +57,7 @@ export function useUnifiedStock(): UnifiedStockData {
 
       console.log('🔄 Chargement des produits avec données unifiées...')
       
-      const response = await api.get('/api/v1/products?limit=1000')
+      const response = await api.get('/api/v1/products?limit=100')
       
       if (response.data.success) {
         const productsData = response.data.data?.data || response.data.data || []

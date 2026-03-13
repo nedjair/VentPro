@@ -1,29 +1,52 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
-import { api, Product } from '@/lib/api'
-import { ArrowLeft, Save, Package } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { CategoryFormDisplay } from '@/components/ui/category-display'
+import { toast } from '@/components/ui/toast'
+import { api, Category, CategoryWriteInput, ProductWriteInput } from '@/lib/api'
+import { ensureApiAuthentication } from '@/lib/auth-utils'
+import { AlertTriangle, ArrowLeft, Boxes, Package, Plus, Save, Settings2 } from 'lucide-react'
 
 interface ProductFormProps {
   mode: 'create' | 'edit'
   productId?: string
 }
 
+interface ProductFormData extends ProductWriteInput {
+  supplierId: string
+  categoryId: string
+  stock: number
+  maxStock: number | null
+}
+
+interface CategoryQuickCreateFormData extends CategoryWriteInput {}
+
+const nativeSelectClass =
+  'flex h-11 w-full rounded-2xl border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+
 export function ProductFormPage({ mode, productId }: ProductFormProps) {
   const router = useRouter()
-  const [formData, setFormData] = useState({
+  const formRef = useRef<HTMLFormElement>(null)
+  const [formData, setFormData] = useState<ProductFormData>({
     name: '',
-    reference: '',
+    sku: '',
+    barcode: '',
     description: '',
-    category: '',
+    categoryId: '',
     supplierId: '',
     price: 0,
     costPrice: 0,
     stock: 0,
     minStock: 0,
+    maxStock: null,
     unit: 'pièce',
     isActive: true,
     trackStock: true,
@@ -33,37 +56,27 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [suppliers, setSuppliers] = useState<any[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loadingSuppliers, setLoadingSuppliers] = useState(false)
+  const [loadingCategories, setLoadingCategories] = useState(false)
+  const [showCategoryQuickCreate, setShowCategoryQuickCreate] = useState(false)
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [categoryQuickCreateError, setCategoryQuickCreateError] = useState<string | null>(null)
+  const [categoryQuickCreateForm, setCategoryQuickCreateForm] = useState<CategoryQuickCreateFormData>({
+    name: '',
+    description: '',
+  })
   const [suppliersError, setSuppliersError] = useState<string | null>(null)
+  const [categoriesError, setCategoriesError] = useState<string | null>(null)
 
   useEffect(() => {
     console.log('🚀 [ProductForm] Initialisation du composant...')
     loadSuppliers()
+    loadCategories()
     if (mode === 'edit' && productId) {
       loadProduct()
     }
   }, [mode, productId])
-
-  // Fonction pour tester la connectivité du backend
-  const testBackendConnectivity = async (): Promise<boolean> => {
-    try {
-      console.log('🔗 [ProductForm] Test de connectivité backend...')
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        signal: AbortSignal.timeout(5000) // 5 secondes timeout
-      })
-
-      const isConnected = response.ok
-      console.log(`${isConnected ? '✅' : '❌'} [ProductForm] Backend ${isConnected ? 'accessible' : 'inaccessible'}`)
-      return isConnected
-    } catch (error) {
-      console.error('❌ [ProductForm] Erreur de connectivité backend:', error)
-      return false
-    }
-  }
 
   const loadSuppliers = async () => {
     try {
@@ -97,6 +110,10 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
           // Format direct: { success: true, data: [...] }
           suppliersData = response.data
           console.log('📋 [ProductForm] Format de réponse: tableau direct')
+        } else if (response.data.data?.data && Array.isArray(response.data.data.data)) {
+          // Format paginé avec double data: { success: true, data: { data: { data: [...] } } }
+          suppliersData = response.data.data.data
+          console.log('📋 [ProductForm] Format de réponse: paginé avec data.data.data')
         } else if (response.data.data && Array.isArray(response.data.data)) {
           // Format paginé: { success: true, data: { data: [...], total: X } }
           suppliersData = response.data.data
@@ -150,51 +167,62 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
     }
   }
 
-  // Fonction d'authentification automatique
-  const ensureAuthentication = async (): Promise<boolean> => {
-    // Vérifier si un token existe déjà
-    if (typeof window !== 'undefined') {
-      const existingTokens = localStorage.getItem('auth-tokens')
-      if (existingTokens) {
-        try {
-          const tokens = JSON.parse(existingTokens)
-          if (tokens.accessToken) {
-            api.setAuthToken(tokens.accessToken)
-            console.log('✅ Token existant trouvé et configuré')
-            return true
-          }
-        } catch (error) {
-          console.log('⚠️ Token existant invalide, nouvelle connexion nécessaire')
-        }
-      }
-    }
-    
+  const sortCategoriesByName = (items: Category[]) => {
+    return [...items].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' }))
+  }
+
+  const resetQuickCreateCategoryForm = () => {
+    setCategoryQuickCreateForm({ name: '', description: '' })
+    setCategoryQuickCreateError(null)
+  }
+
+  const loadCategories = async (): Promise<Category[]> => {
     try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gctpe.dz',
-        password: 'admin123'
-      })
-      
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-        
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-        
-        console.log('✅ Connexion automatique réussie')
-        return true
+      setLoadingCategories(true)
+      setCategoriesError(null)
+
+      const isAuthenticated = await ensureAuthentication()
+      if (!isAuthenticated) {
+        setCategoriesError('Erreur d\'authentification. Veuillez vous reconnecter.')
+        return []
       }
-    } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
+
+      const response = await api.getCategories()
+
+      if (response.success && response.data) {
+        const categoriesData = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray((response.data as any)?.data)
+            ? (response.data as any).data
+            : []
+
+        const sortedCategories = sortCategoriesByName(categoriesData)
+        setCategories(sortedCategories)
+        if (categoriesData.length === 0) {
+          setCategoriesError('Aucune catégorie disponible. Vous pouvez laisser le produit non catégorisé.')
+        }
+        return sortedCategories
+      } else {
+        setCategories([])
+        setCategoriesError(response.message || 'Erreur lors du chargement des catégories')
+        return []
+      }
+    } catch (error: any) {
+      console.error('❌ [ProductForm] Erreur lors du chargement des catégories:', error)
+      setCategories([])
+      setCategoriesError(error?.message || 'Erreur lors du chargement des catégories')
+      return []
+    } finally {
+      setLoadingCategories(false)
     }
-    
-    return false
+  }
+
+  const ensureAuthentication = (): Promise<boolean> => ensureApiAuthentication()
+
+  const handleSaveButtonClick = () => {
+    // Le bouton de l'en-tête est rendu hors du <form>.
+    // requestSubmit() relance la validation native puis le onSubmit React.
+    formRef.current?.requestSubmit()
   }
 
   const loadProduct = async () => {
@@ -215,16 +243,21 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
       
       if (response.success && response.data) {
         const product = response.data
+        const resolvedCategoryId = product.categoryId
+          || (typeof product.category === 'object' ? (product.category as any)?.id || '' : '')
+
         setFormData({
           name: product.name || '',
-          reference: product.reference || '',
+          sku: product.sku || product.reference || '',
+          barcode: product.barcode || '',
           description: product.description || '',
-          category: typeof product.category === 'object' ? (product.category as any)?.name || '' : product.category || '',
+          categoryId: resolvedCategoryId,
           supplierId: product.supplierId || '',
           price: product.price || 0,
           costPrice: product.costPrice || 0,
-          stock: product.stock || 0,
+          stock: product.stock || product.stockQuantity || 0,
           minStock: product.minStock || 0,
+          maxStock: product.maxStock ?? null,
           unit: product.unit || 'pièce',
           isActive: product.isActive !== false,
           trackStock: product.trackStock !== false,
@@ -246,23 +279,64 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
     if (!formData.name.trim()) {
       return 'Le nom du produit est obligatoire'
     }
-    
+
+    // Validation de la référence produit (SKU)
+    if (formData.sku && formData.sku.trim()) {
+      if (formData.sku.length < 2) {
+        return 'La référence produit doit contenir au moins 2 caractères'
+      }
+      if (formData.sku.length > 50) {
+        return 'La référence produit ne peut pas dépasser 50 caractères'
+      }
+      // Vérifier que la référence ne contient que des caractères alphanumériques et des tirets/underscores
+      if (!/^[a-zA-Z0-9_-]+$/.test(formData.sku)) {
+        return 'La référence produit ne peut contenir que des lettres, chiffres, tirets et underscores'
+      }
+    }
+
+    // Validation du code-barres (numérique uniquement)
+    if (formData.barcode && formData.barcode.trim()) {
+      if (formData.barcode.length < 8) {
+        return 'Le code-barres doit contenir au moins 8 chiffres'
+      }
+      if (formData.barcode.length > 20) {
+        return 'Le code-barres ne peut pas dépasser 20 chiffres'
+      }
+      // Vérifier que le code-barres ne contient que des chiffres (format standardisé)
+      if (!/^\d+$/.test(formData.barcode)) {
+        return 'Le code-barres ne peut contenir que des chiffres (format EAN-13, UPC, etc.)'
+      }
+      // Validation des formats courants
+      const length = formData.barcode.length
+      if (![8, 12, 13, 14].includes(length)) {
+        return 'Le code-barres doit avoir 8, 12, 13 ou 14 chiffres (formats standards)'
+      }
+    }
+
     if (formData.price < 0) {
       return 'Le prix doit être positif'
     }
-    
+
     if (formData.costPrice < 0) {
       return 'Le prix d\'achat doit être positif'
     }
-    
+
     if (formData.stock < 0) {
       return 'Le stock doit être positif'
     }
-    
+
     if (formData.minStock < 0) {
       return 'Le stock minimum doit être positif'
     }
-    
+
+    if (formData.maxStock !== null && formData.maxStock < 0) {
+      return 'Le stock maximum doit être positif'
+    }
+
+    if (formData.maxStock !== null && formData.maxStock < formData.minStock) {
+      return 'Le stock maximum doit être supérieur ou égal au stock minimum'
+    }
+
     return null
   }
 
@@ -287,12 +361,17 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
       }
       
       console.log(`💾 ${mode === 'create' ? 'Création' : 'Modification'} du produit...`)
+      const payload: ProductWriteInput = {
+        ...formData,
+        categoryId: formData.categoryId || undefined,
+        maxStock: formData.maxStock ?? undefined,
+      }
       
       if (mode === 'create') {
-        const response = await api.createProduct(formData)
+        const response = await api.createProduct(payload)
         console.log('✅ Produit créé avec succès:', response)
       } else if (productId) {
-        const response = await api.updateProduct(productId, formData)
+        const response = await api.updateProduct(productId, payload)
         console.log('✅ Produit modifié avec succès:', response)
       }
       
@@ -308,7 +387,13 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
         if (err.message.includes('401')) {
           errorMessage = 'Erreur d\'authentification. Veuillez vous reconnecter.'
         } else if (err.message.includes('400')) {
-          errorMessage = 'Données invalides. Vérifiez les champs obligatoires.'
+          // On préserve le message métier renvoyé par le backend quand il est
+          // disponible (ex: SKU déjà existant) au lieu d'afficher un message
+          // générique peu utile pour le diagnostic utilisateur.
+          const backendMessage = err.message.replace(/^HTTP 400:\s*/, '').trim()
+          errorMessage = backendMessage && backendMessage !== err.message
+            ? backendMessage
+            : 'Données invalides. Vérifiez les champs obligatoires.'
         } else if (err.message.includes('409')) {
           errorMessage = 'Un produit avec cette référence existe déjà.'
         } else if (err.message.includes('500')) {
@@ -335,387 +420,531 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
     }))
   }
 
-  const actions = (
-    <div className="flex space-x-2">
-      <Button variant="outline" onClick={handleCancel} disabled={saving}>
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Retour
-      </Button>
-      <Button onClick={handleSubmit} disabled={saving}>
-        <Save className="h-4 w-4 mr-2" />
-        {saving ? 'Sauvegarde...' : 'Sauvegarder'}
-      </Button>
-    </div>
-  )
+  const handleQuickCreateCategory = async () => {
+    const trimmedName = categoryQuickCreateForm.name.trim()
+    if (!trimmedName) {
+      setCategoryQuickCreateError('Le nom de la catégorie est requis.')
+      return
+    }
+
+    try {
+      setCreatingCategory(true)
+      setCategoryQuickCreateError(null)
+
+      const isAuthenticated = await ensureAuthentication()
+      if (!isAuthenticated) {
+        setCategoryQuickCreateError('Erreur d\'authentification. Veuillez vous reconnecter.')
+        return
+      }
+
+      const response = await api.createCategory({
+        name: trimmedName,
+        description: categoryQuickCreateForm.description?.trim() || undefined,
+      })
+
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Erreur lors de la création de la catégorie')
+      }
+
+      const createdCategory = response.data
+      const refreshedCategories = await loadCategories()
+      const selectedCategory = refreshedCategories.find((category) => category.id === createdCategory.id) || createdCategory
+
+      setCategories((currentCategories) => {
+        const categoryMap = new Map(currentCategories.map((category) => [category.id, category]))
+        categoryMap.set(selectedCategory.id, selectedCategory)
+        return sortCategoriesByName(Array.from(categoryMap.values()))
+      })
+      handleInputChange('categoryId', selectedCategory.id)
+      setShowCategoryQuickCreate(false)
+      resetQuickCreateCategoryForm()
+      setCategoriesError(null)
+      toast.success(`Catégorie « ${selectedCategory.name} » créée et sélectionnée.`)
+    } catch (error: any) {
+      const message = error?.message || 'Erreur lors de la création de la catégorie'
+      setCategoryQuickCreateError(message)
+      toast.error(message)
+    } finally {
+      setCreatingCategory(false)
+    }
+  }
+
+  const actions = mode === 'create'
+    ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={handleCancel} disabled={saving}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour
+          </Button>
+          <Button type="button" onClick={handleSaveButtonClick} disabled={saving}>
+            <Save className="mr-2 h-4 w-4" />
+            {saving ? 'Sauvegarde...' : 'Créer le produit'}
+          </Button>
+        </div>
+      )
+    : undefined
 
   if (loading) {
     return (
       <MainLayout title="Chargement..." actions={actions}>
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3">Chargement du produit...</span>
-        </div>
+        <Card className="mx-auto max-w-3xl">
+          <CardContent className="flex items-center justify-center gap-3 py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+            <span className="text-sm text-muted-foreground">Chargement du produit...</span>
+          </CardContent>
+        </Card>
       </MainLayout>
     )
   }
 
   return (
-    <MainLayout 
+    <MainLayout
       title={mode === 'create' ? 'Nouveau produit' : 'Modifier le produit'}
-      subtitle={mode === 'edit' ? formData.name : 'Créer un nouveau produit'}
+      subtitle={mode === 'edit' ? formData.name || 'Mettre à jour le produit' : 'Créer un nouveau produit'}
       actions={actions}
     >
-      <div className="max-w-4xl mx-auto">
-        {/* Message d'erreur */}
+      <div className="mx-auto max-w-5xl space-y-6">
         {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
+          <Card className="border-red-200 bg-red-50/80 shadow-none">
+            <CardContent className="flex items-start gap-3 p-5">
+              <AlertTriangle className="mt-0.5 h-5 w-5 text-red-500" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-red-700">Erreur</p>
+                <p className="text-sm text-red-600">{error}</p>
               </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Erreur</h3>
-                <div className="mt-2 text-sm text-red-700">
-                  <p>{error}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Formulaire */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="card">
-            <div className="card-header">
-              <div className="flex items-center">
-                <Package className="h-5 w-5 text-blue-600 mr-2" />
-                <h3 className="text-lg font-medium text-gray-900">Informations générales</h3>
-              </div>
-            </div>
-            <div className="card-content space-y-4">
-              {/* Nom du produit */}
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                  Nom du produit <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ex: Ordinateur portable Dell"
-                  required
-                />
-              </div>
-
-              {/* Référence */}
-              <div>
-                <label htmlFor="reference" className="block text-sm font-medium text-gray-700 mb-2">
-                  Référence
-                </label>
-                <input
-                  type="text"
-                  id="reference"
-                  value={formData.reference}
-                  onChange={(e) => handleInputChange('reference', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ex: DELL-LAT-5520"
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Description détaillée du produit..."
-                />
-              </div>
-
-              {/* Catégorie */}
-              <div>
-                <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
-                  Catégorie
-                </label>
-                <input
-                  type="text"
-                  id="category"
-                  value={formData.category}
-                  onChange={(e) => handleInputChange('category', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ex: Informatique, Mobilier, Consommables..."
-                />
-              </div>
-
-              {/* Fournisseur */}
-              <div>
-                <label htmlFor="supplierId" className="block text-sm font-medium text-gray-700 mb-2">
-                  Fournisseur
-                  {loadingSuppliers && (
-                    <span className="ml-2 text-xs text-blue-600">
-                      <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1"></span>
-                      Chargement...
-                    </span>
-                  )}
-                  {!loadingSuppliers && suppliers.length > 0 && (
-                    <span className="ml-2 text-xs text-green-600">
-                      ({suppliers.length} fournisseur{suppliers.length > 1 ? 's' : ''} disponible{suppliers.length > 1 ? 's' : ''})
-                    </span>
-                  )}
-                  {!loadingSuppliers && suppliers.length === 0 && !suppliersError && (
-                    <span className="ml-2 text-xs text-orange-600">
-                      (Aucun fournisseur disponible)
-                    </span>
-                  )}
-                </label>
-
-                <select
-                  id="supplierId"
-                  value={formData.supplierId}
-                  onChange={(e) => handleInputChange('supplierId', e.target.value)}
-                  disabled={loadingSuppliers}
-                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    loadingSuppliers ? 'bg-gray-100 cursor-not-allowed' : ''
-                  }`}
-                >
-                  <option value="">
-                    {loadingSuppliers
-                      ? 'Chargement des fournisseurs...'
-                      : suppliers.length === 0
-                        ? 'Aucun fournisseur disponible'
-                        : 'Sélectionner un fournisseur'
-                    }
-                  </option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                      {supplier.isPreferred && ' ⭐'}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Messages d'erreur et d'aide */}
-                {suppliersError && (
-                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                    <div className="flex items-center">
-                      <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      {suppliersError}
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                      <Package className="h-5 w-5" />
                     </div>
-                    <button
-                      type="button"
-                      onClick={loadSuppliers}
-                      className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
-                    >
-                      Réessayer le chargement
-                    </button>
+                    <CardTitle>Informations générales</CardTitle>
                   </div>
-                )}
-
-                {!loadingSuppliers && !suppliersError && suppliers.length === 0 && (
-                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-                    <div className="flex items-center">
-                      <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                      </svg>
-                      💡 Astuce : Créez d'abord des fournisseurs dans la section "Fournisseurs" pour pouvoir les associer à vos produits.
-                    </div>
-                    <a
-                      href="/suppliers/new"
-                      className="mt-2 inline-block text-xs text-blue-600 hover:text-blue-800 underline"
-                    >
-                      Créer un nouveau fournisseur
-                    </a>
-                  </div>
-                )}
-
-
+                  <CardDescription>
+                    Renseignez l’identification du produit et les informations visibles dans le catalogue.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline">{mode === 'create' ? 'Création' : 'Modification'}</Badge>
               </div>
-            </div>
-          </div>
-
-          {/* Prix et coûts */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="text-lg font-medium text-gray-900">Prix et coûts</h3>
-            </div>
-            <div className="card-content">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Prix de vente */}
-                <div>
-                  <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-2">
-                    Prix de vente (DZD) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    id="price"
-                    value={formData.price}
-                    onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
-                    min="0"
-                    step="0.01"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="0.00"
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="name">Nom du produit *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    placeholder="Ex: Ordinateur portable Dell"
                     required
                   />
                 </div>
 
-                {/* Prix d'achat */}
+                <div className="space-y-2">
+                  <Label htmlFor="sku">Référence produit (SKU)</Label>
+                  <Input
+                    id="sku"
+                    value={formData.sku}
+                    onChange={(e) => handleInputChange('sku', e.target.value)}
+                    placeholder="Ex: PROD-LAPTOP-HP"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Lettres, chiffres, tirets et underscores autorisés.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="barcode">Code-barres</Label>
+                  <Input
+                    id="barcode"
+                    value={formData.barcode}
+                    onChange={(e) => handleInputChange('barcode', e.target.value)}
+                    inputMode="numeric"
+                    placeholder="Ex: 3760123456789"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Formats standards pris en charge : 8, 12, 13 ou 14 chiffres.
+                  </p>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Description détaillée du produit..."
+                    rows={4}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex min-h-10 flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label htmlFor="categoryId">Catégorie</Label>
+                      {loadingCategories ? (
+                        <Badge variant="outline">Chargement...</Badge>
+                      ) : categories.length > 0 ? (
+                        <Badge variant="secondary">{categories.length} disponible{categories.length > 1 ? 's' : ''}</Badge>
+                      ) : (
+                        <Badge variant="outline">Optionnel</Badge>
+                      )}
+                      <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={showCategoryQuickCreate ? 'Masquer la création de catégorie' : 'Créer une catégorie'}
+                      aria-expanded={showCategoryQuickCreate}
+                      title={showCategoryQuickCreate ? 'Masquer la création de catégorie' : 'Créer une catégorie'}
+                      className="h-8 w-8 rounded-full px-0 text-base font-semibold leading-none"
+                      onClick={() => {
+                        setShowCategoryQuickCreate((current) => !current)
+                        if (showCategoryQuickCreate) {
+                          resetQuickCreateCategoryForm()
+                        }
+                      }}
+                    >
+                      +
+                    </Button>
+                    </div>
+                  </div>
+                  <select
+                    id="categoryId"
+                    value={formData.categoryId}
+                    onChange={(e) => handleInputChange('categoryId', e.target.value)}
+                    disabled={loadingCategories}
+                    className={nativeSelectClass}
+                  >
+                    <option value="">
+                      {loadingCategories
+                        ? 'Chargement des catégories...'
+                        : categories.length === 0
+                          ? 'Aucune catégorie disponible'
+                          : 'Sélectionner une catégorie'}
+                    </option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.categoryId ? (
+                    <CategoryFormDisplay
+                      category={categories.find((category) => category.id === formData.categoryId) || {
+                        id: formData.categoryId,
+                        name: 'Catégorie sélectionnée',
+                      }}
+                    />
+                  ) : null}
+                  {showCategoryQuickCreate ? (
+                    <Card className="border border-dashed border-primary/25 bg-primary/5 shadow-none">
+                      <CardContent className="space-y-4 p-4">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-foreground">Créer une catégorie sans quitter le produit</p>
+                          <p className="text-xs text-muted-foreground">
+                            La nouvelle catégorie sera enregistrée, ajoutée à la liste puis pré-sélectionnée automatiquement.
+                          </p>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2 md:col-span-1">
+                              <Label htmlFor="quickCategoryName">Nom de la catégorie *</Label>
+                              <Input
+                                id="quickCategoryName"
+                                value={categoryQuickCreateForm.name}
+                                onChange={(event) => setCategoryQuickCreateForm((current) => ({
+                                  ...current,
+                                  name: event.target.value,
+                                }))}
+                                placeholder="Ex. Accessoires réseau"
+                                maxLength={120}
+                                required
+                              />
+                            </div>
+
+                            <div className="space-y-2 md:col-span-1">
+                              <Label htmlFor="quickCategoryDescription">Description</Label>
+                              <Textarea
+                                id="quickCategoryDescription"
+                                value={categoryQuickCreateForm.description}
+                                onChange={(event) => setCategoryQuickCreateForm((current) => ({
+                                  ...current,
+                                  description: event.target.value,
+                                }))}
+                                placeholder="Optionnel : précisez l'usage de cette catégorie"
+                                className="min-h-[88px]"
+                              />
+                            </div>
+                          </div>
+
+                          {categoryQuickCreateError ? (
+                            <p className="text-sm text-red-600">{categoryQuickCreateError}</p>
+                          ) : null}
+
+                          <div className="flex flex-wrap justify-end gap-3">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => {
+                                setShowCategoryQuickCreate(false)
+                                resetQuickCreateCategoryForm()
+                              }}
+                              disabled={creatingCategory}
+                            >
+                              Annuler
+                            </Button>
+                            <Button type="button" loading={creatingCategory} disabled={creatingCategory} onClick={handleQuickCreateCategory}>
+                              <Plus className="h-4 w-4" />
+                              Créer la catégorie
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : null}
+                  {categoriesError ? (
+                    <p className="text-xs text-red-600">{categoriesError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      La catégorie sélectionnée sera persistée et réaffichée sur les écrans Voir et Modifier.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex min-h-10 flex-wrap items-center gap-2">
+                    <Label htmlFor="supplierId">Fournisseur</Label>
+                    {loadingSuppliers ? (
+                      <Badge variant="outline">Chargement...</Badge>
+                    ) : suppliers.length > 0 ? (
+                      <Badge variant="secondary">{suppliers.length} disponible{suppliers.length > 1 ? 's' : ''}</Badge>
+                    ) : (
+                      <Badge variant="outline">Optionnel</Badge>
+                    )}
+                  </div>
+                  <select
+                    id="supplierId"
+                    value={formData.supplierId}
+                    onChange={(e) => handleInputChange('supplierId', e.target.value)}
+                    disabled={loadingSuppliers}
+                    className={nativeSelectClass}
+                  >
+                    <option value="">
+                      {loadingSuppliers
+                        ? 'Chargement des fournisseurs...'
+                        : suppliers.length === 0
+                          ? 'Aucun fournisseur disponible'
+                          : 'Sélectionner un fournisseur'}
+                    </option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                        {supplier.isPreferred ? ' ⭐' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {suppliersError ? (
+                    <p className="text-xs text-red-600">{suppliersError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Association facultative au fournisseur principal du produit.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <div className="rounded-2xl bg-emerald-500/10 p-2 text-emerald-600">
+                  <Boxes className="h-5 w-5" />
+                </div>
                 <div>
-                  <label htmlFor="costPrice" className="block text-sm font-medium text-gray-700 mb-2">
-                    Prix d'achat (DZD)
-                  </label>
-                  <input
+                  <CardTitle>Prix et coûts</CardTitle>
+                  <CardDescription>
+                    Définissez le prix de vente, le coût d’achat et les données de stock initiales.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="price">Prix de vente (DZD) *</Label>
+                  <Input
+                    id="price"
                     type="number"
-                    id="costPrice"
-                    value={formData.costPrice}
-                    onChange={(e) => handleInputChange('costPrice', parseFloat(e.target.value) || 0)}
                     min="0"
                     step="0.01"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="0.00"
+                    value={formData.price}
+                    onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="costPrice">Prix d'achat (DZD)</Label>
+                  <Input
+                    id="costPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.costPrice}
+                    onChange={(e) => handleInputChange('costPrice', parseFloat(e.target.value) || 0)}
                   />
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* Stock et unités */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="text-lg font-medium text-gray-900">Gestion du stock</h3>
-            </div>
-            <div className="card-content space-y-4">
-              {/* Suivi du stock */}
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="trackStock"
-                  checked={formData.trackStock}
-                  onChange={(e) => handleInputChange('trackStock', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="trackStock" className="ml-2 block text-sm text-gray-900">
-                  Suivre le stock de ce produit
-                </label>
-              </div>
-
-              {formData.trackStock && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Stock actuel */}
-                  <div>
-                    <label htmlFor="stock" className="block text-sm font-medium text-gray-700 mb-2">
-                      Stock actuel
-                    </label>
-                    <input
-                      type="number"
-                      id="stock"
-                      value={formData.stock}
-                      onChange={(e) => handleInputChange('stock', parseInt(e.target.value) || 0)}
-                      min="0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="0"
-                    />
-                  </div>
-
-                  {/* Stock minimum */}
-                  <div>
-                    <label htmlFor="minStock" className="block text-sm font-medium text-gray-700 mb-2">
-                      Stock minimum
-                    </label>
-                    <input
-                      type="number"
-                      id="minStock"
-                      value={formData.minStock}
-                      onChange={(e) => handleInputChange('minStock', parseInt(e.target.value) || 0)}
-                      min="0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="0"
-                    />
-                  </div>
-
-                  {/* Unité */}
-                  <div>
-                    <label htmlFor="unit" className="block text-sm font-medium text-gray-700 mb-2">
-                      Unité
-                    </label>
-                    <select
-                      id="unit"
-                      value={formData.unit}
-                      onChange={(e) => handleInputChange('unit', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="pièce">Pièce</option>
-                      <option value="kg">Kilogramme</option>
-                      <option value="g">Gramme</option>
-                      <option value="l">Litre</option>
-                      <option value="ml">Millilitre</option>
-                      <option value="m">Mètre</option>
-                      <option value="cm">Centimètre</option>
-                      <option value="m²">Mètre carré</option>
-                      <option value="m³">Mètre cube</option>
-                      <option value="lot">Lot</option>
-                      <option value="boîte">Boîte</option>
-                      <option value="carton">Carton</option>
-                      <option value="palette">Palette</option>
-                    </select>
-                  </div>
+              <div className="mt-5 grid gap-5 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="stock">Stock actuel</Label>
+                  <Input
+                    id="stock"
+                    type="number"
+                    min="0"
+                    value={formData.stock}
+                    onChange={(e) => handleInputChange('stock', parseInt(e.target.value, 10) || 0)}
+                    disabled={!formData.trackStock}
+                  />
                 </div>
-              )}
 
-              {/* Autoriser les commandes en rupture */}
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="allowBackorder"
-                  checked={formData.allowBackorder}
-                  onChange={(e) => handleInputChange('allowBackorder', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="allowBackorder" className="ml-2 block text-sm text-gray-900">
-                  Autoriser les commandes même en rupture de stock
+                <div className="space-y-2">
+                  <Label htmlFor="minStock">Stock minimum</Label>
+                  <Input
+                    id="minStock"
+                    type="number"
+                    min="0"
+                    value={formData.minStock}
+                    onChange={(e) => handleInputChange('minStock', parseInt(e.target.value, 10) || 0)}
+                    disabled={!formData.trackStock}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="maxStock">Stock maximum</Label>
+                  <Input
+                    id="maxStock"
+                    type="number"
+                    min="0"
+                    value={formData.maxStock ?? ''}
+                    onChange={(e) => handleInputChange('maxStock', e.target.value === '' ? null : parseInt(e.target.value, 10) || 0)}
+                    disabled={!formData.trackStock}
+                    placeholder="Optionnel"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <div className="rounded-2xl bg-amber-500/10 p-2 text-amber-600">
+                  <Settings2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>Configuration</CardTitle>
+                  <CardDescription>
+                    Ajustez les options de stock et le comportement du produit dans les autres modules.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="unit">Unité</Label>
+                  <select
+                    id="unit"
+                    value={formData.unit}
+                    onChange={(e) => handleInputChange('unit', e.target.value)}
+                    className={nativeSelectClass}
+                  >
+                    <option value="pièce">Pièce</option>
+                    <option value="kg">Kilogramme</option>
+                    <option value="g">Gramme</option>
+                    <option value="l">Litre</option>
+                    <option value="ml">Millilitre</option>
+                    <option value="m">Mètre</option>
+                    <option value="cm">Centimètre</option>
+                    <option value="m²">Mètre carré</option>
+                    <option value="m³">Mètre cube</option>
+                    <option value="lot">Lot</option>
+                    <option value="boîte">Boîte</option>
+                    <option value="carton">Carton</option>
+                    <option value="palette">Palette</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex items-start gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
+                  <input
+                    type="checkbox"
+                    id="trackStock"
+                    checked={formData.trackStock}
+                    onChange={(e) => handleInputChange('trackStock', e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                  />
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium text-foreground">Suivre le stock de ce produit</span>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Active la gestion de quantité et le suivi des niveaux de stock.
+                    </p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
+                  <input
+                    type="checkbox"
+                    id="allowBackorder"
+                    checked={formData.allowBackorder}
+                    onChange={(e) => handleInputChange('allowBackorder', e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                  />
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium text-foreground">Autoriser les commandes en rupture</span>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Permet de commander le produit même si le stock disponible est insuffisant.
+                    </p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4 md:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="isActive"
+                    checked={formData.isActive}
+                    onChange={(e) => handleInputChange('isActive', e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                  />
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium text-foreground">Produit actif</span>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Le produit reste disponible dans les commandes, factures et listes de sélection.
+                    </p>
+                  </div>
                 </label>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          {/* Configuration */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="text-lg font-medium text-gray-900">Configuration</h3>
-            </div>
-            <div className="card-content">
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="isActive"
-                  checked={formData.isActive}
-                  onChange={(e) => handleInputChange('isActive', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="isActive" className="ml-2 block text-sm text-gray-900">
-                  Produit actif (visible dans les commandes et factures)
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Boutons d'action */}
-          <div className="flex justify-end space-x-4 pt-6">
+          <div className="flex flex-wrap justify-end gap-3 pb-2">
             <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
               Annuler
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? 'Sauvegarde...' : (mode === 'create' ? 'Créer le produit' : 'Sauvegarder les modifications')}
+              {saving ? 'Sauvegarde...' : mode === 'create' ? 'Créer le produit' : 'Enregistrer les modifications'}
             </Button>
           </div>
         </form>

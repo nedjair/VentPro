@@ -1,8 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { StockService } from '../services/stock.service'
 import { StockAlertService } from '../services/stock-alert.service'
-import { AuthenticatedRequest } from '@gestion/shared'
+import { UnifiedStockService } from '../services/unified-stock.service'
+// AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
+import { prisma } from '../lib/prisma'
 
 // Types pour la validation des données
 interface CreateStockMovementRequest {
@@ -32,12 +34,52 @@ interface StockMovementFiltersRequest {
   reference?: string
 }
 
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.companyId || user?.id || user?.userId
+}
+
 
 
 export default async function stockRoutes(server: FastifyInstance) {
+
+  // Route de test simple pour débugger
+  server.get('/test', {
+    preHandler: [(server as any).authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { companyId } = (request as any).user
+
+      const stockCount = await prisma.stock.count({
+        where: { companyId }
+      })
+
+      const stocks = await prisma.stock.findMany({
+        where: { companyId },
+        include: {
+          product: true,
+        },
+        take: 3,
+      })
+
+      return reply.send({
+        success: true,
+        message: 'Route de test Stock fonctionnelle',
+        data: {
+          count: stockCount,
+          samples: stocks
+        }
+      })
+    } catch (error: any) {
+      return reply.status(500).send({
+        success: false,
+        message: `Erreur test: ${error.message}`
+      })
+    }
+  })
   // Obtenir le stock en temps réel d'un produit
   server.get('/realtime/:productId', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Obtenir le stock en temps réel d\'un produit',
       tags: ['Stock'],
@@ -50,10 +92,10 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { productId } = request.params as { productId: string }
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const stockData = await StockService.getRealTimeStock(productId, companyId)
 
@@ -72,17 +114,24 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Obtenir le tableau de bord temps réel des stocks
   server.get('/dashboard', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Obtenir le tableau de bord temps réel des stocks',
       tags: ['Stock'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      const dashboard = await StockService.getRealTimeDashboard(companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const dashboard = await StockService.getRealTimeDashboard(ownerScopeId)
 
       // Headers pour éviter le cache et forcer le rafraîchissement
       reply.headers({
@@ -110,15 +159,15 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Route pour forcer le rafraîchissement du dashboard
   server.post('/dashboard/refresh', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Forcer le rafraîchissement du tableau de bord des stocks',
       tags: ['Stock'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       logger.info('Rafraîchissement forcé du dashboard stock demandé', { companyId })
 
@@ -160,7 +209,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Réserver du stock
   server.post('/reserve', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Réserver du stock pour une commande',
       tags: ['Stock'],
@@ -175,14 +224,14 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { productId, quantity, orderId } = request.body as {
         productId: string
         quantity: number
         orderId?: string
       }
-      const { companyId, id: userId } = request.user
+      const { companyId, id: userId } = (request as any).user
 
       const movement = await StockService.reserveStock(
         productId,
@@ -207,7 +256,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Libérer une réservation
   server.post('/release', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Libérer une réservation de stock',
       tags: ['Stock'],
@@ -222,14 +271,14 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { productId, quantity, orderId } = request.body as {
         productId: string
         quantity: number
         orderId?: string
       }
-      const { companyId, id: userId } = request.user
+      const { companyId, id: userId } = (request as any).user
 
       const movement = await StockService.releaseReservation(
         productId,
@@ -253,7 +302,7 @@ export default async function stockRoutes(server: FastifyInstance) {
   })
   // Créer un mouvement de stock
   server.post('/movements', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Créer un mouvement de stock',
       tags: ['Stock'],
@@ -292,20 +341,20 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = request.body as CreateStockMovementRequest
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
       // Validation basique
-      if (!data.type || !data.quantity || !data.productId) {
+      if (!data.type || data.quantity == null || !data.productId) {
         return reply.status(400).send({
           success: false,
           message: 'Données manquantes: type, quantity et productId sont requis',
         })
       }
 
-      const movement = await StockService.createStockMovement(data, companyId)
+      const movement = await StockService.createStockMovement(data, ownerScopeId || '')
 
       return reply.status(201).send({
         success: true,
@@ -322,7 +371,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Récupérer les mouvements de stock
   server.get('/movements', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer les mouvements de stock',
       tags: ['Stock'],
@@ -342,10 +391,17 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = request.query as StockMovementFiltersRequest
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
+
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
 
       // Pagination avec valeurs par défaut
       const pagination = {
@@ -362,7 +418,7 @@ export default async function stockRoutes(server: FastifyInstance) {
         ...(query.endDate && { endDate: new Date(query.endDate) }),
       }
 
-      const result = await StockService.getStockMovements(companyId, processedFilters, pagination)
+      const result = await StockService.getStockMovements(ownerScopeId, processedFilters, pagination)
 
       return reply.send({
         success: true,
@@ -380,7 +436,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Récupérer l'historique des mouvements pour un produit
   server.get('/movements/product/:productId', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer l\'historique des mouvements pour un produit',
       tags: ['Stock'],
@@ -402,11 +458,11 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { productId } = request.params as { productId: string }
       const query = request.query as { page?: number; limit?: number }
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       // Pagination avec valeurs par défaut
       const pagination = {
@@ -432,7 +488,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Effectuer un ajustement de stock
   server.post('/adjust', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Effectuer un ajustement de stock',
       tags: ['Stock'],
@@ -447,10 +503,10 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = request.body as StockAdjustmentRequest
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       // Validation basique
       if (!data.productId || data.newQuantity === undefined) {
@@ -478,17 +534,24 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Statistiques de stock
   server.get('/stats', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Statistiques de stock',
       tags: ['Stock'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      const stats = await StockService.getStockStats(companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const stats = await StockService.getStockStats(ownerScopeId)
 
       return reply.send({
         success: true,
@@ -505,15 +568,15 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Alertes de stock
   server.get('/alerts', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Alertes de stock (produits en rupture ou stock faible)',
       tags: ['Stock'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const alerts = await StockService.getStockAlerts(companyId)
 
@@ -532,15 +595,15 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Route temporaire pour synchroniser les données products et stocks
   server.post('/sync-data', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Synchroniser les données entre tables products et stocks',
       tags: ['Stock'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const result = await StockService.syncProductsStocks(companyId)
 
@@ -560,15 +623,15 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Route pour l'unification complète des données stocks
   server.post('/unify-data', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Unifier les données products et stocks (stocks comme source de vérité)',
       tags: ['Stock'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const result = await StockService.unifyStockData(companyId)
 
@@ -592,7 +655,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Récupérer tous les stocks
   server.get('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer tous les stocks avec pagination et filtres',
       tags: ['Stock'],
@@ -610,25 +673,25 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = request.query as any
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      const pagination = {
-        page: query.page || 1,
-        limit: Math.min(query.limit || 20, 100),
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
       }
 
-      const filters = {
-        search: query.search,
-        productId: query.productId,
-        lowStock: query.lowStock,
-        outOfStock: query.outOfStock,
-        categoryId: query.categoryId,
-      }
+      // Version ultra-simplifiée pour corriger l'erreur
+      const page = query.page || 1
+      const limit = Math.min(query.limit || 20, 100)
+      const offset = (page - 1) * limit
 
-      const result = await StockService.getStocks(companyId, filters, pagination)
+      // Requête directe avec Prisma
+      const result = await StockService.getStocks(ownerScopeId, query, { page, limit })
 
       return reply.send({
         success: true,
@@ -646,7 +709,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Récupérer un stock par ID
   server.get('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer un stock par ID',
       tags: ['Stock'],
@@ -659,10 +722,10 @@ export default async function stockRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const stock = await StockService.getStockById(id, companyId)
 
@@ -688,7 +751,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Créer un nouveau stock
   server.post('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Créer un nouveau stock',
       tags: ['Stock'],
@@ -704,10 +767,10 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = request.body as any
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const stock = await StockService.createStock(data, companyId)
 
@@ -727,7 +790,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Mettre à jour un stock
   server.put('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Mettre à jour un stock',
       tags: ['Stock'],
@@ -748,11 +811,11 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const data = request.body as any
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const stock = await StockService.updateStock(id, data, companyId)
 
@@ -772,7 +835,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Supprimer un stock
   server.delete('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Supprimer un stock',
       tags: ['Stock'],
@@ -785,10 +848,10 @@ export default async function stockRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       await StockService.deleteStock(id, companyId)
 
@@ -807,7 +870,7 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Ajustement de stock spécialisé
   server.put('/:id/adjust', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Effectuer un ajustement de stock via le modèle Stock',
       tags: ['Stock'],
@@ -828,11 +891,11 @@ export default async function stockRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const { newQuantity, comment } = request.body as any
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       // Récupérer le stock pour obtenir le productId
       const stock = await StockService.getStockById(id, companyId)
@@ -874,15 +937,15 @@ export default async function stockRoutes(server: FastifyInstance) {
 
   // Force synchronization endpoint
   server.post('/sync', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Forcer la synchronisation des stocks et alertes',
       tags: ['Stock'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       logger.info('Synchronisation forcée demandée', { companyId })
 
@@ -910,6 +973,158 @@ export default async function stockRoutes(server: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         message: error.message,
+      })
+    }
+  })
+
+  // ================================
+  // ROUTES POUR LE SERVICE UNIFIÉ
+  // ================================
+
+  // Synchroniser les données de stock
+  server.post('/unified/sync', {
+    preHandler: [(server as any).authenticate],
+    schema: {
+      description: 'Synchroniser les données de stock entre les tables Product et Stock',
+      tags: ['Stock Unifié'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const ownerScopeId = getOwnerScopeId(request)
+
+      const result = await UnifiedStockService.syncStockData(ownerScopeId || '')
+
+      return reply.send({
+        success: true,
+        data: result,
+        message: 'Synchronisation terminée avec succès'
+      })
+    } catch (error: any) {
+      logger.error('Erreur lors de la synchronisation unifiée', { error: error.message })
+      return reply.status(500).send({
+        success: false,
+        message: error.message
+      })
+    }
+  })
+
+  // Récupérer tous les produits avec stock unifié
+  server.get('/unified/products', {
+    preHandler: [(server as any).authenticate],
+    schema: {
+      description: 'Récupérer tous les produits avec leurs données de stock unifiées',
+      tags: ['Stock Unifié'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          search: { type: 'string' },
+          categoryId: { type: 'string' },
+          status: { type: 'string', enum: ['out', 'low', 'normal', 'over'] },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const ownerScopeId = getOwnerScopeId(request)
+      const query = request.query as any
+
+      const products = await UnifiedStockService.getAllUnifiedProductsStock(ownerScopeId || '', {
+        search: query.search,
+        categoryId: query.categoryId,
+        status: query.status
+      })
+
+      return reply.send({
+        success: true,
+        data: products
+      })
+    } catch (error: any) {
+      logger.error('Erreur lors de la récupération des produits unifiés', { error: error.message })
+      return reply.status(500).send({
+        success: false,
+        message: error.message
+      })
+    }
+  })
+
+  // Récupérer un produit avec stock unifié
+  server.get('/unified/products/:productId', {
+    preHandler: [(server as any).authenticate],
+    schema: {
+      description: 'Récupérer un produit avec ses données de stock unifiées',
+      tags: ['Stock Unifié'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          productId: { type: 'string' },
+        },
+        required: ['productId'],
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const ownerScopeId = getOwnerScopeId(request)
+      const { productId } = request.params as { productId: string }
+
+      const product = await UnifiedStockService.getUnifiedProductStock(productId, ownerScopeId || '')
+
+      return reply.send({
+        success: true,
+        data: product
+      })
+    } catch (error: any) {
+      logger.error('Erreur lors de la récupération du produit unifié', { error: error.message })
+      return reply.status(500).send({
+        success: false,
+        message: error.message
+      })
+    }
+  })
+
+  // Mettre à jour le stock unifié d'un produit
+  server.put('/unified/products/:productId', {
+    preHandler: [(server as any).authenticate],
+    schema: {
+      description: 'Mettre à jour le stock unifié d\'un produit',
+      tags: ['Stock Unifié'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          productId: { type: 'string' },
+        },
+        required: ['productId'],
+      },
+      body: {
+        type: 'object',
+        properties: {
+          stockQuantity: { type: 'number', minimum: 0 },
+          minStock: { type: 'number', minimum: 0 },
+          maxStock: { type: 'number', minimum: 0 },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const ownerScopeId = getOwnerScopeId(request)
+      const { productId } = request.params as { productId: string }
+      const data = request.body as any
+
+      const product = await UnifiedStockService.updateUnifiedStock(productId, ownerScopeId || '', data)
+
+      return reply.send({
+        success: true,
+        data: product,
+        message: 'Stock unifié mis à jour avec succès'
+      })
+    } catch (error: any) {
+      logger.error('Erreur lors de la mise à jour du stock unifié', { error: error.message })
+      return reply.status(500).send({
+        success: false,
+        message: error.message
       })
     }
   })

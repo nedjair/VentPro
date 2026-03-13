@@ -1,7 +1,0 @@
-1- les donnees ne s'affiche pas sur l'application
-
-2-Erreur lors du chargement des KPI: HTTP 404: Route GET /api/v1/analytics/kpi non trouvée
-
-3-Erreur: HTTP 404: Route GET /api/v1/analytics/evolution?metric=revenue&period=6m non trouvée
-
-4-_lib_defensive_utils__WEBPACK_IMPORTED_MODULE_7__.validateApiResponse is not a function

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { MainLayout } from '@/components/layout/main-layout'
 import { StatsCards } from '@/components/dashboard/stats-cards'
+import EnhancedStatsCards from '@/components/dashboard/enhanced-stats-cards'
 import { RecentActivity } from '@/components/dashboard/recent-activity'
 import { SalesChart } from '@/components/dashboard/sales-chart'
 import { UnifiedStockAlerts } from '@/components/dashboard/unified-stock-alerts'
@@ -35,6 +36,31 @@ interface DashboardStats {
     pending: number;
     processing: number;
     completed: number;
+  };
+  // Nouveaux modules ventes et achats
+  quotes: {
+    total: number;
+    draft: number;
+    sent: number;
+    accepted: number;
+    expired: number;
+  };
+  payments: {
+    total: number;
+    thisMonth: number;
+    pending: number;
+    overdue: number;
+  };
+  purchaseOrders: {
+    total: number;
+    pending: number;
+    received: number;
+    partiallyReceived: number;
+  };
+  goodsReceptions: {
+    total: number;
+    thisWeek: number;
+    incomplete: number;
   };
 }
 import { useAuth } from '@/stores/auth'
@@ -82,28 +108,28 @@ export function DashboardPage() {
   }
 
   return (
-    <MainLayout title="Dashboard" subtitle="Vue d'ensemble de votre activité commerciale">
+    <MainLayout title="Tableau de bord" subtitle="Vue d'ensemble de votre activité commerciale">
       <div className="space-y-6">
         {/* Message d'erreur */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <svg className="h-5 w-5 text-destructive" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">
+                <h3 className="text-sm font-medium text-destructive">
                   Erreur de chargement
                 </h3>
-                <div className="mt-2 text-sm text-red-700">
+                <div className="mt-2 text-sm text-destructive">
                   <p>{error}</p>
                 </div>
                 <div className="mt-4">
                   <button
                     onClick={loadDashboardData}
-                    className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
+                    className="bg-destructive/10 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/20"
                   >
                     Réessayer
                   </button>
@@ -113,8 +139,8 @@ export function DashboardPage() {
           </div>
         )}
 
-        {/* Cartes de statistiques */}
-        <StatsCards stats={stats} loading={loading} />
+        {/* Cartes de statistiques améliorées */}
+        <EnhancedStatsCards stats={stats} loading={loading} />
 
         {/* Section principale */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

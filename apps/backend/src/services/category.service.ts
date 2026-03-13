@@ -1,4 +1,5 @@
-import { prisma, Category } from '@gestion/database'
+import { randomUUID } from 'node:crypto'
+import { prisma, Category, Product } from '@gestion/database'
 import { logger } from '../utils/logger'
 
 export interface CreateCategoryData {
@@ -9,7 +10,70 @@ export interface CreateCategoryData {
 
 export interface UpdateCategoryData extends Partial<CreateCategoryData> {}
 
+interface CurrentSchemaCategoryRow {
+  id: string
+  name: string
+  description: string | null
+  parentId: string | null
+  parentName: string | null
+  userId: string
+  createdAt: Date
+  updatedAt: Date
+  productCount: number | string | null
+}
+
 export class CategoryService {
+  private static normalizeCurrentSchemaCategory(row: CurrentSchemaCategoryRow): Category {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description || undefined,
+      parentId: row.parentId || undefined,
+      parent: row.parentId
+        ? {
+            id: row.parentId,
+            name: row.parentName || 'Catégorie parente',
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          }
+        : undefined,
+      children: [],
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      _count: {
+        products: Number(row.productCount || 0),
+      },
+    } as unknown as Category
+  }
+
+  private static async getCurrentSchemaCategories(companyId: string, options?: {
+    categoryId?: string
+    rootsOnly?: boolean
+  }): Promise<Category[]> {
+    const rows = await prisma.$queryRaw<Array<CurrentSchemaCategoryRow>>`
+      SELECT
+        c.id,
+        c.name,
+        c.description,
+        c."parentId",
+        parent.name AS "parentName",
+        c."userId",
+        c."createdAt",
+        c."updatedAt",
+        COUNT(p.id)::int AS "productCount"
+      FROM "Category" c
+      LEFT JOIN "Category" parent ON parent.id = c."parentId"
+      LEFT JOIN "Product" p ON p."categoryId" = c.id
+      WHERE c."userId" = ${companyId}
+        AND (${options?.categoryId || null}::text IS NULL OR c.id = ${options?.categoryId || null})
+        AND (${options?.rootsOnly ? true : null}::boolean IS NULL OR c."parentId" IS NULL)
+      GROUP BY c.id, c.name, c.description, c."parentId", parent.name, c."userId", c."createdAt", c."updatedAt"
+      ORDER BY c."parentId" ASC NULLS FIRST, c.name ASC
+    `
+
+    return rows.map((row) => this.normalizeCurrentSchemaCategory(row))
+  }
+
   /**
    * Créer une nouvelle catégorie
    */
@@ -19,6 +83,79 @@ export class CategoryService {
   ): Promise<Category> {
     try {
       logger.info('Création d\'une nouvelle catégorie', { companyId, name: data.name })
+
+      try {
+        const existingRows = await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id
+          FROM "Category"
+          WHERE name = ${data.name}
+            AND "userId" = ${companyId}
+            AND (
+              (${data.parentId || null}::text IS NULL AND "parentId" IS NULL)
+              OR "parentId" = ${data.parentId || null}
+            )
+          LIMIT 1
+        `
+
+        if (existingRows[0]) {
+          throw new Error('Une catégorie avec ce nom existe déjà à ce niveau')
+        }
+
+        if (data.parentId) {
+          const parentRows = await prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT id
+            FROM "Category"
+            WHERE id = ${data.parentId}
+              AND "userId" = ${companyId}
+            LIMIT 1
+          `
+
+          if (!parentRows[0]) {
+            throw new Error('Catégorie parent non trouvée')
+          }
+        }
+
+        const categoryId = randomUUID()
+
+        await prisma.$queryRaw<Array<{ id: string }>>`
+          INSERT INTO "Category" (
+            id,
+            name,
+            description,
+            "parentId",
+            "userId"
+          )
+          VALUES (
+            ${categoryId},
+            ${data.name},
+            ${data.description?.trim() || null},
+            ${data.parentId || null},
+            ${companyId}
+          )
+          RETURNING id
+        `
+
+        const [category] = await this.getCurrentSchemaCategories(companyId, { categoryId })
+        if (!category) {
+          throw new Error('Catégorie non trouvée après création')
+        }
+
+        logger.info('Catégorie créée avec succès via le schéma local courant', { categoryId })
+        return category
+      } catch (currentSchemaError) {
+        if (
+          currentSchemaError instanceof Error &&
+          [
+            'Une catégorie avec ce nom existe déjà à ce niveau',
+            'Catégorie parent non trouvée',
+            'Catégorie non trouvée après création',
+          ].includes(currentSchemaError.message)
+        ) {
+          throw currentSchemaError
+        }
+
+        logger.warn('Fallback createCategory vers schéma legacy', { error: currentSchemaError, companyId })
+      }
 
       // Vérifier l'unicité du nom dans l'entreprise
       const existingCategory = await prisma.category.findFirst({
@@ -76,6 +213,15 @@ export class CategoryService {
    */
   static async getCategoryById(id: string, companyId: string): Promise<Category | null> {
     try {
+      try {
+        const [category] = await this.getCurrentSchemaCategories(companyId, { categoryId: id })
+        if (category) {
+          return category
+        }
+      } catch (currentSchemaError) {
+        logger.warn('Fallback getCategoryById vers schéma legacy', { error: currentSchemaError, id, companyId })
+      }
+
       const category = await prisma.category.findFirst({
         where: {
           id,
@@ -104,6 +250,12 @@ export class CategoryService {
    */
   static async getCategories(companyId: string): Promise<Category[]> {
     try {
+      try {
+        return await this.getCurrentSchemaCategories(companyId)
+      } catch (currentSchemaError) {
+        logger.warn('Fallback getCategories vers schéma legacy', { error: currentSchemaError, companyId })
+      }
+
       const categories = await prisma.category.findMany({
         where: {
           companyId,
@@ -125,8 +277,11 @@ export class CategoryService {
 
       return categories
     } catch (error) {
-      logger.error('Erreur lors de la récupération des catégories', { error })
-      throw error
+      // Compatibilité schéma local : certaines bases PostgreSQL locales ne
+      // possèdent pas la table `Category`. Dans ce cas, on préfère renvoyer
+      // une liste vide plutôt qu'une erreur 500 côté interface Produits.
+      logger.warn('Catégories indisponibles sur le schéma courant, retour liste vide', { error, companyId })
+      return [] as Category[]
     }
   }
 
@@ -135,6 +290,12 @@ export class CategoryService {
    */
   static async getRootCategories(companyId: string): Promise<Category[]> {
     try {
+      try {
+        return await this.getCurrentSchemaCategories(companyId, { rootsOnly: true })
+      } catch (currentSchemaError) {
+        logger.warn('Fallback getRootCategories vers schéma legacy', { error: currentSchemaError, companyId })
+      }
+
       const categories = await prisma.category.findMany({
         where: {
           companyId,

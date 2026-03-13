@@ -4,17 +4,43 @@
  * Test simple de connectivité PostgreSQL
  */
 
-const { Client } = require('pg');
-require('dotenv').config();
+let Client;
 
-// Configuration de la base de données depuis .env
-const dbConfig = {
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: process.env.POSTGRES_PORT || 5432,
-  database: process.env.POSTGRES_DB || 'gestion_commerciale',
-  user: process.env.POSTGRES_USER || 'gestion_user',
-  password: process.env.POSTGRES_PASSWORD || 'gestion_password_secure_2024',
-};
+try {
+  ({ Client } = require('pg'));
+} catch {
+  ({ Client } = require('./apps/backend/node_modules/pg'));
+}
+
+if (typeof process.loadEnvFile === 'function') {
+  process.loadEnvFile('.env');
+}
+
+function buildDbConfig() {
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (databaseUrl) {
+    const parsed = new URL(databaseUrl);
+    return {
+      host: parsed.hostname,
+      port: Number(parsed.port || 5432),
+      database: parsed.pathname.replace(/^\//, ''),
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+    };
+  }
+
+  return {
+    host: process.env.POSTGRES_HOST || 'localhost',
+    port: Number(process.env.POSTGRES_PORT || 5434),
+    database: process.env.POSTGRES_DB || 'gestion_commerciale_tpe',
+    user: process.env.POSTGRES_USER || 'tpe_user',
+    password: process.env.POSTGRES_PASSWORD || 'tpe_password_2024',
+  };
+}
+
+// Configuration de la base de données depuis l'URL complète ou les variables unitaires.
+const dbConfig = buildDbConfig();
 
 console.log('🔍 TEST DE CONNECTIVITÉ POSTGRESQL');
 console.log('=====================================');
@@ -60,7 +86,7 @@ async function testConnection() {
       // Compter les enregistrements dans les tables principales
       console.log('');
       console.log('📈 NOMBRE D\'ENREGISTREMENTS :');
-      const mainTables = ['users', 'companies', 'clients', 'products', 'suppliers', 'stocks'];
+      const mainTables = ['User', 'Client', 'Product', 'Supplier', 'Stock', 'Order', 'Invoice'];
       
       for (const tableName of mainTables) {
         const tableExists = tablesResult.rows.some(row => row.table_name === tableName);

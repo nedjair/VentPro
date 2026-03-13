@@ -1,3 +1,4 @@
+import { Product } from '@gestion/database'
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { AutoSyncService } from '../services/auto-sync.service'
 import { SchedulerService } from '../services/scheduler.service'
@@ -37,7 +38,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
           }
         }
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { companyId } = request.user
 
@@ -83,7 +84,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
           }
         }
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { companyId } = request.user
 
@@ -125,7 +126,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
           }
         }
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { companyId } = request.user
 
@@ -180,7 +181,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
           }
         }
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { companyId } = request.user
         const options = request.body as {
@@ -247,7 +248,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
           }
         }
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const jobs = SchedulerService.getJobsStatus()
 
@@ -291,7 +292,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
           }
         }
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { jobName } = request.params as { jobName: string }
 
@@ -335,7 +336,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
           required: ['jobName']
         }
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { jobName } = request.params as { jobName: string }
 
@@ -373,7 +374,7 @@ export async function autoSyncRoutes(server: FastifyInstance) {
         tags: ['Auto-Sync'],
         security: [{ bearerAuth: [] }]
       }
-    }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    }, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const config = {
           autoSyncEnabled: process.env.ENABLE_AUTO_SYNC !== 'false',

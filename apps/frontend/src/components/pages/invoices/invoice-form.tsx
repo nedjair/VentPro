@@ -3,14 +3,25 @@
 import { useState, useEffect } from 'react'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
-import { Save, ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { Save, ArrowLeft, Plus, Trash2, AlertTriangle, FileText, Package, Calculator } from 'lucide-react'
 import { api, Client, Product, Invoice, InvoiceItem, Order } from '@/lib/api'
+import { ensureApiAuthentication } from '@/lib/auth-utils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { getAvailableOrdersForInvoicing, normalizeInvoiceSubmitError, validateInvoiceFormSubmission } from './invoice-form.utils'
 
 interface InvoiceFormPageProps {
   invoiceId?: string
 }
+
+const nativeSelectClass =
+  'flex h-11 w-full rounded-2xl border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+const queryLimit = 100
 
 export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
   const router = useRouter()
@@ -60,39 +71,16 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
     }
   }, [isEditing, invoiceId])
 
-  // Fonction d'authentification automatique
-  const ensureAuthentication = async () => {
-    const authToken = api.getAuthToken()
-    if (authToken) {
-      return true
-    }
-
+  const ensureAuthentication = () => ensureApiAuthentication()
+  const requestWithRetry = async <T,>(requestFn: () => Promise<T>, retries = 1): Promise<T> => {
     try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gctpe.dz',
-        password: 'admin123'
-      })
-
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-
-        console.log('✅ Connexion automatique réussie')
-        return true
-      }
+      return await requestFn()
     } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
+      if (retries <= 0) {
+        throw error
+      }
+      return requestWithRetry(requestFn, retries - 1)
     }
-
-    return false
   }
 
   const loadInitialData = async () => {
@@ -110,20 +98,26 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
 
       console.log('✅ INVOICE FORM: Authentification réussie, chargement des données...')
 
-      const [clientsResponse, productsResponse, ordersResponse] = await Promise.all([
-        api.getClients({ limit: 100 }),
-        api.getProducts({ limit: 100 }),
-        // Charger toutes les commandes, puis filtrer côté frontend pour plus de flexibilité
-        api.getOrders({ limit: 100 })
+      const [clientsResult, productsResult, ordersResult, invoicesResult] = await Promise.allSettled([
+        requestWithRetry(() => api.getClients({ limit: queryLimit })),
+        requestWithRetry(() => api.getProducts({ limit: queryLimit })),
+        requestWithRetry(() => api.getOrders({ limit: queryLimit })),
+        requestWithRetry(() => api.getInvoices({ limit: queryLimit })),
       ])
 
+      const clientsResponse = clientsResult.status === 'fulfilled' ? clientsResult.value : null
+      const productsResponse = productsResult.status === 'fulfilled' ? productsResult.value : null
+      const ordersResponse = ordersResult.status === 'fulfilled' ? ordersResult.value : null
+      const invoicesResponse = invoicesResult.status === 'fulfilled' ? invoicesResult.value : null
+
       console.log('📊 INVOICE FORM: Réponses reçues:', {
-        clients: { success: clientsResponse.success, dataType: typeof clientsResponse.data, hasData: !!clientsResponse.data },
-        products: { success: productsResponse.success, dataType: typeof productsResponse.data, hasData: !!productsResponse.data },
-        orders: { success: ordersResponse.success, dataType: typeof ordersResponse.data, hasData: !!ordersResponse.data }
+        clients: { success: clientsResponse?.success, dataType: typeof clientsResponse?.data, hasData: !!clientsResponse?.data },
+        products: { success: productsResponse?.success, dataType: typeof productsResponse?.data, hasData: !!productsResponse?.data },
+        orders: { success: ordersResponse?.success, dataType: typeof ordersResponse?.data, hasData: !!ordersResponse?.data },
+        invoices: { success: invoicesResponse?.success, dataType: typeof invoicesResponse?.data, hasData: !!invoicesResponse?.data }
       })
 
-      if (clientsResponse.success && clientsResponse.data) {
+      if (clientsResponse?.success && clientsResponse.data) {
         const clientsData = clientsResponse.data.data || clientsResponse.data
         console.log('👥 INVOICE FORM: Clients chargés:', Array.isArray(clientsData) ? clientsData.length : 'Non-array', clientsData)
         setClients(Array.isArray(clientsData) ? clientsData : [])
@@ -132,7 +126,7 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
         setClients([])
       }
 
-      if (productsResponse.success && productsResponse.data) {
+      if (productsResponse?.success && productsResponse.data) {
         const productsData = productsResponse.data.data || productsResponse.data
         console.log('📦 INVOICE FORM: Produits chargés:', Array.isArray(productsData) ? productsData.length : 'Non-array', productsData)
         setProducts(Array.isArray(productsData) ? productsData : [])
@@ -141,26 +135,14 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
         setProducts([])
       }
 
-      if (ordersResponse.success && ordersResponse.data) {
-        const ordersData = ordersResponse.data.data || ordersResponse.data
+      if (ordersResponse?.success && ordersResponse.data) {
+        const ordersData = (ordersResponse.data.data || ordersResponse.data) as Order[]
+        const invoicesData: Invoice[] = invoicesResponse?.success && invoicesResponse.data
+          ? ((invoicesResponse.data.data || []) as Invoice[])
+          : []
 
         if (Array.isArray(ordersData)) {
-
-          // Filtrer les commandes appropriées pour la facturation
-          // Inclure : DRAFT, QUOTE, ORDER, ACCEPTED (éviter CANCELLED, DELIVERED, EXPIRED)
-          const suitableOrders = ordersData.filter(order => {
-            if (!order || !order.id) {
-              return false
-            }
-
-            // Statuts appropriés pour la facturation (inclut DRAFT qui est le statut par défaut)
-            const suitableStatuses = ['DRAFT', 'QUOTE', 'ORDER', 'ACCEPTED', 'SENT']
-            return suitableStatuses.includes(order.status)
-          })
-
-
-
-          setOrders(suitableOrders)
+          setOrders(getAvailableOrdersForInvoicing(ordersData, invoicesData))
         } else {
           setOrders([])
         }
@@ -168,7 +150,17 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
         setOrders([])
       }
 
-      console.log('✅ INVOICE FORM: Chargement des données terminé avec succès')
+      if (!invoicesResponse?.success) {
+        console.warn('⚠️ INVOICE FORM: Échec du chargement des factures, la page continue sans exclusion avancée', invoicesResult)
+      }
+
+      if (!clientsResponse?.success || !productsResponse?.success || !ordersResponse?.success) {
+        setError('Certaines données n’ont pas pu être chargées. Veuillez actualiser la page.')
+      } else {
+        setError(null)
+      }
+
+      console.log('✅ INVOICE FORM: Chargement des données terminé')
     } catch (err) {
       console.error('❌ INVOICE FORM: Erreur lors du chargement des données:', err)
 
@@ -317,55 +309,19 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const validation = validateInvoiceFormSubmission({
+      clientId: formData.clientId,
+      invoiceDate: formData.invoiceDate,
+      dueDate: formData.dueDate,
+      items,
+    })
 
-    // Validation des champs obligatoires
-    const validationErrors: string[] = []
-
-    if (!formData.clientId) {
-      validationErrors.push('Veuillez sélectionner un client')
-    }
-
-    if (!formData.invoiceDate) {
-      validationErrors.push('Veuillez saisir une date de facture')
-    }
-
-    if (!formData.dueDate) {
-      validationErrors.push('Veuillez saisir une date d\'échéance')
-    }
-
-    // Validation des dates
-    if (formData.invoiceDate && formData.dueDate) {
-      const invoiceDate = new Date(formData.invoiceDate)
-      const dueDate = new Date(formData.dueDate)
-
-      if (dueDate < invoiceDate) {
-        validationErrors.push('La date d\'échéance ne peut pas être antérieure à la date de facture')
-      }
-    }
-
-    // Validation des articles
-    const validItems = items.filter(item =>
-      item.productId && item.quantity > 0 && item.unitPrice > 0
-    )
-
-    if (validItems.length === 0) {
-      validationErrors.push('Veuillez ajouter au moins un article avec une quantité et un prix valides')
-    }
-
-    // Vérifier que tous les articles ont des données valides
-    const invalidItems = items.filter((item, index) =>
-      item.productId && (item.quantity <= 0 || item.unitPrice <= 0)
-    )
-
-    if (invalidItems.length > 0) {
-      validationErrors.push('Certains articles ont des quantités ou prix invalides (doivent être supérieurs à 0)')
-    }
-
-    // Afficher toutes les erreurs de validation
-    if (validationErrors.length > 0) {
-      setError(validationErrors.join(' • '))
+    if (!validation.isValid) {
+      setError(validation.errors.join(' • '))
       return
     }
+
+    const validItems = validation.validItems
 
     try {
       setSaving(true)
@@ -418,25 +374,7 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
       router.push(`/invoices?refresh=${timestamp}`)
     } catch (err) {
       console.error('❌ Erreur lors de la sauvegarde:', err)
-
-      let errorMessage = 'Erreur de sauvegarde'
-      if (err instanceof Error) {
-        if (err.message.includes('401') || err.message.includes('Unauthorized')) {
-          errorMessage = 'Erreur d\'authentification. Veuillez vous reconnecter.'
-        } else if (err.message.includes('400') || err.message.includes('Bad Request')) {
-          errorMessage = 'Données invalides. Vérifiez les champs obligatoires et les montants.'
-        } else if (err.message.includes('404') || err.message.includes('Not Found')) {
-          errorMessage = 'Client ou produit non trouvé. Vérifiez vos sélections.'
-        } else if (err.message.includes('500') || err.message.includes('Internal Server Error')) {
-          errorMessage = 'Erreur serveur. Veuillez réessayer plus tard.'
-        } else if (err.message.includes('Network Error') || err.message.includes('fetch')) {
-          errorMessage = 'Erreur de connexion. Vérifiez votre connexion internet.'
-        } else {
-          errorMessage = err.message || 'Une erreur inattendue s\'est produite'
-        }
-      }
-
-      setError(errorMessage)
+      setError(normalizeInvoiceSubmitError(err))
     } finally {
       setSaving(false)
     }
@@ -444,24 +382,15 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
 
   const totals = calculateTotals()
 
-  const actions = (
-    <div className="flex space-x-2">
-      <Link href="/invoices">
-        <Button variant="outline" size="sm">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Retour
-        </Button>
-      </Link>
-    </div>
-  )
-
   if (loading) {
     return (
       <MainLayout title={isEditing ? 'Modifier la facture' : 'Nouvelle facture'}>
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2">Chargement...</span>
-        </div>
+        <Card className="mx-auto max-w-4xl">
+          <CardContent className="flex items-center justify-center gap-3 py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+            <span className="text-sm text-muted-foreground">Chargement de la facture...</span>
+          </CardContent>
+        </Card>
       </MainLayout>
     )
   }
@@ -470,23 +399,15 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
     <MainLayout 
       title={isEditing ? 'Modifier la facture' : 'Nouvelle facture'}
       subtitle={isEditing ? `Modification de la facture ${invoiceId}` : 'Créer une nouvelle facture'}
-      actions={actions}
     >
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Message d'erreur */}
+      <div className="mx-auto max-w-5xl space-y-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">
-                  Erreur de validation
-                </h3>
-                <div className="mt-2 text-sm text-red-700">
+          <Card className="border-red-200 bg-red-50/80 shadow-none">
+            <CardContent className="flex items-start gap-3 p-5">
+              <AlertTriangle className="mt-0.5 h-5 w-5 text-red-500" />
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-red-700">Erreur de validation</p>
+                <div className="text-sm text-red-600">
                   {error.includes('•') ? (
                     <ul className="list-disc list-inside space-y-1">
                       {error.split(' • ').map((err, index) => (
@@ -498,38 +419,49 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                   )}
                 </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Informations générales */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="text-lg font-medium">Informations générales</h3>
-          </div>
-          <div className="card-content">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Type *
-                </label>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <CardTitle>Informations générales</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Définissez le type de document, le client, les dates et les informations de paiement.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline">{isEditing ? 'Modification' : 'Création'}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-type">Type *</Label>
                 <select
+                  id="invoice-type"
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value as 'INVOICE' | 'CREDIT_NOTE' | 'PROFORMA' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={nativeSelectClass}
                   required
                 >
                   <option value="INVOICE">Facture</option>
                   <option value="CREDIT_NOTE">Avoir</option>
                   <option value="PROFORMA">Proforma</option>
                 </select>
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Commande liée
-                </label>
+                <div className="space-y-2">
+                  <Label htmlFor="linked-order">Commande liée</Label>
                 <select
+                  id="linked-order"
                   value={formData.orderId}
                   onChange={(e) => {
                     setFormData({ ...formData, orderId: e.target.value })
@@ -537,7 +469,7 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                       loadOrderItems(e.target.value)
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={nativeSelectClass}
                 >
                   <option value="">Sélectionner une commande (optionnel)</option>
                   {Array.isArray(orders) ? orders.map((order) => {
@@ -548,8 +480,8 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                     }
 
                     // Utiliser les bonnes propriétés du backend : number (pas reference) et total (pas totalTTC)
-                    const orderNumber = order.number || order.reference || 'N/A'
-                    const orderTotal = order.total || order.totalTTC || 0
+                    const orderNumber = (order as any).number || (order as any).reference || 'N/A'
+                    const orderTotal = (order as any).total || (order as any).totalTTC || 0
                     const orderStatus = order.status || 'UNKNOWN'
 
                     // Nom du client avec programmation défensive
@@ -585,7 +517,7 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                   }).filter(Boolean) : []}
                 </select>
                 {Array.isArray(orders) && orders.length === 0 && (
-                  <div className="text-sm text-blue-600 mt-1 p-2 bg-blue-50 rounded border border-blue-200">
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
                     <p className="font-medium">💡 Aucune commande disponible</p>
                     <p className="text-xs mt-1">
                       Vous pouvez créer une facture sans commande liée, ou <a href="/orders/new" className="text-blue-700 underline">créer une commande</a> d'abord.
@@ -593,20 +525,19 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                   </div>
                 )}
                 {Array.isArray(orders) && orders.length > 0 && (
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className="text-xs text-muted-foreground">
                     <p>💡 Légende: 📝 Brouillon • 💭 Devis • 📤 Envoyée • 📋 Commande • ✅ Acceptée</p>
                   </div>
                 )}
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Client *
-                </label>
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-client">Client *</Label>
                 <select
+                  id="invoice-client"
                   value={formData.clientId}
                   onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={nativeSelectClass}
                   required
                 >
                   <option value="">Sélectionner un client</option>
@@ -619,16 +550,15 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                     </option>
                   ))}
                 </select>
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Méthode de paiement
-                </label>
+                <div className="space-y-2">
+                  <Label htmlFor="payment-method">Méthode de paiement</Label>
                 <select
+                  id="payment-method"
                   value={formData.paymentMethod}
                   onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={nativeSelectClass}
                 >
                   <option value="">Sélectionner une méthode</option>
                   <option value="BANK_TRANSFER">Virement bancaire</option>
@@ -638,60 +568,61 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                   <option value="PAYPAL">PayPal</option>
                   <option value="OTHER">Autre</option>
                 </select>
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date de facture *
-                </label>
-                <input
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-date">Date de facture *</Label>
+                <Input
+                  id="invoice-date"
                   type="date"
                   value={formData.invoiceDate}
                   onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date d'échéance *
-                </label>
-                <input
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-due-date">Date d'échéance *</Label>
+                <Input
+                  id="invoice-due-date"
                   type="date"
                   value={formData.dueDate}
                   onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
+            </CardContent>
+          </Card>
 
-        {/* Articles */}
-        <div className="card">
-          <div className="card-header">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-medium">Articles</h3>
-              <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                <Plus className="h-4 w-4 mr-2" />
-                Ajouter un article
-              </Button>
-            </div>
-          </div>
-          <div className="card-content">
-            <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-2xl bg-emerald-500/10 p-2 text-emerald-600">
+                    <Package className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle>Articles</CardTitle>
+                    <CardDescription>Ajoutez les lignes de facturation et les informations de TVA/remise.</CardDescription>
+                  </div>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addItem}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter un article
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
               {items.map((item, index) => (
-                <div key={index} className="grid grid-cols-12 gap-4 items-end p-4 border border-gray-200 rounded-lg">
-                  <div className="col-span-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Produit *
-                    </label>
+                <div key={index} className="grid grid-cols-1 gap-4 rounded-2xl border border-border bg-muted/30 p-4 transition-colors md:grid-cols-2 xl:grid-cols-12 xl:items-end">
+                  <div className="space-y-2 xl:col-span-4">
+                    <Label htmlFor={`invoice-item-product-${index}`}>Produit *</Label>
                     <select
+                      id={`invoice-item-product-${index}`}
                       value={item.productId}
                       onChange={(e) => updateItem(index, 'productId', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className={nativeSelectClass}
                       required
                     >
                       <option value="">Sélectionner un produit</option>
@@ -707,155 +638,142 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
                     </select>
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Quantité *
-                    </label>
-                    <input
+                  <div className="space-y-2 xl:col-span-2">
+                    <Label htmlFor={`invoice-item-quantity-${index}`}>Quantité *</Label>
+                    <Input
+                      id={`invoice-item-quantity-${index}`}
                       type="number"
                       min="1"
                       value={item.quantity}
                       onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prix unitaire *
-                    </label>
-                    <input
+                  <div className="space-y-2 xl:col-span-2">
+                    <Label htmlFor={`invoice-item-price-${index}`}>Prix unitaire *</Label>
+                    <Input
+                      id={`invoice-item-price-${index}`}
                       type="number"
                       step="0.01"
                       min="0"
                       value={item.unitPrice}
                       onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      TVA (%)
-                    </label>
-                    <input
+                  <div className="space-y-2 xl:col-span-2">
+                    <Label htmlFor={`invoice-item-vat-${index}`}>TVA (%)</Label>
+                    <Input
+                      id={`invoice-item-vat-${index}`}
                       type="number"
                       step="0.01"
                       min="0"
                       max="100"
                       value={item.vatRate}
                       onChange={(e) => updateItem(index, 'vatRate', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
-                  <div className="col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Remise (%)
-                    </label>
-                    <input
+                  <div className="space-y-2 xl:col-span-1">
+                    <Label htmlFor={`invoice-item-discount-${index}`}>Remise (%)</Label>
+                    <Input
+                      id={`invoice-item-discount-${index}`}
                       type="number"
                       step="0.01"
                       min="0"
                       max="100"
                       value={item.discount}
                       onChange={(e) => updateItem(index, 'discount', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
-                  <div className="col-span-1">
+                  <div className="xl:col-span-1">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
+                      aria-label={`Supprimer l'article ${index + 1}`}
                       onClick={() => removeItem(index)}
                       disabled={items.length === 1}
-                      className="text-red-600 hover:text-red-700"
+                      className="w-full text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               ))}
-            </div>
 
-            {/* Totaux */}
-            <div className="mt-6 border-t pt-6">
-              <div className="flex justify-end">
-                <div className="w-64 space-y-2">
-                  <div className="flex justify-between">
-                    <span>Sous-total HT:</span>
-                    <span>{new Intl.NumberFormat('fr-DZ', {
+              <Card className="border border-dashed border-primary/25 bg-primary/5 shadow-none">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 pb-3">
+                    <Calculator className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">Récapitulatif</p>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Sous-total HT</span>
+                      <span className="font-medium text-foreground">{new Intl.NumberFormat('fr-DZ', {
                       style: 'currency',
                       currency: 'DZD',
                       minimumFractionDigits: 2,
                     }).format(totals.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>TVA (19%):</span>
-                    <span>{new Intl.NumberFormat('fr-DZ', {
-                      style: 'currency',
-                      currency: 'DZD',
-                      minimumFractionDigits: 2,
-                    }).format(totals.vatAmount)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg border-t pt-2">
-                    <span>Total TTC:</span>
-                    <span>{new Intl.NumberFormat('fr-DZ', {
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">TVA (19%)</span>
+                      <span className="font-medium text-foreground">{new Intl.NumberFormat('fr-DZ', {
+                        style: 'currency',
+                        currency: 'DZD',
+                        minimumFractionDigits: 2,
+                      }).format(totals.vatAmount)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
+                      <span className="text-foreground">Total TTC</span>
+                      <span className="text-foreground">{new Intl.NumberFormat('fr-DZ', {
                       style: 'currency',
                       currency: 'DZD',
                       minimumFractionDigits: 2,
                     }).format(totals.total)}</span>
+                    </div>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Notes</CardTitle>
+              <CardDescription>Ces notes apparaîtront sur le document final.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor="invoice-notes">Notes de facturation</Label>
+                <Textarea
+                  id="invoice-notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows={4}
+                  placeholder="Notes visibles sur la facture..."
+                />
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Notes */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="text-lg font-medium">Notes</h3>
-          </div>
-          <div className="card-content">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Notes de facturation
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Notes visibles sur la facture..."
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Boutons d'action */}
-        <div className="flex justify-end space-x-4 pt-6 border-t">
-          <Link href="/invoices">
-            <Button type="button" variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Annuler
+            </CardContent>
+          </Card>
+          <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
+            <Link href="/invoices">
+              <Button type="button" variant="outline" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Annuler
+              </Button>
+            </Link>
+            <Button type="submit" size="sm" disabled={saving}>
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Sauvegarde...' : (isEditing ? 'Mettre à jour' : 'Créer')}
             </Button>
-          </Link>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Sauvegarde...' : (isEditing ? 'Modifier' : 'Créer')}
-          </Button>
-        </div>
-      </form>
+          </div>
+        </form>
+      </div>
     </MainLayout>
   )
 }

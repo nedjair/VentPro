@@ -1,725 +1,300 @@
-// Schéma Prisma pour l'application de gestion commerciale TPE
 generator client {
   provider = "prisma-client-js"
   output   = "./generated/client"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_DATABASE_URL")
 }
 
-// ================================
-// GESTION DES UTILISATEURS ET ENTREPRISES
-// ================================
-
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  firstName String
-  lastName  String
-  role      UserRole @default(EMPLOYEE)
-  isActive  Boolean  @default(true)
-
-  // Relations
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  clientInteractions ClientInteraction[]
-  stockMovements StockMovement[] // Mouvements de stock créés par cet utilisateur
-
-  // Audit
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Index
-  @@map("users")
-  @@index([email])
-  @@index([companyId])
+  id                String            @id @default(cuid())
+  email             String            @unique
+  password          String
+  fullName          String
+  role              String            @default("user")
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  accountingEntries AccountingEntry[]
+  categories        Category[]
+  clients           Client[]
+  invoices          Invoice[]
+  orders            Order[]
+  payments          Payment[]
+  products          Product[]
+  purchases         Purchase[]
+  quotes            Quote[]
+  stocks            Stock[]
+  suppliers         Supplier[]
 }
-
-model Company {
-  id          String  @id @default(cuid())
-  name        String
-  siret       String? @unique
-  address     String?
-  postalCode  String?
-  city        String?
-  country     String  @default("France")
-  phone       String?
-  email       String?
-  website     String?
-  vatNumber   String?
-  
-  // Configuration
-  currency    String  @default("DA")
-  timezone    String  @default("Africa/Algiers")
-  
-  // Relations
-  users       User[]
-  clients     Client[]
-  categories  Category[]
-  products    Product[]
-  suppliers   Supplier[]
-  orders      Order[]
-  invoices    Invoice[]
-  stocks      Stock[]
-  stockMovements StockMovement[] // Mouvements de stock de cette entreprise
-  stockAlerts StockAlert[] // Alertes de stock de cette entreprise
-  
-  // Audit
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@map("companies")
-  @@index([siret])
-}
-
-enum UserRole {
-  ADMIN
-  MANAGER
-  EMPLOYEE
-}
-
-// ================================
-// GESTION DES CLIENTS
-// ================================
 
 model Client {
-  id           String      @id @default(cuid())
-  type         ClientType  @default(INDIVIDUAL)
-
-  // Informations de base
-  firstName    String?
-  lastName     String?
-  companyName  String?
-  email        String?
-  phone        String?
-  mobile       String?
-  website      String?
-  fax          String?
-
-  // Adresse principale
-  address      String?
-  postalCode   String?
-  city         String?
-  country      String      @default("France")
-
-  // Adresse de facturation
-  billingAddress     String?
-  billingPostalCode  String?
-  billingCity        String?
-  billingCountry     String      @default("France")
-
-  // Informations professionnelles
-  siret        String?
-  vatNumber    String?
-
-  // Paramètres commerciaux
-  paymentTerms Int         @default(30) // Délai de paiement en jours
-  discount     Decimal     @default(0) @db.Decimal(5,2) // Remise par défaut
-  creditLimit  Decimal     @default(0) @db.Decimal(10,2) // Limite de crédit
-
-  // Statut et métadonnées
-  isActive     Boolean     @default(true)
-  notes        String?     @db.Text
-  tags         String[]    @default([])
-
-  // Relations
-  companyId    String
-  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  orders       Order[]
-  invoices     Invoice[]
-  interactions ClientInteraction[]
-
-  // Audit
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  @@map("clients")
-  @@index([email])
-  @@index([companyId])
-  @@index([siret])
-  @@index([isActive])
-  @@index([tags])
+  id        String    @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  invoices  Invoice[]
+  orders    Order[]
+  quotes    Quote[]
 }
 
-enum ClientType {
-  INDIVIDUAL
-  COMPANY
-}
-
-// ================================
-// HISTORIQUE DES INTERACTIONS CLIENTS
-// ================================
-
-model ClientInteraction {
-  id          String              @id @default(cuid())
-  type        InteractionType
-  subject     String
-  description String?             @db.Text
-  date        DateTime            @default(now())
-
-  // Relations
-  clientId    String
-  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  userId      String?
-  user        User?               @relation(fields: [userId], references: [id])
-
-  // Audit
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-
-  @@map("client_interactions")
-  @@index([clientId])
-  @@index([type])
-  @@index([date])
-  @@index([userId])
-}
-
-enum InteractionType {
-  CALL        // Appel téléphonique
-  EMAIL       // Email
-  MEETING     // Rendez-vous
-  NOTE        // Note interne
-  ORDER       // Commande
-  INVOICE     // Facture
-}
-
-// ================================
-// CATALOGUE PRODUITS
-// ================================
-
-model Category {
-  id          String    @id @default(cuid())
-  name        String
-  description String?
-  parentId    String?
-  
-  // Relations
-  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryHierarchy")
-  products    Product[]
-  
-  companyId   String
-  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  
-  // Audit
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
-  @@map("categories")
-  @@index([companyId])
-  @@index([parentId])
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  userId    String
+  purchases Purchase[]
+  user      User       @relation(fields: [userId], references: [id])
 }
 
 model Product {
-  id           String      @id @default(cuid())
-  name         String
-  description  String?
-  sku          String?     @unique
-  barcode      String?
-  
-  // Prix et coûts
-  price        Decimal     @db.Decimal(10,2)
-  cost         Decimal?    @db.Decimal(10,2)
-  vatRate      Decimal     @default(20) @db.Decimal(5,2)
-  
-  // Stock
-  stockQuantity Int        @default(0)
-  minStock     Int         @default(0)
-  maxStock     Int?
-  
-  // Configuration
-  isActive     Boolean     @default(true)
-  isService    Boolean     @default(false)
-  unit         String      @default("pièce")
-  
-  // Relations
-  categoryId   String?
-  category     Category?   @relation(fields: [categoryId], references: [id])
+  id            String         @id @default(cuid())
+  name          String
+  description   String?
+  price         Float
+  cost          Float?
+  sku           String         @unique
+  barcode       String?
+  tvaRate       Float?         @default(20.0)
+  minStock      Int            @default(0)
+  maxStock      Int?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  userId        String
+  categoryId    String?
+  category      Category?      @relation(fields: [categoryId], references: [id])
+  deliveryItems DeliveryItem[]
+  orderItems    OrderItem[]
+  user          User           @relation(fields: [userId], references: [id])
+  purchaseItems PurchaseItem[]
+  quoteItems    QuoteItem[]
+  stocks        Stock?
 
-  supplierId   String?
-  supplier     Supplier?   @relation("ProductSupplier", fields: [supplierId], references: [id])
-
-  companyId    String
-  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  images       ProductImage[]
-  variants     ProductVariant[]
-  orderItems   OrderItem[]
-  invoiceItems InvoiceItem[]
-  stockMovements StockMovement[]
-  stock        Stock?
-  stockAlerts  StockAlert[] // Alertes de stock pour ce produit
-  
-  // Audit
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  
-  @@map("products")
-  @@index([sku])
-  @@index([barcode])
-  @@index([companyId])
   @@index([categoryId])
-  @@index([supplierId])
 }
 
-// ================================
-// IMAGES ET VARIANTES PRODUITS
-// ================================
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  userId      String
+  parentId    String?
+  user        User       @relation(fields: [userId], references: [id])
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]
 
-model ProductImage {
-  id          String   @id @default(cuid())
-  filename    String
-  originalName String
-  mimeType    String
-  size        Int      // Taille en bytes
-  url         String
-  altText     String?
-  isMain      Boolean  @default(false)
-  sortOrder   Int      @default(0)
-
-  // Relations
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  // Audit
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("product_images")
-  @@index([productId])
-  @@index([isMain])
+  @@index([userId, name])
+  @@index([parentId])
 }
-
-model ProductVariant {
-  id          String   @id @default(cuid())
-  name        String   // Ex: "Rouge - Taille M"
-  sku         String?  @unique
-  barcode     String?  @unique
-
-  // Attributs de variante
-  color       String?
-  size        String?
-  material    String?
-
-  // Prix et stock spécifiques
-  price       Decimal? @db.Decimal(10,2)
-  cost        Decimal? @db.Decimal(10,2)
-  stock       Int      @default(0)
-
-  // Configuration
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-
-  // Relations
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  // Audit
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("product_variants")
-  @@index([productId])
-  @@index([sku])
-  @@index([barcode])
-}
-
-// ================================
-// GESTION DES STOCKS
-// ================================
 
 model Stock {
-  id                String    @id @default(cuid())
-  quantiteActuelle  Int       @default(0)
-  quantiteReservee  Int       @default(0)  // Stock réservé pour commandes
-  quantiteEnTransit Int       @default(0)  // Stock en transit (commandes fournisseurs)
-  quantiteDisponible Int      @default(0)  // Calculé: actuelle - réservée
-  quantiteMinimale  Int       @default(0)
-  quantiteMaximale  Int?
-  dateLastUpdate    DateTime  @default(now())
-
-  // Valeurs pour calculs
-  valeurStock       Decimal?  @db.Decimal(12,2) // Valeur totale du stock
-  coutMoyenPondere  Decimal?  @db.Decimal(10,4) // Coût moyen pondéré
-
-  // Alertes et seuils
-  seuilAlerteMin    Int?      // Seuil personnalisé d'alerte minimum
-  seuilAlerteMax    Int?      // Seuil personnalisé d'alerte maximum
-  alerteActive      Boolean   @default(false)   // Alerte active ou non
-
-  // Localisation (pour gestion multi-emplacements future)
-  emplacement       String?   // Emplacement physique du stock
-
-  // Relations
-  productId         String    @unique
-  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  companyId         String
-  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  // Audit
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  @@map("stocks")
-  @@index([companyId])
-  @@index([quantiteActuelle])
-  @@index([quantiteDisponible])
-  @@index([quantiteMinimale])
-  @@index([alerteActive])
-  @@index([dateLastUpdate])
+  id        String   @id @default(cuid())
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  productId String   @unique
+  product   Product  @relation(fields: [productId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
-
-model StockMovement {
-  id          String            @id @default(cuid())
-  type        StockMovementType
-  quantity    Int
-  quantityBefore Int?           // Quantité avant le mouvement
-  quantityAfter  Int?           // Quantité après le mouvement
-  unitCost    Decimal?          @db.Decimal(10,2)
-  totalCost   Decimal?          @db.Decimal(12,2) // Coût total du mouvement
-  reference   String?           // Référence du document (commande, facture, etc.)
-  comment     String?
-
-  // Traçabilité et audit renforcés
-  userId      String?           // Utilisateur qui a effectué le mouvement
-  user        User?             @relation(fields: [userId], references: [id])
-  batchNumber String?           // Numéro de lot/série
-  expiryDate  DateTime?         // Date d'expiration (pour produits périssables)
-
-  // Synchronisation avec transactions commerciales
-  orderId     String?           // Lié à une commande
-  order       Order?            @relation(fields: [orderId], references: [id])
-  invoiceId   String?           // Lié à une facture
-  invoice     Invoice?          @relation(fields: [invoiceId], references: [id])
-
-  // Statut et validation
-  status      MovementStatus    @default(CONFIRMED)
-  validatedBy String?           // Utilisateur qui a validé le mouvement
-  validatedAt DateTime?         // Date de validation
-
-  // Relations
-  productId   String
-  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  companyId   String            // Ajout pour performance
-  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  // Audit
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  @@map("stock_movements")
-  @@index([productId])
-  @@index([companyId])
-  @@index([type])
-  @@index([status])
-  @@index([createdAt])
-  @@index([reference])
-  @@index([userId])
-  @@index([orderId])
-  @@index([invoiceId])
-}
-
-enum StockMovementType {
-  IN          // Entrée de stock
-  OUT         // Sortie de stock
-  ADJUSTMENT  // Ajustement d'inventaire
-  TRANSFER    // Transfert
-  RESERVATION // Réservation de stock
-  RELEASE     // Libération de réservation
-  RETURN      // Retour client
-  LOSS        // Perte/casse
-  PRODUCTION  // Production interne
-}
-
-enum MovementStatus {
-  PENDING     // En attente de validation
-  CONFIRMED   // Confirmé et appliqué
-  CANCELLED   // Annulé
-  REVERSED    // Inversé/contrepassé
-}
-
-// ================================
-// ALERTES ET NOTIFICATIONS STOCK
-// ================================
-
-model StockAlert {
-  id          String      @id @default(cuid())
-  type        AlertType
-  severity    AlertSeverity @default(MEDIUM)
-  title       String
-  message     String
-  isRead      Boolean     @default(false)
-  isActive    Boolean     @default(true)
-
-  // Données contextuelles
-  currentStock Int?
-  thresholdValue Int?
-
-  // Relations
-  productId   String
-  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  companyId   String
-  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  // Audit
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  resolvedAt  DateTime?
-
-  @@map("stock_alerts")
-  @@index([companyId])
-  @@index([productId])
-  @@index([type])
-  @@index([isActive])
-  @@index([createdAt])
-}
-
-enum AlertType {
-  LOW_STOCK       // Stock faible
-  OUT_OF_STOCK    // Rupture de stock
-  OVERSTOCK       // Surstock
-  EXPIRY_WARNING  // Produit proche expiration
-  NEGATIVE_STOCK  // Stock négatif (erreur)
-}
-
-enum AlertSeverity {
-  LOW     // Information
-  MEDIUM  // Attention
-  HIGH    // Urgent
-  CRITICAL // Critique
-}
-
-// ================================
-// COMMANDES ET DEVIS
-// ================================
 
 model Order {
   id           String      @id @default(cuid())
-  number       String      @unique
-  type         OrderType   @default(QUOTE)
-  status       OrderStatus @default(DRAFT)
-  
-  // Dates
-  orderDate    DateTime    @default(now())
-  validUntil   DateTime?
+  orderNumber  String      @unique
+  status       String      @default("confirmed")
+  total        Float
+  totalHT      Float?
+  totalTTC     Float?
+  tvaAmount    Float?
   deliveryDate DateTime?
-  
-  // Montants
-  subtotal     Decimal     @db.Decimal(10,2)
-  vatAmount    Decimal     @db.Decimal(10,2)
-  total        Decimal     @db.Decimal(10,2)
-  discount     Decimal     @default(0) @db.Decimal(5,2)
-  
-  // Notes
   notes        String?
-  internalNotes String?
-  
-  // Relations
-  clientId     String
-  client       Client      @relation(fields: [clientId], references: [id])
-  
-  companyId    String
-  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  
-  items        OrderItem[]
-  invoices     Invoice[]
-  stockMovements StockMovement[] // Mouvements de stock liés à cette commande
-  
-  // Audit
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-  
-  @@map("orders")
-  @@index([number])
-  @@index([clientId])
-  @@index([companyId])
-  @@index([status])
+  userId       String
+  clientId     String
+  quoteId      String?     @unique
+  deliveries   Delivery[]
+  invoice      Invoice?
+  client       Client      @relation(fields: [clientId], references: [id])
+  Quote        Quote?      @relation(fields: [quoteId], references: [id])
+  user         User        @relation(fields: [userId], references: [id])
+  items        OrderItem[]
 }
 
 model OrderItem {
-  id          String  @id @default(cuid())
-  quantity    Int
-  unitPrice   Decimal @db.Decimal(10,2)
-  vatRate     Decimal @db.Decimal(5,2)
-  discount    Decimal @default(0) @db.Decimal(5,2)
-  
-  // Relations
-  orderId     String
-  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  
-  productId   String
-  product     Product @relation(fields: [productId], references: [id])
-  
-  @@map("order_items")
-  @@index([orderId])
-  @@index([productId])
+  id        String   @id @default(cuid())
+  quantity  Int
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  orderId   String
+  productId String
+  order     Order    @relation(fields: [orderId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
 }
-
-enum OrderType {
-  QUOTE    // Devis
-  ORDER    // Commande
-}
-
-enum OrderStatus {
-  DRAFT      // Brouillon
-  SENT       // Envoyé
-  ACCEPTED   // Accepté
-  REJECTED   // Refusé
-  EXPIRED    // Expiré
-  CANCELLED  // Annulé
-}
-
-// ================================
-// FACTURATION
-// ================================
 
 model Invoice {
-  id            String        @id @default(cuid())
-  number        String        @unique
-  type          InvoiceType   @default(INVOICE)
-  status        InvoiceStatus @default(DRAFT)
-  
-  // Dates
-  invoiceDate   DateTime      @default(now())
-  dueDate       DateTime
-  paidDate      DateTime?
-  
-  // Montants
-  subtotal      Decimal       @db.Decimal(10,2)
-  vatAmount     Decimal       @db.Decimal(10,2)
-  total         Decimal       @db.Decimal(10,2)
-  paidAmount    Decimal       @default(0) @db.Decimal(10,2)
-  discount      Decimal       @default(0) @db.Decimal(5,2)
-  
-  // Notes
+  id              String            @id @default(cuid())
+  invoiceNumber   String            @unique
+  status          String            @default("issued")
+  total           Float
+  totalHT         Float?
+  totalTTC        Float?
+  tvaAmount       Float?
+  dueDate         DateTime
+  paidDate        DateTime?
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  userId          String
+  clientId        String
+  orderId         String?           @unique
+  AccountingEntry AccountingEntry[]
+  client          Client            @relation(fields: [clientId], references: [id])
+  order           Order?            @relation(fields: [orderId], references: [id])
+  user            User              @relation(fields: [userId], references: [id])
+  payments        Payment[]
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  quoteNumber String      @unique
+  status      String      @default("draft")
+  total       Float
+  totalHT     Float?
+  totalTTC    Float?
+  tvaAmount   Float?
+  validUntil  DateTime
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  userId      String
+  clientId    String
+  Order       Order?
+  client      Client      @relation(fields: [clientId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+  items       QuoteItem[]
+}
+
+model QuoteItem {
+  id        String   @id @default(cuid())
+  quantity  Int
+  price     Float
+  discount  Float?   @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  quoteId   String
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quote     Quote    @relation(fields: [quoteId], references: [id])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  paymentNumber String   @unique
+  amount        Float
+  paymentMethod String
+  paymentDate   DateTime
+  reference     String?
   notes         String?
-  paymentMethod String?
-  
-  // Relations
-  clientId      String
-  client        Client        @relation(fields: [clientId], references: [id])
-  
-  orderId       String?
-  order         Order?        @relation(fields: [orderId], references: [id])
-  
-  companyId     String
-  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  
-  items         InvoiceItem[]
-  stockMovements StockMovement[] // Mouvements de stock liés à cette facture
-  
-  // Audit
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  
-  @@map("invoices")
-  @@index([number])
-  @@index([clientId])
-  @@index([companyId])
-  @@index([status])
-  @@index([dueDate])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  invoiceId     String
+  userId        String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
 }
 
-model InvoiceItem {
-  id          String  @id @default(cuid())
-  quantity    Int
-  unitPrice   Decimal @db.Decimal(10,2)
-  vatRate     Decimal @db.Decimal(5,2)
-  discount    Decimal @default(0) @db.Decimal(5,2)
-  
-  // Relations
-  invoiceId   String
-  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  
-  productId   String
-  product     Product @relation(fields: [productId], references: [id])
-  
-  @@map("invoice_items")
-  @@index([invoiceId])
-  @@index([productId])
+model Purchase {
+  id             String         @id @default(cuid())
+  purchaseNumber String         @unique
+  status         String
+  total          Float
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  userId         String
+  supplierId     String
+  supplier       Supplier       @relation(fields: [supplierId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+  items          PurchaseItem[]
 }
 
-enum InvoiceType {
-  INVOICE     // Facture
-  CREDIT_NOTE // Avoir
-  PROFORMA    // Facture pro forma
+model PurchaseItem {
+  id         String   @id @default(cuid())
+  quantity   Int
+  unitPrice  Float
+  total      Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  purchaseId String
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  purchase   Purchase @relation(fields: [purchaseId], references: [id])
 }
 
-enum InvoiceStatus {
-  DRAFT       // Brouillon
-  SENT        // Envoyée
-  PAID        // Payée
-  PARTIAL     // Partiellement payée
-  OVERDUE     // En retard
-  CANCELLED   // Annulée
+model Delivery {
+  id             String         @id @default(cuid())
+  deliveryNumber String         @unique
+  status         String         @default("pending")
+  deliveryDate   DateTime?
+  trackingNumber String?
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id])
+  items          DeliveryItem[]
 }
 
-// ================================
-// GESTION DES FOURNISSEURS
-// ================================
-
-model Supplier {
-  id           String      @id @default(cuid())
-  type         SupplierType @default(COMPANY)
-
-  // Informations de base
-  name         String      // Nom de l'entreprise ou nom complet
-  contactName  String?     // Nom du contact principal
-  email        String?
-  phone        String?
-  mobile       String?
-  website      String?
-  fax          String?
-
-  // Adresse principale
-  address      String?
-  postalCode   String?
-  city         String?
-  country      String      @default("France")
-
-  // Informations professionnelles
-  siret        String?
-  vatNumber    String?
-  rcs          String?     // Registre du Commerce et des Sociétés
-
-  // Paramètres commerciaux
-  paymentTerms Int         @default(30) // Délai de paiement en jours
-  discount     Decimal     @default(0) @db.Decimal(5,2) // Remise négociée
-  currency     String      @default("DA")
-
-  // Conditions et évaluations
-  rating       Int?        @default(0) // Note du fournisseur (0-5)
-
-  // Statut et métadonnées
-  isActive     Boolean     @default(true)
-  isPreferred  Boolean     @default(false) // Fournisseur préféré
-  notes        String?     @db.Text
-  tags         String[]    @default([])
-
-  // Relations
-  companyId    String
-  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  products     Product[]   @relation("ProductSupplier")
-
-  // Audit
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  @@map("suppliers")
-  @@index([email])
-  @@index([companyId])
-  @@index([siret])
-  @@index([isActive])
-  @@index([isPreferred])
-  @@index([tags])
+model DeliveryItem {
+  id         String   @id @default(cuid())
+  quantity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deliveryId String
+  productId  String
+  delivery   Delivery @relation(fields: [deliveryId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id])
 }
 
-enum SupplierType {
-  COMPANY     // Entreprise
-  INDIVIDUAL  // Particulier/Auto-entrepreneur
+model AccountingEntry {
+  id           String   @id @default(cuid())
+  entryNumber  String   @unique
+  description  String
+  debitAmount  Float?
+  creditAmount Float?
+  accountCode  String
+  entryDate    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  invoiceId    String?
+  userId       String
+  Invoice      Invoice? @relation(fields: [invoiceId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model KpiTargetSettings {
+  id                   String   @id @default(cuid())
+  scopeId              String   @unique
+  revenueTarget        Float?
+  ordersTarget         Int?
+  clientsTarget        Int?
+  conversionRateTarget Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

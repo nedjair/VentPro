@@ -1,3 +1,4 @@
+import { StockAlertService } from '../services/stock-alert.service'
 import { prisma } from '@gestion/database'
 import { logger } from '../utils/logger'
 import { StockService } from './stock.service'
@@ -36,7 +37,7 @@ export class StockSyncService {
           // Créer un mouvement de sortie de stock pour chaque produit
           await StockService.processSale(
             item.productId,
-            item.quantity,
+            item.quantiteActuelle,
             companyId,
             invoiceId,
             userId
@@ -44,7 +45,7 @@ export class StockSyncService {
 
           logger.info('Stock synchronisé pour produit', {
             productId: item.productId,
-            quantity: item.quantity,
+            quantity: item.quantiteActuelle,
             invoiceId,
           })
         }
@@ -92,7 +93,7 @@ export class StockSyncService {
           // Réserver le stock pour ce produit
           await StockService.reserveStock(
             item.productId,
-            item.quantity,
+            item.quantiteActuelle,
             companyId,
             orderId,
             userId
@@ -100,7 +101,7 @@ export class StockSyncService {
 
           logger.info('Stock réservé pour produit', {
             productId: item.productId,
-            quantity: item.quantity,
+            quantity: item.quantiteActuelle,
             orderId,
           })
         }
@@ -148,7 +149,7 @@ export class StockSyncService {
           // Libérer la réservation pour ce produit
           await StockService.releaseReservation(
             item.productId,
-            item.quantity,
+            item.quantiteActuelle,
             companyId,
             orderId,
             userId
@@ -156,7 +157,7 @@ export class StockSyncService {
 
           logger.info('Réservation libérée pour produit', {
             productId: item.productId,
-            quantity: item.quantity,
+            quantity: item.quantiteActuelle,
             orderId,
           })
         }
@@ -197,7 +198,7 @@ export class StockSyncService {
       for (const returnItem of returns) {
         await StockService.processReturn(
           returnItem.productId,
-          returnItem.quantity,
+          returnItem.quantiteActuelle,
           companyId,
           invoiceId,
           userId,
@@ -206,7 +207,7 @@ export class StockSyncService {
 
         logger.info('Retour traité pour produit', {
           productId: returnItem.productId,
-          quantity: returnItem.quantity,
+          quantity: returnItem.quantiteActuelle,
           invoiceId,
         })
       }
@@ -245,7 +246,7 @@ export class StockSyncService {
       for (const item of deliveryData.items) {
         await StockService.processSupplierDelivery(
           item.productId,
-          item.quantity,
+          item.quantiteActuelle,
           item.unitCost,
           companyId,
           deliveryData.orderId,
@@ -256,7 +257,7 @@ export class StockSyncService {
 
         logger.info('Réception traitée pour produit', {
           productId: item.productId,
-          quantity: item.quantity,
+          quantity: item.quantiteActuelle,
           unitCost: item.unitCost,
         })
       }
@@ -312,7 +313,7 @@ export class StockSyncService {
 
       for (const product of products) {
         if (product.stock && product.cost) {
-          const stockValue = product.cost * product.stockQuantity
+          const stockValue = Number(product.cost) * Number(product.stockQuantity)
           const availableQuantity = product.stockQuantity - (product.stock.quantiteReservee || 0)
 
           await prisma.stock.update({

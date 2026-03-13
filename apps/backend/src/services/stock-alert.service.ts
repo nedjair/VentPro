@@ -1,3 +1,4 @@
+import { StockAlertService } from '../services/stock-alert.service'
 import { prisma, StockAlert, AlertType, AlertSeverity } from '@gestion/database'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'

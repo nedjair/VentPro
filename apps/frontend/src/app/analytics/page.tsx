@@ -1,11 +1,11 @@
-import { Metadata } from 'next'
-import { AnalyticsPage } from '@/components/pages/analytics'
+import { redirect } from 'next/navigation'
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'Analytics - Gestion Commerciale',
   description: 'Tableaux de bord et analyses avancées pour votre activité commerciale',
 }
 
 export default function Analytics() {
-  return <AnalyticsPage />
+  // Conserver l'URL historique tout en centralisant le pilotage sur /dashboard.
+  redirect('/dashboard')
 }

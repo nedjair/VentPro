@@ -9,7 +9,7 @@ export interface User {
   email: string
   firstName?: string
   lastName?: string
-  role: 'ADMIN' | 'MANAGER' | 'USER' | 'READONLY'
+  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE'
   permissions: string[]
   avatar?: string
   createdAt: string
@@ -35,6 +35,39 @@ export interface AuthState {
   isLoading: boolean
   error: string | null
   isHydrated: boolean
+}
+
+function normalizeRole(role?: string): User['role'] {
+  const normalizedRole = (role || 'EMPLOYEE').toUpperCase()
+  return normalizedRole === 'ADMIN' || normalizedRole === 'MANAGER' || normalizedRole === 'EMPLOYEE'
+    ? normalizedRole
+    : 'EMPLOYEE'
+}
+
+function splitFullName(fullName?: string) {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean)
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' '),
+  }
+}
+
+function normalizeAuthUser(user: any): User {
+  const fullName = splitFullName(user?.fullName)
+  const firstName = user?.firstName || fullName.firstName || ''
+  const lastName = user?.lastName || fullName.lastName || ''
+  const role = normalizeRole(user?.role)
+
+  return {
+    id: String(user?.id || ''),
+    email: user?.email || '',
+    firstName,
+    lastName,
+    role,
+    permissions: role === 'ADMIN' ? ['*'] : ['read'],
+    createdAt: user?.createdAt || new Date().toISOString(),
+    lastLoginAt: user?.lastLoginAt || new Date().toISOString(),
+  }
 }
 
 // Hook pour détecter si on est côté client après hydratation
@@ -88,32 +121,42 @@ class AuthStore {
     return this.state
   }
 
+  // Persister l'authentification au même endroit pour tout le frontend.
+  private persistAuth(user: User, tokens: AuthTokens) {
+    api.setAuthToken(tokens.accessToken)
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('auth-user', JSON.stringify(user))
+      localStorage.setItem('auth-tokens', JSON.stringify(tokens))
+      document.cookie = `auth-token=${tokens.accessToken}; path=/; max-age=${tokens.expiresIn || 86400}; SameSite=Lax`
+    }
+  }
+
+  // Nettoyer le stockage partagé avec le middleware Next.js.
+  private clearStoredAuth() {
+    api.clearAuthToken()
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('auth-user')
+      localStorage.removeItem('auth-tokens')
+      document.cookie = 'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    }
+  }
+
   // Méthode de connexion
   async login(credentials: LoginCredentials): Promise<void> {
-    console.log('🔍 Store: Début de la méthode login')
     this.setState({ isLoading: true, error: null })
 
     try {
-      console.log('🔍 Store: Appel API login...')
-      // Appel API réel
       const response = await api.login(credentials)
-      console.log('🔍 Store: Réponse API reçue:', response)
 
       if (response.success && response.data) {
-        console.log('✅ Store: Réponse API valide, traitement des données...')
         const { user, tokens } = response.data
 
-        // Transformer les données utilisateur
-        const authUser: User = {
-          id: user.id.toString(),
-          email: user.email,
-          firstName: user.firstName || '',
-          lastName: user.lastName || '',
-          role: user.role as User['role'],
-          permissions: user.role === 'ADMIN' ? ['*'] : ['read'],
-          createdAt: user.createdAt || new Date().toISOString(),
+        const authUser: User = normalizeAuthUser({
+          ...user,
           lastLoginAt: new Date().toISOString(),
-        }
+        })
 
         const authTokens: AuthTokens = {
           accessToken: tokens.accessToken,
@@ -121,24 +164,7 @@ class AuthStore {
           expiresIn: 86400, // 24h en secondes
         }
 
-        console.log('🔍 Store: Utilisateur transformé:', authUser)
-        console.log('🔍 Store: Tokens créés:', {
-          accessToken: tokens.accessToken ? tokens.accessToken.substring(0, 20) + '...' : 'N/A',
-          expiresIn: authTokens.expiresIn
-        })
-
-        // Configurer l'API avec le token
-        api.setAuthToken(authTokens.accessToken)
-
-        // Stocker dans localStorage et cookies
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-user', JSON.stringify(authUser))
-          localStorage.setItem('auth-tokens', JSON.stringify(authTokens))
-
-          // Stocker le token dans un cookie pour le middleware
-          document.cookie = `auth-token=${authTokens.accessToken}; path=/; max-age=${authTokens.expiresIn}; SameSite=Lax`
-          console.log('✅ Store: Données stockées dans localStorage et cookie')
-        }
+        this.persistAuth(authUser, authTokens)
 
         this.setState({
           user: authUser,
@@ -146,30 +172,13 @@ class AuthStore {
           isAuthenticated: true,
           isLoading: false,
           error: null,
-          isHydrated: true, // Marquer comme hydraté après une connexion réussie
+          isHydrated: true,
         })
-
-        console.log('✅ Store: État mis à jour, isAuthenticated =', true)
-        console.log('✅ Store: État final:', {
-          isAuthenticated: this.state.isAuthenticated,
-          user: this.state.user?.email,
-          hasToken: !!this.state.tokens?.accessToken,
-          isHydrated: this.state.isHydrated
-        })
-
-        // Forcer une notification supplémentaire après un délai pour s'assurer que les composants sont mis à jour
-        setTimeout(() => {
-          console.log('🔄 Store: Notification forcée après connexion')
-          this.notify()
-        }, 100)
-
       } else {
-        console.log('❌ Store: Réponse API invalide:', response)
         throw new Error(response.message || 'Erreur de connexion')
       }
 
     } catch (error) {
-      console.error('❌ Store: Erreur dans login:', error)
       const errorMessage = error instanceof Error ? error.message : 'Erreur de connexion'
       this.setState({
         user: null,
@@ -178,24 +187,13 @@ class AuthStore {
         isLoading: false,
         error: errorMessage,
       })
-      console.log('❌ Store: État mis à jour avec erreur:', errorMessage)
       throw error
     }
   }
 
   // Méthode de déconnexion
   logout(): void {
-    // Nettoyer l'API
-    api.clearAuthToken()
-
-    // Nettoyer localStorage et cookies
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('auth-user')
-      localStorage.removeItem('auth-tokens')
-
-      // Supprimer le cookie
-      document.cookie = 'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
-    }
+    this.clearStoredAuth()
 
     this.setState({
       user: null,
@@ -203,142 +201,96 @@ class AuthStore {
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      isHydrated: true,
     })
 
-    // Rediriger vers la page de connexion
     if (typeof window !== 'undefined') {
-      window.location.href = '/login'
+      window.location.assign('/login')
     }
   }
 
   // Méthode pour vérifier l'authentification au démarrage
-  checkAuth(): void {
+  async checkAuth(): Promise<void> {
     if (typeof window === 'undefined') return
 
     try {
-      console.log('🔍 checkAuth: Début de la vérification')
+      this.setState({ isLoading: true, error: null })
 
-      // Vérifier d'abord le localStorage
       const storedUser = localStorage.getItem('auth-user')
       const storedTokens = localStorage.getItem('auth-tokens')
 
-      console.log('🔍 checkAuth: localStorage user:', !!storedUser)
-      console.log('🔍 checkAuth: localStorage tokens:', !!storedTokens)
-
       if (storedUser && storedTokens) {
-        const user: User = JSON.parse(storedUser)
-        const tokens: AuthTokens = JSON.parse(storedTokens)
-
-        // Configurer l'API avec le token
-        api.setAuthToken(tokens.accessToken)
-
-        // Restaurer le cookie si nécessaire
-        if (!document.cookie.includes('auth-token=')) {
-          document.cookie = `auth-token=${tokens.accessToken}; path=/; max-age=${tokens.expiresIn || 86400}; SameSite=Lax`
+        const user: User = normalizeAuthUser(JSON.parse(storedUser))
+        const parsedTokens = JSON.parse(storedTokens)
+        const tokens: AuthTokens = {
+          accessToken: parsedTokens?.accessToken || '',
+          refreshToken: parsedTokens?.refreshToken || '',
+          expiresIn: Number(parsedTokens?.expiresIn || 86400),
         }
 
-        this.setState({
-          user,
-          tokens,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null,
-          isHydrated: true,
-        })
-
-        console.log('✅ checkAuth: Authentification restaurée depuis localStorage')
-        console.log('✅ checkAuth: État après restauration:', {
-          isAuthenticated: this.state.isAuthenticated,
-          isHydrated: this.state.isHydrated,
-          user: this.state.user?.email
-        })
-
-        // Forcer une notification pour s'assurer que les composants sont mis à jour
-        setTimeout(() => {
-          console.log('🔄 checkAuth: Notification forcée après restauration localStorage')
-          this.notify()
-        }, 50)
-        return
+        if (tokens.accessToken) {
+          this.persistAuth(user, tokens)
+          this.setState({
+            user,
+            tokens,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+            isHydrated: true,
+          })
+          return
+        }
       }
 
-      // Si pas de localStorage, vérifier le cookie
       const cookieMatch = document.cookie.match(/auth-token=([^;]+)/)
-      if (cookieMatch) {
-        const token = cookieMatch[1]
-        console.log('🔍 checkAuth: Token trouvé dans cookie:', token ? token.substring(0, 20) + '...' : 'undefined')
-
-        // Créer un utilisateur temporaire basé sur le token
-        // En production, on devrait décoder le JWT ou faire un appel API
-        const tempUser: User = {
-          id: 'temp-user',
-          email: 'admin@gestion-dz.com',
-          firstName: 'Admin',
-          lastName: 'User',
-          role: 'ADMIN',
-          permissions: ['*'],
-          createdAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-        }
-
-        const tempTokens: AuthTokens = {
-          accessToken: token || '',
-          refreshToken: token || '',
-          expiresIn: 86400,
-        }
-
-        // Configurer l'API avec le token
-        if (token) {
-          api.setAuthToken(token)
-        }
-
-        // Essayer de stocker à nouveau dans localStorage
-        try {
-          localStorage.setItem('auth-user', JSON.stringify(tempUser))
-          localStorage.setItem('auth-tokens', JSON.stringify(tempTokens))
-          console.log('✅ checkAuth: Données sauvegardées dans localStorage')
-        } catch (e) {
-          console.warn('⚠️ checkAuth: Impossible de sauvegarder dans localStorage:', e)
-        }
-
+      const token = cookieMatch?.[1]
+      if (!token) {
         this.setState({
-          user: tempUser,
-          tokens: tempTokens,
-          isAuthenticated: true,
+          user: null,
+          tokens: null,
+          isAuthenticated: false,
           isLoading: false,
           error: null,
           isHydrated: true,
         })
-
-        console.log('✅ checkAuth: Authentification restaurée depuis cookie')
         return
       }
 
-      // Aucune authentification trouvée
-      console.log('🔍 checkAuth: Aucune authentification trouvée')
+      api.setAuthToken(token)
+      const userResponse = await api.getProfile()
+
+      if (!userResponse.success || !userResponse.data) {
+        throw new Error(userResponse.message || 'Impossible de restaurer la session')
+      }
+
+      const user = normalizeAuthUser({
+        ...userResponse.data,
+        lastLoginAt: new Date().toISOString(),
+      })
+      const tokens: AuthTokens = {
+        accessToken: token,
+        refreshToken: '',
+        expiresIn: 86400,
+      }
+
+      this.persistAuth(user, tokens)
       this.setState({
+        user,
+        tokens,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
         isHydrated: true,
       })
 
     } catch (error) {
-      console.error('❌ checkAuth: Erreur lors de la vérification:', error)
       this.clearAuth()
-      this.setState({
-        isHydrated: true,
-      })
     }
   }
 
   // Méthode pour nettoyer l'authentification
   clearAuth(): void {
-    api.clearAuthToken()
-
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('auth-user')
-      localStorage.removeItem('auth-tokens')
-
-      // Supprimer le cookie
-      document.cookie = 'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
-    }
+    this.clearStoredAuth()
 
     this.setState({
       user: null,
@@ -346,6 +298,7 @@ class AuthStore {
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      isHydrated: true,
     })
   }
 
@@ -390,18 +343,45 @@ export function useAuth() {
   // Initialiser l'authentification côté client après hydratation
   React.useEffect(() => {
     if (isClient && !state.isHydrated) {
-      authStore.checkAuth()
+      authStore.checkAuth().catch(error => {
+        console.error('Erreur lors de la vérification d\'authentification:', error)
+      })
     }
   }, [isClient, state.isHydrated])
 
+  // Créer des fonctions wrapper pour éviter les problèmes de binding
+  const login = React.useCallback(async (credentials: LoginCredentials) => {
+    return authStore.login(credentials)
+  }, [])
+
+  const logout = React.useCallback(() => {
+    return authStore.logout()
+  }, [])
+
+  const clearError = React.useCallback(() => {
+    return authStore.clearError()
+  }, [])
+
+  const hasRole = React.useCallback((role: string) => {
+    return authStore.hasRole(role)
+  }, [])
+
+  const hasPermission = React.useCallback((permission: string) => {
+    return authStore.hasPermission(permission)
+  }, [])
+
+  const isAdmin = React.useCallback(() => {
+    return authStore.isAdmin()
+  }, [])
+
   return {
     ...state,
-    login: authStore.login.bind(authStore),
-    logout: authStore.logout.bind(authStore),
-    clearError: authStore.clearError.bind(authStore),
-    hasRole: authStore.hasRole.bind(authStore),
-    hasPermission: authStore.hasPermission.bind(authStore),
-    isAdmin: authStore.isAdmin.bind(authStore),
+    login,
+    logout,
+    clearError,
+    hasRole,
+    hasPermission,
+    isAdmin,
   }
 }
 
@@ -424,10 +404,12 @@ export function useIsAuthenticated() {
   const isClient = useIsClient()
 
   React.useEffect(() => {
-    const unsubscribe = authStore.subscribe((state) => {
+    const handleStateChange = (state: AuthState) => {
       setIsAuthenticated(state.isAuthenticated)
       setIsHydrated(state.isHydrated)
-    })
+    }
+
+    const unsubscribe = authStore.subscribe(handleStateChange)
 
     // Initialiser immédiatement avec l'état actuel du store
     const currentState = authStore.getState()
@@ -440,7 +422,9 @@ export function useIsAuthenticated() {
   // Initialiser l'authentification côté client après hydratation
   React.useEffect(() => {
     if (isClient && !isHydrated) {
-      authStore.checkAuth()
+      authStore.checkAuth().catch(error => {
+        console.error('Erreur lors de la vérification d\'authentification:', error)
+      })
     }
   }, [isClient, isHydrated])
 

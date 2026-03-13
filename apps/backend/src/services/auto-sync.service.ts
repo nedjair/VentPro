@@ -1,4 +1,4 @@
-import { prisma } from '@gestion/database'
+import { prisma, Product } from '@gestion/database'
 import { logger } from '../utils/logger'
 
 /**

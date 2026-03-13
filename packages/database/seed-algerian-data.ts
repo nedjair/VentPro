@@ -180,7 +180,7 @@ async function seedAlgerianData() {
     const admin = await prisma.user.create({
       data: {
         email: 'admin@gestion-dz.com',
-        password: adminPassword,
+        passwordHash: adminPassword,
         firstName: getRandomElement(ALGERIAN_FIRST_NAMES),
         lastName: getRandomElement(ALGERIAN_LAST_NAMES),
         role: 'ADMIN',
@@ -199,7 +199,7 @@ async function seedAlgerianData() {
       const user = await prisma.user.create({
         data: {
           email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@gestion-dz.com`,
-          password,
+          passwordHash: password,
           firstName,
           lastName,
           role: userRoles[i] as 'MANAGER' | 'EMPLOYEE',
@@ -429,43 +429,4 @@ async function seedAlgerianData() {
     console.log(`✅ Clients: ${clients.length}`)
     console.log(`✅ Stocks: ${stocks.length}`)
     console.log(`✅ Mouvements de stock: ${stockMovements.length}`)
-    console.log(`\n📊 Total: ${1 + users.length + categories.length + suppliers.length + products.length + clients.length + stocks.length + stockMovements.length} enregistrements`)
-    console.log('\n🇩🇿 Base de données peuplée avec des données algériennes !')
-    console.log('🔗 Vous pouvez maintenant vous connecter avec:')
-    console.log(`   Email: admin@gestion-dz.com`)
-    console.log(`   Mot de passe: admin123`)
-
-    return {
-      company,
-      users,
-      categories,
-      suppliers,
-      products,
-      clients,
-      stocks,
-      stockMovements
-    }
-  } catch (error) {
-    console.error('❌ Erreur lors du seeding:', error)
-    throw error
-  }
-}
-
-// Point d'entrée
-async function main() {
-  try {
-    await seedAlgerianData()
-  } catch (error) {
-    console.error('❌ Erreur fatale:', error)
-    process.exit(1)
-  } finally {
-    await prisma.$disconnect()
-  }
-}
-
-// Exécution si appelé directement
-if (require.main === module) {
-  main()
-}
-
-export default main
+    console.log(`

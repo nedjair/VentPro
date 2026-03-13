@@ -4,6 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE EXTENSION IF NOT EXISTS "unaccent";
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
 
 -- Configuration de la locale française
 SET lc_messages TO 'fr_FR.UTF-8';
@@ -16,7 +17,6 @@ SET timezone TO 'Europe/Paris';
 
 -- Optimisations pour les performances
 ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';
-ALTER SYSTEM SET pg_stat_statements.track = 'all';
 ALTER SYSTEM SET log_statement = 'mod';
 ALTER SYSTEM SET log_min_duration_statement = 1000;
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api, KPIMetrics } from '@/lib/api'
+import { normalizeCurrencyCode } from '@/lib/currency'
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -49,15 +50,61 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
     }
   }
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, currency?: string) => {
     return new Intl.NumberFormat('fr-DZ', {
+      style: 'currency',
+      currency: normalizeCurrencyCode(currency),
+      currencyDisplay: 'code',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
-    }).format(amount) + ' DA'
+    }).format(amount)
   }
 
   const formatPercent = (value: number) => {
     return `${value.toFixed(1)}%`
+  }
+
+  const comparisonLabel = 'objectif configuré'
+
+  const formatVariance = (value: number | null) => {
+    if (value === null) {
+      return 'À configurer'
+    }
+
+    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
+  }
+
+  const renderTargetValue = (target: number | null, formatter: (value: number) => string) => {
+    if (target === null) {
+      return 'Objectif non défini'
+    }
+
+    return `Objectif : ${formatter(target)}`
+  }
+
+  const renderVarianceBlock = (value: number | null) => {
+    if (value === null) {
+      return (
+        <div className="flex items-center">
+          <Target className="h-4 w-4 text-gray-400 mr-1" />
+          <span className="text-sm text-gray-500">Objectif à configurer</span>
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex items-center">
+        {value >= 0 ? (
+          <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
+        ) : (
+          <TrendingDown className="h-4 w-4 text-red-500 mr-1" />
+        )}
+        <span className={`text-sm font-medium ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          {formatVariance(value)}
+        </span>
+        <span className="text-sm text-gray-500 ml-1">vs {comparisonLabel}</span>
+      </div>
+    )
   }
 
   if (loading) {
@@ -94,7 +141,7 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">KPI Temps Réel</h2>
         <div className="text-sm text-gray-500">
-          Dernière mise à jour: {new Date().toLocaleTimeString('fr-FR')}
+          Dernière mise à jour: {new Date(kpi.lastUpdated).toLocaleTimeString('fr-FR')}
         </div>
       </div>
 
@@ -106,10 +153,10 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
             <div>
               <p className="text-sm font-medium text-gray-600">Chiffre d'Affaires</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatCurrency(kpi.revenue.current)} €
+                {formatCurrency(kpi.revenue.current, kpi.revenue.currency)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Objectif: {formatCurrency(kpi.revenue.target)} €
+                {renderTargetValue(kpi.revenue.target, (value) => formatCurrency(value, kpi.revenue.currency))}
               </p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
@@ -117,17 +164,7 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
             </div>
           </div>
           <div className="mt-4">
-            <div className="flex items-center">
-              {kpi.revenue.percentage >= 0 ? (
-                <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-500 mr-1" />
-              )}
-              <span className={`text-sm font-medium ${kpi.revenue.percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {kpi.revenue.percentage >= 0 ? '+' : ''}{kpi.revenue.percentage.toFixed(1)}%
-              </span>
-              <span className="text-sm text-gray-500 ml-1">vs objectif</span>
-            </div>
+            {renderVarianceBlock(kpi.revenue.growth)}
           </div>
         </div>
 
@@ -140,7 +177,7 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
                 {kpi.orders.current}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Objectif: {kpi.orders.target}
+                {renderTargetValue(kpi.orders.target, (value) => value.toString())}
               </p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
@@ -148,17 +185,7 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
             </div>
           </div>
           <div className="mt-4">
-            <div className="flex items-center">
-              {kpi.orders.percentage >= 0 ? (
-                <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-500 mr-1" />
-              )}
-              <span className={`text-sm font-medium ${kpi.orders.percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {kpi.orders.percentage >= 0 ? '+' : ''}{kpi.orders.percentage.toFixed(1)}%
-              </span>
-              <span className="text-sm text-gray-500 ml-1">vs objectif</span>
-            </div>
+            {renderVarianceBlock(kpi.orders.growth)}
           </div>
         </div>
 
@@ -171,7 +198,7 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
                 {kpi.clients.current}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Objectif: {kpi.clients.target}
+                {renderTargetValue(kpi.clients.target, (value) => value.toString())}
               </p>
             </div>
             <div className="p-3 bg-purple-100 rounded-full">
@@ -179,17 +206,7 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
             </div>
           </div>
           <div className="mt-4">
-            <div className="flex items-center">
-              {kpi.clients.percentage >= 0 ? (
-                <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-500 mr-1" />
-              )}
-              <span className={`text-sm font-medium ${kpi.clients.percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {kpi.clients.percentage >= 0 ? '+' : ''}{kpi.clients.percentage.toFixed(1)}%
-              </span>
-              <span className="text-sm text-gray-500 ml-1">vs objectif</span>
-            </div>
+            {renderVarianceBlock(kpi.clients.growth)}
           </div>
         </div>
 
@@ -199,10 +216,10 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
             <div>
               <p className="text-sm font-medium text-gray-600">Taux de Conversion</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatPercent(0.25)}
+                {formatPercent(kpi.conversion.rate)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Objectif: {formatPercent(0.30)}
+                {renderTargetValue(kpi.conversion.target, (value) => formatPercent(value))}
               </p>
             </div>
             <div className="p-3 bg-orange-100 rounded-full">
@@ -210,17 +227,7 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
             </div>
           </div>
           <div className="mt-4">
-            <div className="flex items-center">
-              {true ? (
-                <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-500 mr-1" />
-              )}
-              <span className={`text-sm font-medium text-green-600`}>
-                +5.2%
-              </span>
-              <span className="text-sm text-gray-500 ml-1">vs objectif</span>
-            </div>
+            {renderVarianceBlock(kpi.conversion.growth)}
           </div>
         </div>
       </div>
@@ -232,16 +239,18 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Revenus actuels</span>
-              <span className="font-medium">{formatCurrency(kpi.revenue.current)} {kpi.revenue.currency}</span>
+              <span className="font-medium">{formatCurrency(kpi.revenue.current, kpi.revenue.currency)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Objectif revenus</span>
-              <span className="font-medium text-blue-600">{formatCurrency(kpi.revenue.target)} {kpi.revenue.currency}</span>
+              <span className="text-sm text-gray-600">Objectif CA</span>
+              <span className="font-medium text-blue-600">
+                {kpi.revenue.target === null ? 'Non défini' : formatCurrency(kpi.revenue.target, kpi.revenue.currency)}
+              </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Performance</span>
-              <span className={`font-medium ${kpi.revenue.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {kpi.revenue.growth >= 0 ? '+' : ''}{kpi.revenue.growth.toFixed(1)}%
+              <span className="text-sm text-gray-600">Écart objectif</span>
+              <span className={`font-medium ${kpi.revenue.growth === null ? 'text-gray-500' : kpi.revenue.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatVariance(kpi.revenue.growth)}
               </span>
             </div>
           </div>
@@ -256,11 +265,11 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Objectif commandes</span>
-              <span className="font-medium text-green-600">{kpi.orders.target}</span>
+              <span className="font-medium text-green-600">{kpi.orders.target ?? 'Non défini'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Clients actuels</span>
-              <span className="font-medium">{kpi.clients.current}</span>
+              <span className="text-sm text-gray-600">Commandes en attente</span>
+              <span className="font-medium">{kpi.orders.pending}</span>
             </div>
           </div>
         </div>
@@ -273,14 +282,12 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
               <span className="font-medium">{formatPercent(kpi.conversion.rate)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Objectif</span>
-              <span className="font-medium text-purple-600">{formatPercent(kpi.conversion.target)}</span>
+              <span className="text-sm text-gray-600">Objectif conversion</span>
+              <span className="font-medium text-purple-600">{kpi.conversion.target === null ? 'Non défini' : formatPercent(kpi.conversion.target)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Performance</span>
-              <span className={`font-medium ${kpi.conversion.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {kpi.conversion.growth >= 0 ? '+' : ''}{kpi.conversion.growth.toFixed(1)}%
-              </span>
+              <span className="text-sm text-gray-600">Devis convertis</span>
+              <span className="font-medium">{kpi.conversion.convertedQuotes} / {kpi.conversion.quotes}</span>
             </div>
           </div>
         </div>

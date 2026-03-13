@@ -1,0 +1,16 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mD:/Gestion Commerciale/apps/backend[39m
+
+ [32m✓[39m src/tests/services/auth.service.test.ts[2m > [22mAuthService.login[2m > [22mskips the legacy users fallback when the legacy table is absent[32m 7[2mms[22m[39m
+ [32m✓[39m src/tests/services/auth.service.test.ts[2m > [22mAuthService.login[2m > [22mkeeps the legacy fallback available when the legacy table exists[32m 4[2mms[22m[39m
+ [32m✓[39m src/tests/config/runtime-security.test.ts[2m > [22mruntime security configuration[2m > [22mbuilds an explicit allowlist from local defaults and env origins[32m 6[2mms[22m[39m
+ [32m✓[39m src/tests/config/runtime-security.test.ts[2m > [22mruntime security configuration[2m > [22mvalidates that the generated CORS config stays strict enough[32m 3[2mms[22m[39m
+ [32m✓[39m src/tests/config/runtime-security.test.ts[2m > [22mruntime security configuration[2m > [22muses a development fallback JWT secret when the env is missing[32m 1[2mms[22m[39m
+ [32m✓[39m src/tests/config/runtime-security.test.ts[2m > [22mruntime security configuration[2m > [22mrejects insecure JWT secrets in production[32m 1[2mms[22m[39m
+ [32m✓[39m src/tests/config/runtime-security.test.ts[2m > [22mruntime security configuration[2m > [22mrejects JWT secrets that are too short in production[32m 1[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m7 passed[39m[22m[90m (7)[39m
+[2m   Start at [22m 00:00:56
+[2m   Duration [22m 2.89s[2m (transform 440ms, setup 259ms, collect 435ms, tests 28ms, environment 2ms, prepare 2.34s)[22m
+

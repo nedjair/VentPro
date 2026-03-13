@@ -1,6 +1,7 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { StockAlertService } from '../services/stock-alert.service'
-import { AuthenticatedRequest } from '@gestion/shared'
+import { FastifyInstance, FastifyRequest, FastifyReply, FastifyRequest } from 'fastify'
+import { StockAlertService } from '../services/stock-alert.service'
+// AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
 
 // Types pour la validation des données
@@ -29,7 +30,7 @@ interface StockAlertFiltersRequest {
 export default async function stockAlertRoutes(server: FastifyInstance) {
   // Créer une alerte de stock
   server.post('/alerts', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Créer une alerte de stock',
       tags: ['Stock Alerts'],
@@ -75,10 +76,10 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = request.body as CreateStockAlertRequest
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const alert = await StockAlertService.createAlert(data, companyId)
 
@@ -97,7 +98,7 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
 
   // Récupérer les alertes de stock avec pagination et filtres
   server.get('/alerts', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer les alertes de stock',
       tags: ['Stock Alerts'],
@@ -123,10 +124,10 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = request.query as StockAlertFiltersRequest
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const { page, limit, sortBy, sortOrder, ...filters } = query
 
@@ -152,7 +153,7 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
 
   // Marquer une alerte comme lue
   server.patch('/alerts/:id/read', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Marquer une alerte comme lue',
       tags: ['Stock Alerts'],
@@ -165,10 +166,10 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const alert = await StockAlertService.markAsRead(id, companyId)
 
@@ -187,7 +188,7 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
 
   // Résoudre une alerte
   server.patch('/alerts/:id/resolve', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Résoudre une alerte',
       tags: ['Stock Alerts'],
@@ -200,10 +201,10 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       const alert = await StockAlertService.resolveAlert(id, companyId)
 
@@ -222,7 +223,7 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
 
   // Supprimer une alerte
   server.delete('/alerts/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Supprimer une alerte',
       tags: ['Stock Alerts'],
@@ -235,10 +236,10 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       await StockAlertService.deleteAlert(id, companyId)
 
@@ -257,15 +258,15 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
 
   // Vérifier et créer automatiquement les alertes
   server.post('/alerts/check', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Vérifier et créer automatiquement les alertes de stock',
       tags: ['Stock Alerts'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       await StockAlertService.checkAndCreateAlerts(companyId)
 

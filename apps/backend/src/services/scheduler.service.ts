@@ -1,3 +1,4 @@
+import { Product } from '@gestion/database'
 import cron from 'node-cron'
 import { AutoSyncService } from './auto-sync.service'
 import { logger } from '../utils/logger'

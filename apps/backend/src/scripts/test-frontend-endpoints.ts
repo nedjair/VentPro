@@ -1,4 +1,5 @@
-import { prisma } from '@gestion/database'
+import { StockAlertService } from '../services/stock-alert.service'
+import { prisma, Product } from '@gestion/database'
 import { StockService } from '../services/stock.service'
 import { StockAlertService } from '../services/stock-alert.service'
 

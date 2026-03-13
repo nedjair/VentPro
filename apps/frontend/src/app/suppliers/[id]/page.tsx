@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Edit, Trash2, Building2, Star, MapPin, Phone, Mail, Globe, Package } from 'lucide-react'
+import { Edit, Trash2, Building2, Star, MapPin, Phone, Mail, Globe, Package } from 'lucide-react'
 import { api, Supplier } from '@/lib/api'
 import { safeTextRender, safeFormatDate } from '@/lib/defensive-utils'
 
@@ -19,6 +19,7 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
   const [supplier, setSupplier] = useState<Supplier | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasLinkedProducts = (supplier?.productsCount ?? supplier?.products?.length ?? 0) > 0
 
   useEffect(() => {
     loadSupplier()
@@ -64,39 +65,9 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
     }
   }
 
-  const handleBack = () => {
-    router.push('/suppliers')
-  }
-
-  const actions = (
-    <div className="flex space-x-2">
-      <Button variant="outline" onClick={handleBack}>
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Retour
-      </Button>
-      {supplier && (
-        <>
-          <Button variant="outline" onClick={handleEdit}>
-            <Edit className="h-4 w-4 mr-2" />
-            Modifier
-          </Button>
-          <Button 
-            variant="danger" 
-            onClick={handleDelete}
-            disabled={supplier.productsCount ? supplier.productsCount > 0 : false}
-            title={supplier.productsCount && supplier.productsCount > 0 ? 'Impossible de supprimer un fournisseur avec des produits' : ''}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Supprimer
-          </Button>
-        </>
-      )}
-    </div>
-  )
-
   if (loading) {
     return (
-      <MainLayout title="Fournisseur" subtitle="Chargement..." actions={actions}>
+      <MainLayout title="Fournisseur" subtitle="Chargement...">
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
@@ -106,7 +77,7 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
 
   if (error || !supplier) {
     return (
-      <MainLayout title="Fournisseur" subtitle="Erreur" actions={actions}>
+      <MainLayout title="Fournisseur" subtitle="Erreur">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -130,7 +101,6 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
     <MainLayout 
       title={safeTextRender(supplier.name, 'Fournisseur')} 
       subtitle="Détails du fournisseur"
-      actions={actions}
     >
       <div className="max-w-4xl mx-auto space-y-6">
         {/* En-tête avec informations principales */}
@@ -243,6 +213,16 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
               </div>
             )}
 
+            {supplier.fax && (
+              <div className="flex items-center text-gray-600">
+                <Phone className="h-5 w-5 mr-3 text-gray-400" />
+                <div>
+                  <div className="text-sm text-gray-500">Fax</div>
+                  <div>{safeTextRender(supplier.fax)}</div>
+                </div>
+              </div>
+            )}
+
             {supplier.website && (
               <div className="flex items-center text-gray-600">
                 <Globe className="h-5 w-5 mr-3 text-gray-400" />
@@ -287,6 +267,35 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
           </div>
         )}
 
+        {(supplier.siret || supplier.vatNumber || supplier.rcs) && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Informations administratives</h2>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {supplier.siret && (
+                <div>
+                  <div className="text-sm text-gray-500">SIRET</div>
+                  <div className="font-medium text-gray-900">{safeTextRender(supplier.siret)}</div>
+                </div>
+              )}
+
+              {supplier.vatNumber && (
+                <div>
+                  <div className="text-sm text-gray-500">N° TVA</div>
+                  <div className="font-medium text-gray-900">{safeTextRender(supplier.vatNumber)}</div>
+                </div>
+              )}
+
+              {supplier.rcs && (
+                <div>
+                  <div className="text-sm text-gray-500">RCS</div>
+                  <div className="font-medium text-gray-900">{safeTextRender(supplier.rcs)}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Paramètres commerciaux */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Paramètres commerciaux</h2>
@@ -322,6 +331,13 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
                 </div>
               </div>
             )}
+
+            {supplier.purchasesCount !== undefined && supplier.purchasesCount > 0 && (
+              <div>
+                <div className="text-sm text-gray-500">Achats enregistrés</div>
+                <div className="font-medium">{supplier.purchasesCount}</div>
+              </div>
+            )}
           </div>
 
           {supplier.deliveryTerms && (
@@ -331,6 +347,46 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
             </div>
           )}
         </div>
+
+        {supplier.products && supplier.products.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Produits fournis</h2>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {supplier.products.map((product) => (
+                <div key={product.id} className="rounded-lg border border-gray-200 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-gray-900">{safeTextRender(product.name, 'Produit sans nom')}</div>
+                      {product.sku ? (
+                        <div className="text-sm text-gray-500">Référence : {safeTextRender(product.sku)}</div>
+                      ) : null}
+                    </div>
+
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      product.isActive === false ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                    }`}>
+                      {product.isActive === false ? 'Inactif' : 'Actif'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-gray-500">Stock</div>
+                      <div className="font-medium text-gray-900">{product.stockQuantity ?? 0}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Prix</div>
+                      <div className="font-medium text-gray-900">
+                        {product.price !== undefined ? `${product.price.toLocaleString('fr-FR')} ${safeTextRender(supplier.currency, 'DZD')}` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tags */}
         {supplier.tags && supplier.tags.length > 0 && (
@@ -374,6 +430,32 @@ export default function SupplierDetailPage({ params }: SupplierDetailPageProps) 
             <div>
               <div className="text-gray-500">Modifié le</div>
               <div className="font-medium">{safeFormatDate(supplier.updatedAt)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex flex-col gap-4 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-gray-500">
+              {hasLinkedProducts
+                ? 'La suppression est désactivée tant que des produits sont rattachés à ce fournisseur.'
+                : 'Vous pouvez modifier cette fiche ou supprimer le fournisseur si nécessaire.'}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button variant="outline" onClick={handleEdit}>
+                <Edit className="h-4 w-4 mr-2" />
+                Modifier
+              </Button>
+              <Button 
+                variant="danger" 
+                onClick={handleDelete}
+                disabled={hasLinkedProducts}
+                title={hasLinkedProducts ? 'Impossible de supprimer un fournisseur avec des produits' : ''}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Supprimer
+              </Button>
             </div>
           </div>
         </div>

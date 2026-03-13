@@ -1,25 +1,25 @@
-version: '3.8'
+name: ventespro
 
 services:
   # PostgreSQL 16 - Base de données principale
   postgres:
     image: postgres:16-alpine
-    container_name: gestion-postgres
+    container_name: ventespro-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: gestion_commerciale
-      POSTGRES_USER: gestion_user
-      POSTGRES_PASSWORD: gestion_password_secure_2024
+      POSTGRES_DB: gestion_commerciale_tpe
+      POSTGRES_USER: tpe_user
+      POSTGRES_PASSWORD: tpe_password_2024
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=fr_FR.UTF-8"
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d
     networks:
-      - gestion-network
+      - ventespro-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gestion_user -d gestion_commerciale"]
+      test: ["CMD-SHELL", "pg_isready -U tpe_user -d gestion_commerciale_tpe"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,14 +27,14 @@ services:
   # PgBouncer - Connection pooling pour PostgreSQL
   pgbouncer:
     image: pgbouncer/pgbouncer:latest
-    container_name: gestion-pgbouncer
+    container_name: ventespro-pgbouncer
     restart: unless-stopped
     environment:
       DATABASES_HOST: postgres
       DATABASES_PORT: 5432
-      DATABASES_USER: gestion_user
-      DATABASES_PASSWORD: gestion_password_secure_2024
-      DATABASES_DBNAME: gestion_commerciale
+      DATABASES_USER: tpe_user
+      DATABASES_PASSWORD: tpe_password_2024
+      DATABASES_DBNAME: gestion_commerciale_tpe
       POOL_MODE: transaction
       SERVER_RESET_QUERY: DISCARD ALL
       MAX_CLIENT_CONN: 100
@@ -49,31 +49,12 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - gestion-network
-
-  # Redis 7 - Cache et sessions
-  redis:
-    image: redis:7-alpine
-    container_name: gestion-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass redis_password_secure_2024
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    networks:
-      - gestion-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      - ventespro-network
 
   # Adminer - Interface d'administration de base de données (développement uniquement)
   adminer:
     image: adminer:latest
-    container_name: gestion-adminer
+    container_name: ventespro-adminer
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -84,26 +65,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - gestion-network
-    profiles:
-      - dev
-
-  # Redis Commander - Interface d'administration Redis (développement uniquement)
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: gestion-redis-commander
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    environment:
-      REDIS_HOSTS: local:redis:6379:0:redis_password_secure_2024
-      HTTP_USER: admin
-      HTTP_PASSWORD: admin_password_2024
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - gestion-network
+      - ventespro-network
     profiles:
       - dev
 
@@ -113,15 +75,17 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
       target: development
-    container_name: gestion-backend
+    container_name: ventespro-backend
     restart: unless-stopped
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://gestion_user:gestion_password_secure_2024@postgres:5432/gestion_commerciale
-      DIRECT_DATABASE_URL: postgresql://gestion_user:gestion_password_secure_2024@postgres:5432/gestion_commerciale
-      REDIS_URL: redis://:redis_password_secure_2024@redis:6379
-      JWT_SECRET: your_jwt_secret_key_here_2024
-      JWT_REFRESH_SECRET: your_jwt_refresh_secret_key_here_2024
+      DATABASE_URL: postgresql://tpe_user:tpe_password_2024@postgres:5432/gestion_commerciale_tpe
+      DIRECT_DATABASE_URL: postgresql://tpe_user:tpe_password_2024@postgres:5432/gestion_commerciale_tpe
+      # Secrets de développement uniquement. À remplacer avant tout usage partagé.
+      JWT_SECRET: change-this-development-jwt-secret-min-32-chars
+      JWT_REFRESH_SECRET: change-this-development-refresh-secret-min-32ch
+      # Origine navigateur autorisée pour le frontend exposé sur l'hôte local.
+      CORS_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
       PORT: 3001
       HOST: 0.0.0.0
     ports:
@@ -129,10 +93,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
-      - gestion-network
+      - ventespro-network
     volumes:
       - ./apps/backend/src:/app/apps/backend/src:ro
       - ./packages:/app/packages:ro
@@ -143,24 +105,26 @@ services:
       retries: 3
       start_period: 45s
 
-  # Frontend - Vite React
+  # Frontend - Next.js
   frontend:
     build:
       context: .
       dockerfile: apps/frontend/Dockerfile
       target: development
-    container_name: gestion-frontend
+    container_name: ventespro-frontend
     restart: unless-stopped
     environment:
       NODE_ENV: development
-      VITE_API_URL: http://localhost:3001
+      # Utilisé uniquement par le serveur Next.js pour proxyfier les routes API.
+      # Important en Docker : `localhost` viserait le conteneur frontend lui-même.
+      INTERNAL_API_BASE_URL: http://backend:3001
     ports:
       - "3000:3000"
     depends_on:
       backend:
         condition: service_healthy
     networks:
-      - gestion-network
+      - ventespro-network
     volumes:
       - ./apps/frontend/src:/app/src:ro
     healthcheck:
@@ -172,13 +136,15 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
+    name: ventespro_postgres_data
     driver: local
 
 networks:
-  gestion-network:
+  ventespro-network:
+    name: ventespro-network
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        # Sous-réseau dédié au projet, choisi pour éviter le chevauchement
+        # avec un réseau Docker déjà présent en local (172.20.0.0/16).
+        - subnet: 172.30.10.0/24

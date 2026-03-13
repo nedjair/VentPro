@@ -29,9 +29,9 @@ interface SyncNotification {
   autoHide?: boolean
 }
 
-export function StockSyncMonitor({ 
-  position = 'bottom-right',
-  showNotifications = true,
+export function StockSyncMonitor({
+  position = 'top-right',
+  showNotifications = false, // DÉSACTIVÉ - Aucune notification
   autoHide = true
 }: StockSyncMonitorProps) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -184,15 +184,15 @@ export function StockSyncMonitor({
   return (
     <>
       {/* Moniteur principal */}
-      <div className={`fixed ${getPositionClasses()} z-50`}>
-        <div className="bg-white shadow-lg rounded-lg border">
+      <div className={`fixed ${getPositionClasses()} z-30`}>
+        <div className="bg-white shadow-md rounded-lg border border-gray-200">
           {/* Indicateur compact */}
-          <div 
-            className="flex items-center gap-2 p-3 cursor-pointer hover:bg-gray-50"
+          <div
+            className="flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-50 transition-colors"
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            <StatusIcon className={`h-4 w-4 ${status.color} ${loading ? 'animate-spin' : ''}`} />
-            <span className="text-sm font-medium">{status.label}</span>
+            <StatusIcon className={`h-3 w-3 ${status.color} ${loading ? 'animate-spin' : ''}`} />
+            <span className="text-xs font-medium">{status.label}</span>
             {dashboard.activeAlerts > 0 && (
               <Badge variant="destructive" className="text-xs">
                 {dashboard.activeAlerts}
@@ -269,7 +269,7 @@ export function StockSyncMonitor({
 
       {/* Notifications */}
       {showNotifications && notifications.length > 0 && (
-        <div className={`fixed ${position.includes('right') ? 'right-4' : 'left-4'} ${position.includes('top') ? 'top-20' : 'bottom-20'} z-40 space-y-2`}>
+        <div className={`fixed ${position.includes('right') ? 'right-4' : 'left-4'} ${position.includes('top') ? 'top-20' : 'bottom-20'} z-20 space-y-2`}>
           {notifications.slice(0, 3).map((notification) => (
             <div
               key={notification.id}

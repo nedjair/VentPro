@@ -103,28 +103,10 @@ export function ClientDetailPage({ clientId }: ClientDetailPageProps) {
     ? client.companyName 
     : `${client.firstName} ${client.lastName}`
 
-  const actions = (
-    <div className="flex space-x-2">
-      <Button variant="outline" onClick={handleBack}>
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Retour
-      </Button>
-      <Button variant="outline" onClick={handleEdit}>
-        <Edit className="h-4 w-4 mr-2" />
-        Modifier
-      </Button>
-      <Button variant="danger" onClick={handleDelete}>
-        <Trash2 className="h-4 w-4 mr-2" />
-        Supprimer
-      </Button>
-    </div>
-  )
-
   return (
     <MainLayout 
       title={clientName || 'Client'} 
       subtitle={`Détails du client • ${client.type === 'COMPANY' ? 'Entreprise' : 'Particulier'}`}
-      actions={actions}
     >
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Informations principales */}
@@ -242,6 +224,29 @@ export function ClientDetailPage({ clientId }: ClientDetailPageProps) {
             <p className="text-gray-700 whitespace-pre-wrap">{client.notes}</p>
           </div>
         )}
+
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex flex-col gap-4 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-gray-500">
+              Vous pouvez revenir à la liste, modifier cette fiche ou supprimer le client si nécessaire.
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button variant="outline" onClick={handleBack}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Retour à la liste
+              </Button>
+              <Button variant="outline" onClick={handleEdit}>
+                <Edit className="h-4 w-4 mr-2" />
+                Modifier
+              </Button>
+              <Button variant="danger" onClick={handleDelete}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Supprimer
+              </Button>
+            </div>
+          </div>
+        </div>
 
         {/* Historique des commandes/factures (placeholder) */}
         <div className="bg-white shadow rounded-lg p-6">

@@ -1,15 +1,119 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { prisma } from '@gestion/database'
+import { DashboardService } from '../services/dashboard.service'
+import { KpiTargetSettingsService } from '../services/kpi-target-settings.service'
 
 interface QueryParams {
-  period?: 'day' | 'week' | 'month' | 'year'
+  period?: string
   startDate?: string
   endDate?: string
   limit?: number
+  metric?: string
 }
 
 interface AnalyticsRequest extends FastifyRequest {
   query: QueryParams
+}
+
+const DEFAULT_CURRENCY = 'DZD'
+
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.companyId || user?.id || user?.userId
+}
+
+function normalizeStatus(status?: string | null): string {
+  return String(status || '').trim().toLowerCase()
+}
+
+function isPaidStatus(status?: string | null): boolean {
+  return normalizeStatus(status) === 'paid'
+}
+
+function buildDateRange(period?: string, startDate?: string, endDate?: string) {
+  if (startDate || endDate) {
+    return {
+      start: startDate ? new Date(startDate) : undefined,
+      end: endDate ? new Date(endDate) : undefined,
+    }
+  }
+
+  const now = new Date()
+  const start = new Date(now)
+
+  switch (period) {
+    case 'day':
+      start.setDate(now.getDate() - 1)
+      break
+    case 'week':
+      start.setDate(now.getDate() - 7)
+      break
+    case 'month':
+      start.setMonth(now.getMonth() - 1)
+      break
+    case 'quarter':
+    case '3m':
+      start.setMonth(now.getMonth() - 3)
+      break
+    case '6m':
+      start.setMonth(now.getMonth() - 6)
+      break
+    case '12m':
+    case 'year':
+      start.setMonth(now.getMonth() - 12)
+      break
+    default:
+      start.setMonth(now.getMonth() - 3)
+      break
+  }
+
+  start.setHours(0, 0, 0, 0)
+  return { start, end: undefined as Date | undefined }
+}
+
+function getMonthLabel(date: Date): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
+function getClientLocationLabel(address?: string | null): string {
+  const value = String(address || '').trim()
+  if (!value) {
+    return 'Non spécifié'
+  }
+
+  const segments = value
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+
+  return segments[segments.length - 1] || value
+}
+
+function startOfMonth(date = new Date()): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function addMonths(date: Date, delta: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1)
+}
+
+function calculateTargetVariance(current: number, target: number | null): number | null {
+  if (target == null) {
+    return null
+  }
+
+  if (target === 0) {
+    return current > 0 ? 100 : 0
+  }
+
+  return Number((((current - target) / target) * 100).toFixed(1))
+}
+
+function getAlertCount(alerts: Array<{ id: string; count?: number }>, alertId: string): number {
+  return Number(alerts.find((alert) => alert.id === alertId)?.count || 0)
 }
 
 export default async function analyticsRoutes(server: FastifyInstance) {
@@ -72,92 +176,114 @@ export default async function analyticsRoutes(server: FastifyInstance) {
   })
 
   // GET /sales - Données de ventes par période
-  server.get('/sales', async (request: AnalyticsRequest, reply: FastifyReply) => {
+  server.get('/sales', {
+    preHandler: [(server as any).authenticate],
+  }, async (request: AnalyticsRequest, reply: FastifyReply) => {
     try {
       const { period = 'month', startDate, endDate } = request.query
+      const ownerScopeId = getOwnerScopeId(request)
+
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet'
+        })
+      }
 
       server.log.info('Récupération des données de ventes', { period, startDate, endDate })
 
-      let dateFilter: any = {}
-      
-      if (startDate && endDate) {
-        dateFilter = {
-          createdAt: {
-            gte: new Date(startDate),
-            lte: new Date(endDate)
-          }
-        }
-      } else {
-        // Par défaut, les 30 derniers jours
-        const thirtyDaysAgo = new Date()
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-        dateFilter = {
-          createdAt: { gte: thirtyDaysAgo }
-        }
-      }
-
-      const salesData = await prisma.invoice.findMany({
+      const { start, end } = buildDateRange(period, startDate, endDate)
+      const invoices = await prisma.invoice.findMany({
         where: {
-          status: 'PAID',
-          ...dateFilter
+          userId: ownerScopeId,
+          ...(start || end
+            ? {
+                createdAt: {
+                  ...(start ? { gte: start } : {}),
+                  ...(end ? { lte: end } : {}),
+                },
+              }
+            : {}),
         },
         select: {
+          id: true,
           total: true,
+          status: true,
           createdAt: true,
-          number: true
+          clientId: true,
+          client: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
         },
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'asc' },
       })
 
-      // Grouper les données par période
-      const groupedSales = salesData.reduce((acc: any, sale) => {
-        let key: string
-        const date = new Date(sale.createdAt)
+      const paidInvoices = invoices.filter((invoice) => isPaidStatus(invoice.status))
+      const monthlyRevenueMap = new Map<string, { month: string; revenue: number; invoiceCount: number }>()
+      const topClientsMap = new Map<string, { id: string; name: string; type: string; totalRevenue: number; invoiceCount: number }>()
 
-        switch (period) {
-          case 'day':
-            key = date.toISOString().split('T')[0]
-            break
-          case 'week':
-            const weekStart = new Date(date)
-            weekStart.setDate(date.getDate() - date.getDay())
-            key = weekStart.toISOString().split('T')[0]
-            break
-          case 'month':
-            key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-            break
-          case 'year':
-            key = String(date.getFullYear())
-            break
-          default:
-            key = date.toISOString().split('T')[0]
+      for (const invoice of paidInvoices) {
+        const monthDate = new Date(invoice.createdAt)
+        const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`
+        const currentMonth = monthlyRevenueMap.get(monthKey) || {
+          month: getMonthLabel(monthDate),
+          revenue: 0,
+          invoiceCount: 0,
         }
 
-        if (!acc[key]) {
-          acc[key] = {
-            period: key,
-            amount: 0,
-            count: 0
-          }
+        currentMonth.revenue += Number(invoice.total || 0)
+        currentMonth.invoiceCount += 1
+        monthlyRevenueMap.set(monthKey, currentMonth)
+
+        const clientId = invoice.clientId
+        const currentClient = topClientsMap.get(clientId) || {
+          id: clientId,
+          name: invoice.client?.name || 'Client inconnu',
+          type: 'INDIVIDUAL',
+          totalRevenue: 0,
+          invoiceCount: 0,
         }
 
-        acc[key].amount += Number(sale.total)
-        acc[key].count += 1
+        currentClient.totalRevenue += Number(invoice.total || 0)
+        currentClient.invoiceCount += 1
+        topClientsMap.set(clientId, currentClient)
+      }
 
-        return acc
-      }, {})
-
-      const formattedSales = Object.values(groupedSales).map((item: any) => ({
-        ...item,
-        amount: Number(item.amount.toFixed(2))
+      const monthlyRevenue = Array.from(monthlyRevenueMap.values()).map((item) => ({
+        month: item.month,
+        revenue: Number(item.revenue.toFixed(2)),
+        invoiceCount: item.invoiceCount,
+        avgInvoice: item.invoiceCount > 0 ? Number((item.revenue / item.invoiceCount).toFixed(2)) : 0,
       }))
+
+      const topClients = Array.from(topClientsMap.values())
+        .sort((a, b) => b.totalRevenue - a.totalRevenue)
+        .slice(0, 10)
+        .map((client) => ({
+          ...client,
+          totalRevenue: Number(client.totalRevenue.toFixed(2)),
+          avgInvoice: client.invoiceCount > 0 ? Number((client.totalRevenue / client.invoiceCount).toFixed(2)) : 0,
+        }))
+
+      const totalRevenue = topClients.reduce((sum, client) => sum + client.totalRevenue, 0)
+      const totalInvoiceCount = topClients.reduce((sum, client) => sum + client.invoiceCount, 0)
 
       return reply.send({
         success: true,
         data: {
-          sales: formattedSales,
-          currency: 'DZD',
-          period
+          period,
+          monthlyRevenue,
+          topClients,
+          clientTypeDistribution: [
+            {
+              type: 'INDIVIDUAL',
+              revenue: Number(totalRevenue.toFixed(2)),
+              invoiceCount: totalInvoiceCount,
+            },
+          ],
         }
       })
 
@@ -215,8 +341,8 @@ export default async function analyticsRoutes(server: FastifyInstance) {
           productName: product?.name || 'Produit inconnu',
           categoryName: product?.category?.name || 'Catégorie inconnue',
           unitPrice: Number(product?.price || 0),
-          totalQuantity: Number(item._sum.quantity || 0),
-          totalRevenue: Number((item._sum.quantity || 0) * (item._sum.unitPrice || 0)),
+          totalQuantity: Number(item._sum.quantiteActuelle || 0),
+          totalRevenue: Number((item._sum.quantiteActuelle || 0) * (item._sum.unitPrice || 0)),
           ordersCount: item._count.id
         }
       })
@@ -386,56 +512,132 @@ export default async function analyticsRoutes(server: FastifyInstance) {
   })
 
   // GET /kpi - Métriques KPI temps réel
-  server.get('/kpi', async (request: AnalyticsRequest, reply: FastifyReply) => {
+  server.get('/kpi', {
+    preHandler: [(server as any).authenticate],
+  }, async (request: AnalyticsRequest, reply: FastifyReply) => {
     try {
-      server.log.info('Récupération des KPI temps réel')
+      const ownerScopeId = getOwnerScopeId(request)
 
-      // Structure adaptée au frontend KPI
-      const kpiData = {
-        revenue: {
-          current: 125000.50,
-          target: 150000.00,
-          percentage: 15.2,
-          growth: 15.2,
-          currency: 'DZD'
-        },
-        orders: {
-          current: 45,
-          target: 60,
-          percentage: 8.5,
-          growth: 8.5
-        },
-        clients: {
-          current: 125,
-          target: 150,
-          percentage: 12.3,
-          growth: 12.3
-        },
-        conversion: {
-          rate: 0.25,
-          target: 0.30,
-          growth: 5.2
-        },
-        // Données supplémentaires pour compatibilité
-        products: {
-          total: 89,
-          lowStock: 12,
-          outOfStock: 3
-        },
-        invoices: {
-          total: 38,
-          overdue: 2,
-          paid: 31
-        },
-        alerts: {
-          lowStock: 12,
-          overdueInvoices: 2,
-          pendingOrders: 7
-        },
-        lastUpdated: new Date().toISOString()
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet'
+        })
       }
 
-      server.log.info('KPI récupérés avec succès (données de test)')
+      server.log.info('Récupération des KPI temps réel')
+
+      const currentMonthStart = startOfMonth(new Date())
+      const nextMonthStart = addMonths(currentMonthStart, 1)
+
+      const [dashboardStats, alerts, kpiTargets, currentMonthOrders, currentMonthClients, currentMonthQuotes, currentMonthConvertedQuotes, currentMonthSoldProducts] = await Promise.all([
+        DashboardService.getDashboardStats(ownerScopeId),
+        DashboardService.getAlerts(ownerScopeId),
+        KpiTargetSettingsService.getSettings(ownerScopeId),
+        prisma.order.count({
+          where: {
+            userId: ownerScopeId,
+            createdAt: { gte: currentMonthStart, lt: nextMonthStart },
+          },
+        }),
+        prisma.client.count({
+          where: {
+            userId: ownerScopeId,
+            createdAt: { gte: currentMonthStart, lt: nextMonthStart },
+          },
+        }),
+        prisma.quote.count({
+          where: {
+            userId: ownerScopeId,
+            createdAt: { gte: currentMonthStart, lt: nextMonthStart },
+          },
+        }),
+        prisma.order.count({
+          where: {
+            userId: ownerScopeId,
+            quoteId: { not: null },
+            createdAt: { gte: currentMonthStart, lt: nextMonthStart },
+          },
+        }),
+        prisma.orderItem.aggregate({
+          where: {
+            order: {
+              userId: ownerScopeId,
+              createdAt: { gte: currentMonthStart, lt: nextMonthStart },
+            },
+          },
+          _sum: {
+            quantity: true,
+          },
+        }),
+      ])
+
+      const totalClients = Number(dashboardStats.clients.total || 0)
+      const revenueCurrent = Number(dashboardStats.sales.currentMonth || 0)
+      const conversionCurrent = currentMonthQuotes > 0 ? Number(((currentMonthConvertedQuotes / currentMonthQuotes) * 100).toFixed(1)) : 0
+      const lowStockCount = Number(
+        dashboardStats.products.lowStock ||
+        getAlertCount(alerts, 'out-of-stock')
+      )
+
+      const kpiData = {
+        revenue: {
+          current: revenueCurrent,
+          target: kpiTargets.revenueTarget,
+          // Le champ growth est conservé pour compatibilité frontend mais il représente désormais l'écart vs objectif.
+          growth: calculateTargetVariance(revenueCurrent, kpiTargets.revenueTarget),
+          targetConfigured: kpiTargets.revenueTarget !== null,
+          currency: dashboardStats.sales.currency || DEFAULT_CURRENCY,
+        },
+        orders: {
+          current: currentMonthOrders,
+          target: kpiTargets.ordersTarget,
+          growth: calculateTargetVariance(currentMonthOrders, kpiTargets.ordersTarget),
+          targetConfigured: kpiTargets.ordersTarget !== null,
+          pending: Number(dashboardStats.orders.pending || 0),
+        },
+        clients: {
+          current: totalClients,
+          target: kpiTargets.clientsTarget,
+          growth: calculateTargetVariance(totalClients, kpiTargets.clientsTarget),
+          targetConfigured: kpiTargets.clientsTarget !== null,
+          newThisMonth: currentMonthClients,
+        },
+        conversion: {
+          rate: conversionCurrent,
+          target: kpiTargets.conversionRateTarget,
+          growth: calculateTargetVariance(conversionCurrent, kpiTargets.conversionRateTarget),
+          targetConfigured: kpiTargets.conversionRateTarget !== null,
+          quotes: currentMonthQuotes,
+          convertedQuotes: currentMonthConvertedQuotes,
+        },
+        products: {
+          total: Number(dashboardStats.products.total || 0),
+          lowStock: lowStockCount,
+          outOfStock: Number(dashboardStats.products.outOfStock || getAlertCount(alerts, 'out-of-stock')),
+          soldThisMonth: Number(currentMonthSoldProducts._sum.quantity || 0),
+        },
+        invoices: {
+          total: Number(dashboardStats.invoices.total || 0),
+          overdue: Number(dashboardStats.invoices.overdue || 0),
+          paid: Number(dashboardStats.invoices.paid || 0),
+        },
+        alerts: {
+          lowStock: lowStockCount,
+          overdueInvoices: getAlertCount(alerts, 'overdue-invoices'),
+          pendingOrders: getAlertCount(alerts, 'pending-orders'),
+        },
+        lastUpdated: dashboardStats.lastUpdated || new Date().toISOString(),
+      }
+
+      server.log.info('KPI récupérés avec succès (données réelles)', {
+        ownerScopeId,
+        revenueCurrent,
+        currentMonthOrders,
+        totalClients,
+        conversionCurrent,
+        targetSettingsUpdatedAt: kpiTargets.updatedAt,
+      })
 
       return reply.send({
         success: true,
@@ -622,109 +824,139 @@ export default async function analyticsRoutes(server: FastifyInstance) {
   })
 
   // GET /products - Analytics des produits (alias pour compatibilité frontend)
-  server.get('/products', async (request: AnalyticsRequest, reply: FastifyReply) => {
+  server.get('/products', {
+    preHandler: [(server as any).authenticate],
+  }, async (request: AnalyticsRequest, reply: FastifyReply) => {
     try {
       const { period = 'month', limit = 10 } = request.query
+      const ownerScopeId = getOwnerScopeId(request)
+
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet'
+        })
+      }
+
       server.log.info('Récupération des analytics produits', { period, limit })
 
-      // Calculer la période
-      const startDate = new Date()
-      if (period === 'week') {
-        startDate.setDate(startDate.getDate() - 7)
-      } else if (period === 'month') {
-        startDate.setMonth(startDate.getMonth() - 1)
-      } else if (period === 'quarter') {
-        startDate.setMonth(startDate.getMonth() - 3)
-      } else if (period === 'year') {
-        startDate.setFullYear(startDate.getFullYear() - 1)
-      }
-
-      // Top produits vendus
-      const topProducts = await prisma.invoiceItem.groupBy({
-        by: ['productId'],
-        _sum: {
-          quantity: true,
-          unitPrice: true
-        },
-        _count: {
-          id: true
-        },
+      const { start, end } = buildDateRange(period)
+      const items = await prisma.orderItem.findMany({
         where: {
-          invoice: {
-            status: 'PAID',
-            createdAt: { gte: startDate }
-          }
+          order: {
+            userId: ownerScopeId,
+            ...(start || end
+              ? {
+                  createdAt: {
+                    ...(start ? { gte: start } : {}),
+                    ...(end ? { lte: end } : {}),
+                  },
+                }
+              : {}),
+          },
         },
-        orderBy: {
-          _sum: {
-            quantity: 'desc'
-          }
+        select: {
+          quantity: true,
+          price: true,
+          orderId: true,
+          productId: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              category: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
         },
-        take: Number(limit)
       })
 
-      // Enrichir avec les données produits
-      const enrichedProducts = await Promise.all(
-        topProducts.map(async (item) => {
-          const product = await prisma.product.findUnique({
-            where: { id: item.productId }
-          })
+      const productMap = new Map<string, {
+        id: string
+        name: string
+        category: string
+        price: number
+        totalQuantity: number
+        totalRevenue: number
+        orderIds: Set<string>
+      }>()
 
-          return {
-            id: item.productId,
-            name: product?.name || 'Produit inconnu',
-            category: product?.category || 'Non catégorisé',
-            price: Number(product?.price || 0),
-            totalQuantity: Number(item._sum.quantity || 0),
-            totalRevenue: Number(item._sum.unitPrice || 0) * Number(item._sum.quantity || 0),
-            invoiceCount: item._count.id,
-            avgPrice: Number(item._sum.unitPrice || 0) / Number(item._count.id || 1)
-          }
-        })
-      )
-
-      // Distribution par catégorie
-      const categoryDistribution = await prisma.invoiceItem.groupBy({
-        by: ['productId'],
-        _sum: {
-          quantity: true,
-          unitPrice: true
-        },
-        where: {
-          invoice: {
-            status: 'PAID',
-            createdAt: { gte: startDate }
-          }
-        }
-      })
-
-      // Grouper par catégorie
-      const categoryMap = new Map()
-      for (const item of categoryDistribution) {
-        const product = await prisma.product.findUnique({
-          where: { id: item.productId },
-          select: { category: true }
-        })
-
-        const category = product?.category || 'Non catégorisé'
-        const current = categoryMap.get(category) || {
-          category,
+      for (const item of items) {
+        const current = productMap.get(item.productId) || {
+          id: item.productId,
+          name: item.product?.name || 'Produit inconnu',
+          category: item.product?.category?.name || 'Non catégorisé',
+          price: Number(item.product?.price || item.price || 0),
           totalQuantity: 0,
           totalRevenue: 0,
-          productCount: 0
+          orderIds: new Set<string>(),
         }
 
-        current.totalQuantity += Number(item._sum.quantity || 0)
-        current.totalRevenue += Number(item._sum.unitPrice || 0) * Number(item._sum.quantity || 0)
-        current.productCount += 1
-
-        categoryMap.set(category, current)
+        current.totalQuantity += Number(item.quantity || 0)
+        current.totalRevenue += Number(item.quantity || 0) * Number(item.price || current.price || 0)
+        current.orderIds.add(item.orderId)
+        productMap.set(item.productId, current)
       }
+
+      const allProducts = Array.from(productMap.values())
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          price: Number(item.price.toFixed(2)),
+          totalQuantity: item.totalQuantity,
+          totalRevenue: Number(item.totalRevenue.toFixed(2)),
+          invoiceCount: item.orderIds.size,
+          avgPrice: item.totalQuantity > 0 ? Number((item.totalRevenue / item.totalQuantity).toFixed(2)) : 0,
+        }))
+
+      const enrichedProducts = allProducts
+        .sort((a, b) => b.totalRevenue - a.totalRevenue)
+        .slice(0, Number(limit))
+
+      const categoryMap = new Map<string, {
+        category: string
+        totalQuantity: number
+        totalRevenue: number
+        productCount: number
+      }>()
+
+      for (const product of allProducts) {
+        const categoryName = product.category || 'Non catégorisé'
+        const currentCategory = categoryMap.get(categoryName) || {
+          category: categoryName,
+          totalQuantity: 0,
+          totalRevenue: 0,
+          productCount: 0,
+        }
+
+        currentCategory.totalQuantity += product.totalQuantity
+        currentCategory.totalRevenue += product.totalRevenue
+        currentCategory.productCount += 1
+        categoryMap.set(categoryName, currentCategory)
+      }
+
+      const categoryDistribution = Array.from(categoryMap.values())
+        .sort((left, right) => {
+          if (right.totalQuantity === left.totalQuantity) {
+            return right.totalRevenue - left.totalRevenue
+          }
+
+          return right.totalQuantity - left.totalQuantity
+        })
+        .map((category) => ({
+          ...category,
+          totalRevenue: Number(category.totalRevenue.toFixed(2)),
+        }))
 
       const result = {
         period,
         topProducts: enrichedProducts,
-        categoryDistribution: Array.from(categoryMap.values())
+        categoryDistribution
       }
 
       return reply.send({
@@ -742,23 +974,72 @@ export default async function analyticsRoutes(server: FastifyInstance) {
   })
 
   // GET /clients - Analytics des clients (alias pour compatibilité frontend)
-  server.get('/clients', async (request: AnalyticsRequest, reply: FastifyReply) => {
+  server.get('/clients', {
+    preHandler: [(server as any).authenticate],
+  }, async (request: AnalyticsRequest, reply: FastifyReply) => {
     try {
+      const ownerScopeId = getOwnerScopeId(request)
+
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet'
+        })
+      }
+
       server.log.info('Récupération des analytics clients')
 
-      // Segmentation des clients par chiffre d'affaires
-      const clientSegments = await prisma.invoice.groupBy({
-        by: ['clientId'],
-        _sum: {
-          total: true
-        },
-        _count: {
-          id: true
-        },
+      const invoices = await prisma.invoice.findMany({
         where: {
-          status: 'PAID'
-        }
+          userId: ownerScopeId,
+        },
+        select: {
+          clientId: true,
+          total: true,
+          status: true,
+          createdAt: true,
+          client: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+            },
+          },
+        },
       })
+
+      const paidInvoices = invoices.filter((invoice) => isPaidStatus(invoice.status))
+      const clientsMap = new Map<string, {
+        id: string
+        name: string
+        type: string
+        city: string
+        invoiceCount: number
+        totalRevenue: number
+        lastInvoiceDate: Date | null
+      }>()
+
+      for (const invoice of paidInvoices) {
+        const current = clientsMap.get(invoice.clientId) || {
+          id: invoice.clientId,
+          name: invoice.client?.name || 'Client inconnu',
+          type: 'INDIVIDUAL',
+          city: getClientLocationLabel(invoice.client?.address),
+          invoiceCount: 0,
+          totalRevenue: 0,
+          lastInvoiceDate: null,
+        }
+
+        current.invoiceCount += 1
+        current.totalRevenue += Number(invoice.total || 0)
+        current.lastInvoiceDate = !current.lastInvoiceDate || invoice.createdAt > current.lastInvoiceDate
+          ? invoice.createdAt
+          : current.lastInvoiceDate
+
+        clientsMap.set(invoice.clientId, current)
+      }
+
+      const clientSegments = Array.from(clientsMap.values())
 
       // Créer les segments
       const segmentation = [
@@ -768,7 +1049,7 @@ export default async function analyticsRoutes(server: FastifyInstance) {
       ]
 
       clientSegments.forEach(client => {
-        const revenue = Number(client._sum.total || 0)
+        const revenue = Number(client.totalRevenue || 0)
         if (revenue > 50000) {
           segmentation[0].clientCount++
           segmentation[0].segmentRevenue += revenue
@@ -786,85 +1067,44 @@ export default async function analyticsRoutes(server: FastifyInstance) {
         segment.avgRevenue = segment.clientCount > 0 ? segment.segmentRevenue / segment.clientCount : 0
       })
 
-      // Distribution géographique
-      const geographicDistribution = await prisma.client.groupBy({
-        by: ['city'],
-        _count: {
-          id: true
-        },
-        where: {
-          city: { not: null }
-        },
-        orderBy: {
-          _count: {
-            id: 'desc'
-          }
-        },
-        take: 10
+      const geographicMap = new Map<string, { city: string; clientCount: number; totalRevenue: number }>()
+      clientsMap.forEach((client) => {
+        const current = geographicMap.get(client.city) || {
+          city: client.city,
+          clientCount: 0,
+          totalRevenue: 0,
+        }
+
+        current.clientCount += 1
+        current.totalRevenue += client.totalRevenue
+        geographicMap.set(client.city, current)
       })
 
-      const enrichedGeographic = await Promise.all(
-        geographicDistribution.map(async (item) => {
-          const clientRevenue = await prisma.invoice.aggregate({
-            _sum: {
-              total: true
-            },
-            where: {
-              status: 'PAID',
-              client: {
-                city: item.city
-              }
-            }
-          })
+      const enrichedGeographic = Array.from(geographicMap.values())
+        .sort((a, b) => b.clientCount - a.clientCount)
+        .slice(0, 10)
+        .map((item) => ({
+          ...item,
+          totalRevenue: Number(item.totalRevenue.toFixed(2)),
+        }))
 
-          return {
-            city: item.city || 'Non spécifié',
-            clientCount: item._count.id,
-            totalRevenue: Number(clientRevenue._sum.total || 0)
+      const enrichedActiveClients = Array.from(clientsMap.values())
+        .sort((a, b) => {
+          if (b.invoiceCount === a.invoiceCount) {
+            return b.totalRevenue - a.totalRevenue
           }
+          return b.invoiceCount - a.invoiceCount
         })
-      )
-
-      // Clients les plus actifs
-      const mostActiveClients = await prisma.invoice.groupBy({
-        by: ['clientId'],
-        _count: {
-          id: true
-        },
-        _sum: {
-          total: true
-        },
-        _max: {
-          createdAt: true
-        },
-        where: {
-          status: 'PAID'
-        },
-        orderBy: {
-          _count: {
-            id: 'desc'
-          }
-        },
-        take: 10
-      })
-
-      const enrichedActiveClients = await Promise.all(
-        mostActiveClients.map(async (item) => {
-          const client = await prisma.client.findUnique({
-            where: { id: item.clientId }
-          })
-
-          return {
-            id: item.clientId,
-            name: client?.type === 'COMPANY' ? client.companyName : `${client?.firstName} ${client?.lastName}`,
-            type: client?.type || 'UNKNOWN',
-            city: client?.city || 'Non spécifié',
-            invoiceCount: item._count.id,
-            totalRevenue: Number(item._sum.total || 0),
-            lastInvoiceDate: item._max.createdAt?.toISOString() || ''
-          }
-        })
-      )
+        .slice(0, 10)
+        .map((client) => ({
+          id: client.id,
+          name: client.name,
+          type: client.type,
+          city: client.city,
+          invoiceCount: client.invoiceCount,
+          totalRevenue: Number(client.totalRevenue.toFixed(2)),
+          lastInvoiceDate: client.lastInvoiceDate?.toISOString() || '',
+        }))
 
       const result = {
         segmentation,

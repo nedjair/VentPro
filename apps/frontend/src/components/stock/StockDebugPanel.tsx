@@ -139,22 +139,22 @@ export function StockDebugPanel() {
 
   if (!isVisible) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed top-4 right-40 z-20">
         <Button
           variant="outline"
           size="sm"
           onClick={() => setIsVisible(true)}
-          className="bg-white shadow-lg"
+          className="bg-white shadow-md"
         >
-          <Bug className="h-4 w-4 mr-2" />
-          Debug Stock
+          <Bug className="h-3 w-3 mr-1" />
+          Debug
         </Button>
       </div>
     )
   }
 
   return (
-    <div className="fixed bottom-4 right-4 w-96 max-h-96 z-50">
+    <div className="fixed top-4 right-40 w-96 max-h-96 z-20">
       <Card className="shadow-lg">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">

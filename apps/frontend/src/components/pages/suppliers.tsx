@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
 import { ImportExportButtons, ImportExportMessage } from '@/components/ui/import-export-buttons'
 import { Plus, Search, Filter, Building2, Star, MapPin, Phone, Mail, Globe } from 'lucide-react'
 import { api, Supplier } from '@/lib/api'
+import { DEFAULT_BUSINESS_COUNTRY, OTHER_COUNTRIES_FILTER } from '@/lib/countries'
 import {
   ensureArray,
   safeFilter,
@@ -17,18 +18,22 @@ import {
   safeFormatDate
 } from '@/lib/defensive-utils'
 
+type SupplierCountryFilter = 'all' | typeof DEFAULT_BUSINESS_COUNTRY | typeof OTHER_COUNTRIES_FILTER
+
 export function SuppliersPage() {
   const router = useRouter()
-  
+  const searchParams = useSearchParams()
+
   // États avec programmation défensive
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
   const [typeFilter, setTypeFilter] = useState<'all' | 'COMPANY' | 'INDIVIDUAL'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [preferredFilter, setPreferredFilter] = useState<'all' | 'preferred' | 'standard'>('all')
-  const [countryFilter, setCountryFilter] = useState<'all' | 'France' | 'other'>('all')
+  const [countryFilter, setCountryFilter] = useState<SupplierCountryFilter>('all')
 
   // Messages d'import/export
   const [importExportMessage, setImportExportMessage] = useState<{
@@ -41,66 +46,24 @@ export function SuppliersPage() {
     loadSuppliers()
   }, [])
 
-  // Fonction d'authentification automatique (comme dans Orders et Invoices)
-  const ensureAuthentication = async (): Promise<boolean> => {
-    // Vérifier si un token existe déjà
-    if (typeof window !== 'undefined') {
-      const existingTokens = localStorage.getItem('auth-tokens')
-      if (existingTokens) {
-        try {
-          const tokens = JSON.parse(existingTokens)
-          if (tokens.accessToken) {
-            api.setAuthToken(tokens.accessToken)
-            console.log('✅ Token existant trouvé et configuré')
-            return true
-          }
-        } catch (error) {
-          console.log('⚠️ Token existant invalide, nouvelle connexion nécessaire')
-        }
-      }
+  // Détecter le paramètre de rafraîchissement après création/modification
+  useEffect(() => {
+    const refreshParam = searchParams.get('refresh')
+    if (refreshParam) {
+      console.log('🔄 Rafraîchissement détecté après création/modification de fournisseur')
+      loadSuppliers()
+
+      // Nettoyer l'URL en supprimant le paramètre refresh
+      const url = new URL(window.location.href)
+      url.searchParams.delete('refresh')
+      window.history.replaceState({}, '', url.toString())
     }
-
-    try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gctpe.dz',
-        password: 'admin123'
-      })
-
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-
-        console.log('✅ Connexion automatique réussie')
-        return true
-      }
-    } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
-    }
-
-    return false
-  }
+  }, [searchParams])
 
   const loadSuppliers = async () => {
     try {
       setLoading(true)
       setError(null)
-      console.log('🔍 Chargement des fournisseurs...')
-
-      // S'assurer que l'utilisateur est authentifié
-      const isAuthenticated = await ensureAuthentication()
-      if (!isAuthenticated) {
-        setError('Erreur d\'authentification. Impossible de charger les fournisseurs.')
-        return
-      }
-
       const response = await withRetry(
         () => api.getSuppliers(),
         { retries: 3, delay: 1000 } // Augmentation des tentatives et du délai
@@ -110,9 +73,10 @@ export function SuppliersPage() {
         throw new Error('Réponse API invalide')
       }
 
-      const suppliersData = ensureArray(response.data?.data)
+      // CORRECTION : Gestion de la structure paginée data.data.data
+      const suppliersData = ensureArray(response.data?.data?.data || response.data?.data || response.data)
+
       setSuppliers(suppliersData)
-      console.log('Fournisseurs chargés depuis l\'API:', suppliersData.length)
       
       // Si aucun fournisseur n'est trouvé, afficher un message informatif
       if (suppliersData.length === 0) {
@@ -173,10 +137,10 @@ export function SuppliersPage() {
     }
 
     // Filtre par pays
-    if (countryFilter === 'France' && supplier.country !== 'France') {
+    if (countryFilter === DEFAULT_BUSINESS_COUNTRY && supplier.country !== DEFAULT_BUSINESS_COUNTRY) {
       return false
     }
-    if (countryFilter === 'other' && supplier.country === 'France') {
+    if (countryFilter === OTHER_COUNTRIES_FILTER && supplier.country === DEFAULT_BUSINESS_COUNTRY) {
       return false
     }
 
@@ -185,6 +149,10 @@ export function SuppliersPage() {
 
   const handleCreateSupplier = () => {
     router.push('/suppliers/new')
+  }
+
+  const handleFilters = () => {
+    setShowFilters((current) => !current)
   }
 
   const handleEditSupplier = (supplierId: string) => {
@@ -202,16 +170,6 @@ export function SuppliersPage() {
 
     try {
       console.log('Suppression du fournisseur:', supplierId)
-
-      // S'assurer que l'utilisateur est authentifié
-      const isAuthenticated = await ensureAuthentication()
-      if (!isAuthenticated) {
-        setImportExportMessage({
-          type: 'error',
-          message: 'Erreur d\'authentification. Veuillez vous connecter.'
-        })
-        return
-      }
 
       await api.deleteSupplier(supplierId)
       await loadSuppliers() // Recharger la liste
@@ -261,30 +219,20 @@ export function SuppliersPage() {
     })
   }
 
-  // Actions de la page
-  const actions = (
-    <div className="flex items-center space-x-3">
-      <ImportExportButtons
-        type="suppliers"
-        onImportSuccess={handleImportSuccess}
-        onImportError={handleImportError}
-        onExportError={handleExportError}
-        showPdfExport={true}
-        showImport={true}
-      />
-      <Button onClick={handleCreateSupplier} className="bg-blue-600 hover:bg-blue-700">
-        <Plus className="h-4 w-4 mr-2" />
-        Nouveau fournisseur
-      </Button>
-    </div>
-  )
+  const exportFilters = {
+    search: searchTerm || undefined,
+    type: typeFilter !== 'all' ? typeFilter : undefined,
+    isActive: statusFilter === 'all' ? undefined : statusFilter === 'active',
+    isPreferred: preferredFilter === 'all' ? undefined : preferredFilter === 'preferred',
+    country: countryFilter === DEFAULT_BUSINESS_COUNTRY ? DEFAULT_BUSINESS_COUNTRY : undefined,
+  }
 
   // Affichage du loading
   if (loading) {
     return (
-      <MainLayout title="Fournisseurs" subtitle="Chargement..." actions={actions}>
+      <MainLayout title="Fournisseurs" subtitle="Chargement...">
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       </MainLayout>
     )
@@ -292,18 +240,18 @@ export function SuppliersPage() {
 
   // Préparation du message d'erreur
   const errorBanner = error && (
-    <div className="border rounded-lg p-4 mb-6 bg-red-50 border-red-200">
+    <div className="border rounded-lg p-4 mb-6 bg-destructive/10 border-destructive/20">
       <div className="flex">
         <div className="flex-shrink-0">
-          <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+          <svg className="h-5 w-5 text-destructive" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
         </div>
         <div className="ml-3">
-          <h3 className="text-sm font-medium text-red-800">
+          <h3 className="text-sm font-medium text-destructive">
             Erreur de chargement
           </h3>
-          <div className="mt-2 text-sm text-red-700">
+          <div className="mt-2 text-sm text-destructive">
             <p>{error}</p>
           </div>
           <div className="mt-4">
@@ -319,7 +267,7 @@ export function SuppliersPage() {
   // En cas d'erreur, on affiche le message mais on continue le rendu
   if (error) {
     return (
-      <MainLayout title="Fournisseurs" subtitle="Erreur" actions={actions}>
+      <MainLayout title="Fournisseurs" subtitle="Erreur">
         {errorBanner}
       </MainLayout>
     )
@@ -329,7 +277,6 @@ export function SuppliersPage() {
     <MainLayout 
       title="Fournisseurs" 
       subtitle={`${filteredSuppliers.length} fournisseur${filteredSuppliers.length > 1 ? 's' : ''} trouvé${filteredSuppliers.length > 1 ? 's' : ''}`}
-      actions={actions}
     >
       <div className="space-y-6">
         {/* Message d'import/export */}
@@ -341,101 +288,155 @@ export function SuppliersPage() {
           />
         )}
 
-        {/* Barre de recherche et filtres */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Rechercher un fournisseur..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+        {/* Barre de recherche et actions */}
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+            <div className="relative flex-1 max-w-2xl">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <input
+                type="text"
+                placeholder="Rechercher un fournisseur..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 w-full border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:flex-nowrap lg:justify-end">
+              <Button variant="outline" size="sm" onClick={handleFilters} aria-expanded={showFilters}>
+                <Filter className="h-4 w-4 mr-2" />
+                Filtres
+              </Button>
+              <ImportExportButtons
+                type="suppliers"
+                filters={exportFilters}
+                onImportSuccess={handleImportSuccess}
+                onImportError={handleImportError}
+                onExportError={handleExportError}
+                showPdfExport={true}
+                showImport={true}
+                className="flex-wrap lg:flex-nowrap"
+              />
+              <Button size="sm" onClick={handleCreateSupplier} className="bg-primary hover:bg-primary/90">
+                <Plus className="h-4 w-4 mr-2" />
+                Nouveau fournisseur
+              </Button>
+            </div>
           </div>
 
-          <div className="flex gap-2">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tous les types</option>
-              <option value="COMPANY">Entreprises</option>
-              <option value="INDIVIDUAL">Particuliers</option>
-            </select>
+          {showFilters && (
+            <div className="mt-4 rounded-lg border border-border bg-secondary p-4">
+              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Filtres</h2>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label htmlFor="supplier-filter-type" className="mb-2 block text-sm font-medium text-muted-foreground">
+                    Type de fournisseur
+                  </label>
+                  <select
+                    id="supplier-filter-type"
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-card text-card-foreground"
+                  >
+                    <option value="all">Tous les types</option>
+                    <option value="COMPANY">Entreprises</option>
+                    <option value="INDIVIDUAL">Particuliers</option>
+                  </select>
+                </div>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="active">Actifs</option>
-              <option value="inactive">Inactifs</option>
-            </select>
+                <div>
+                  <label htmlFor="supplier-filter-status" className="mb-2 block text-sm font-medium text-muted-foreground">
+                    Statut
+                  </label>
+                  <select
+                    id="supplier-filter-status"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-card text-card-foreground"
+                  >
+                    <option value="all">Tous les statuts</option>
+                    <option value="active">Actifs</option>
+                    <option value="inactive">Inactifs</option>
+                  </select>
+                </div>
 
-            <select
-              value={preferredFilter}
-              onChange={(e) => setPreferredFilter(e.target.value as any)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tous</option>
-              <option value="preferred">Préférés</option>
-              <option value="standard">Standards</option>
-            </select>
-          </div>
+                <div>
+                  <label htmlFor="supplier-filter-preferred" className="mb-2 block text-sm font-medium text-muted-foreground">
+                    Relation
+                  </label>
+                  <select
+                    id="supplier-filter-preferred"
+                    value={preferredFilter}
+                    onChange={(e) => setPreferredFilter(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-card text-card-foreground"
+                  >
+                    <option value="all">Tous</option>
+                    <option value="preferred">Préférés</option>
+                    <option value="standard">Standards</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="supplier-filter-country" className="mb-2 block text-sm font-medium text-muted-foreground">
+                    Pays
+                  </label>
+                  <select
+                    id="supplier-filter-country"
+                    value={countryFilter}
+                    onChange={(e) => setCountryFilter(e.target.value as SupplierCountryFilter)}
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-card text-card-foreground"
+                  >
+                    <option value="all">Tous les pays</option>
+                    <option value={DEFAULT_BUSINESS_COUNTRY}>{DEFAULT_BUSINESS_COUNTRY}</option>
+                    <option value={OTHER_COUNTRIES_FILTER}>Autres pays</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Liste des fournisseurs */}
         {filteredSuppliers.length === 0 ? (
           <div className="text-center py-12">
-            <Building2 className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun fournisseur</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
+            <h3 className="mt-2 text-sm font-medium text-card-foreground">Aucun fournisseur</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
               {searchTerm || typeFilter !== 'all' || statusFilter !== 'all' || preferredFilter !== 'all'
                 ? 'Aucun fournisseur ne correspond aux critères de recherche.'
                 : 'Commencez par créer votre premier fournisseur.'}
             </p>
-            {(!searchTerm && typeFilter === 'all' && statusFilter === 'all' && preferredFilter === 'all') && (
-              <div className="mt-6">
-                <Button onClick={handleCreateSupplier} className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nouveau fournisseur
-                </Button>
-              </div>
-            )}
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredSuppliers.map((supplier: Supplier) => (
               <div
                 key={supplier.id}
-                className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                className="bg-card rounded-lg border border-border p-6 hover:shadow-md transition-shadow"
               >
                 {/* En-tête de la carte */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-semibold text-gray-900 truncate">
+                      <h3 className="text-lg font-semibold text-card-foreground truncate">
                         {safeTextRender(supplier.name, 'Sans nom')}
                       </h3>
                       {supplier.isPreferred && (
-                        <Star className="h-4 w-4 text-yellow-500 fill-current" />
+                        <Star className="h-4 w-4 text-primary fill-current" />
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         supplier.type === 'COMPANY'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-green-100 text-green-800'
+                          ? 'bg-secondary text-card-foreground'
+                          : 'bg-secondary text-card-foreground'
                       }`}>
                         {supplier.type === 'COMPANY' ? 'Entreprise' : 'Particulier'}
                       </span>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         supplier.isActive
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-destructive/10 text-destructive'
                       }`}>
                         {supplier.isActive ? 'Actif' : 'Inactif'}
                       </span>
@@ -446,44 +447,44 @@ export function SuppliersPage() {
                 {/* Informations de contact */}
                 <div className="space-y-2 mb-4">
                   {supplier.contactName && (
-                    <div className="flex items-center text-sm text-gray-600">
+                    <div className="flex items-center text-sm text-muted-foreground">
                       <span className="font-medium">Contact:</span>
                       <span className="ml-2">{safeTextRender(supplier.contactName)}</span>
                     </div>
                   )}
 
                   {supplier.email && (
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
                       <span className="truncate">{safeTextRender(supplier.email)}</span>
                     </div>
                   )}
 
                   {supplier.phone && (
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
                       <span>{safeTextRender(supplier.phone)}</span>
                     </div>
                   )}
 
                   {supplier.city && (
-                    <div className="flex items-center text-sm text-gray-600">
-                      <MapPin className="h-4 w-4 mr-2 text-gray-400" />
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
                       <span>{safeTextRender(supplier.city)}</span>
-                      {supplier.country && supplier.country !== 'France' && (
+                      {supplier.country && supplier.country !== DEFAULT_BUSINESS_COUNTRY && (
                         <span className="ml-1">({safeTextRender(supplier.country)})</span>
                       )}
                     </div>
                   )}
 
                   {supplier.website && (
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Globe className="h-4 w-4 mr-2 text-gray-400" />
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <Globe className="h-4 w-4 mr-2 text-muted-foreground" />
                       <a
                         href={supplier.website}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 truncate"
+                        className="text-primary hover:text-card-foreground truncate"
                       >
                         {safeTextRender(supplier.website)}
                       </a>
@@ -496,21 +497,21 @@ export function SuppliersPage() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     {supplier.paymentTerms && (
                       <div>
-                        <span className="text-gray-500">Délai paiement:</span>
+                        <span className="text-muted-foreground">Délai paiement:</span>
                         <div className="font-medium">{supplier.paymentTerms} jours</div>
                       </div>
                     )}
 
                     {supplier.discount && supplier.discount > 0 && (
                       <div>
-                        <span className="text-gray-500">Remise:</span>
+                        <span className="text-muted-foreground">Remise:</span>
                         <div className="font-medium">{supplier.discount}%</div>
                       </div>
                     )}
 
                     {supplier.rating && supplier.rating > 0 && (
                       <div>
-                        <span className="text-gray-500">Note:</span>
+                        <span className="text-muted-foreground">Note:</span>
                         <div className="flex items-center">
                           <span className="font-medium mr-1">{supplier.rating}</span>
                           <div className="flex">
@@ -519,8 +520,8 @@ export function SuppliersPage() {
                                 key={i}
                                 className={`h-3 w-3 ${
                                   i < supplier.rating!
-                                    ? 'text-yellow-400 fill-current'
-                                    : 'text-gray-300'
+                                    ? 'text-primary fill-current'
+                                    : 'text-muted-foreground'
                                 }`}
                               />
                             ))}
@@ -531,7 +532,7 @@ export function SuppliersPage() {
 
                     {supplier.productsCount !== undefined && (
                       <div>
-                        <span className="text-gray-500">Produits:</span>
+                        <span className="text-muted-foreground">Produits:</span>
                         <div className="font-medium">{supplier.productsCount}</div>
                       </div>
                     )}

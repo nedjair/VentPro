@@ -9,20 +9,30 @@ export interface UserPreferences {
     lastDisabledAt?: string
     disabledByUser: boolean
   }
+  stockMonitor: {
+    enabled: boolean
+    position: 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left'
+  }
   ui: {
     compactMode: boolean
     theme: 'light' | 'dark' | 'auto'
+    language: 'fr' | 'ar'
   }
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   stockNotifications: {
-    popupsEnabled: false, // DÉSACTIVÉ par défaut pour éviter les interruptions
+    popupsEnabled: false, // COMPLÈTEMENT DÉSACTIVÉ - Aucune notification popup
     disabledByUser: true, // Marqué comme désactivé par l'utilisateur
+  },
+  stockMonitor: {
+    enabled: false, // DÉSACTIVÉ - Moniteur complètement masqué
+    position: 'top-right' // Position moins intrusive si réactivé
   },
   ui: {
     compactMode: true,
-    theme: 'light'
+    theme: 'light',
+    language: 'fr'
   }
 }
 
@@ -44,6 +54,10 @@ class UserPreferencesService {
           stockNotifications: {
             ...DEFAULT_PREFERENCES.stockNotifications,
             ...parsed.stockNotifications
+          },
+          stockMonitor: {
+            ...DEFAULT_PREFERENCES.stockMonitor,
+            ...parsed.stockMonitor
           },
           ui: {
             ...DEFAULT_PREFERENCES.ui,
@@ -91,6 +105,86 @@ class UserPreferencesService {
    */
   static areStockPopupsEnabled(): boolean {
     return this.getPreferences().stockNotifications.popupsEnabled
+  }
+
+  /**
+   * Active ou désactive le moniteur de stock
+   */
+  static toggleStockMonitor(enabled: boolean): void {
+    const preferences = this.getPreferences()
+    preferences.stockMonitor.enabled = enabled
+    this.savePreferences(preferences)
+  }
+
+  /**
+   * Vérifie si le moniteur de stock est activé
+   */
+  static isStockMonitorEnabled(): boolean {
+    return this.getPreferences().stockMonitor.enabled
+  }
+
+  /**
+   * Change la position du moniteur de stock
+   */
+  static setStockMonitorPosition(position: 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left'): void {
+    const preferences = this.getPreferences()
+    preferences.stockMonitor.position = position
+    this.savePreferences(preferences)
+  }
+
+  /**
+   * Récupère la position du moniteur de stock
+   */
+  static getStockMonitorPosition(): 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left' {
+    return this.getPreferences().stockMonitor.position
+  }
+
+  /**
+   * Change le thème de l'interface
+   */
+  static setTheme(theme: 'light' | 'dark' | 'auto'): void {
+    const preferences = this.getPreferences()
+    preferences.ui.theme = theme
+    this.savePreferences(preferences)
+  }
+
+  /**
+   * Récupère le thème actuel
+   */
+  static getTheme(): 'light' | 'dark' | 'auto' {
+    return this.getPreferences().ui.theme
+  }
+
+  /**
+   * Active ou désactive le mode compact
+   */
+  static setCompactMode(enabled: boolean): void {
+    const preferences = this.getPreferences()
+    preferences.ui.compactMode = enabled
+    this.savePreferences(preferences)
+  }
+
+  /**
+   * Vérifie si le mode compact est activé
+   */
+  static isCompactModeEnabled(): boolean {
+    return this.getPreferences().ui.compactMode
+  }
+
+  /**
+   * Change la langue de l'interface
+   */
+  static setLanguage(language: 'fr' | 'ar'): void {
+    const preferences = this.getPreferences()
+    preferences.ui.language = language
+    this.savePreferences(preferences)
+  }
+
+  /**
+   * Récupère la langue actuelle
+   */
+  static getLanguage(): 'fr' | 'ar' {
+    return this.getPreferences().ui.language
   }
 
   /**

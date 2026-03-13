@@ -1,12 +1,12 @@
+import { ImportService } from '../services/import.service'
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { ClientService } from '../services/client.service'
 import { ExportService } from '../services/export.service'
-import { AuthenticatedRequest } from '../types/common'
+// AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
-import { prisma } from '@gestion/database'
-import { ClientType } from '@prisma/client'
-import { ImportService } from '../services/import.service'
+import { prisma } from '../lib/prisma'
+import { ClientType } from '../../prisma/generated/client'
 import path from 'path'
 import fs from 'fs'
 import { promisify } from 'util'
@@ -32,6 +32,11 @@ const exportQuerySchema = z.object({
   // sortBy and sortOrder can be added if needed for export
 });
 
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.companyId || user?.id || user?.userId
+}
+
 export default async function clientRoutes(server: FastifyInstance) {
   // Test endpoint simple
   server.get('/test', async (request, reply) => {
@@ -45,12 +50,18 @@ export default async function clientRoutes(server: FastifyInstance) {
 
   // Créer un client
   server.post('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    preHandler: [(server as any).authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
       const body = request.body as any
 
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
 
 
       // Validation basique
@@ -62,7 +73,7 @@ export default async function clientRoutes(server: FastifyInstance) {
         })
       }
 
-      const client = await ClientService.createClient(body, companyId)
+      const client = await ClientService.createClient(body, ownerScopeId)
 
       return reply.status(201).send({
         success: true,
@@ -83,12 +94,22 @@ export default async function clientRoutes(server: FastifyInstance) {
     {
       preHandler: [server.authenticate],
     },
-    async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         logger.info('🔍 Début de la récupération des clients')
 
-        const { companyId } = request.user
-        logger.info('🏢 CompanyId:', { companyId })
+        // Compatibilité double schéma :
+        // - ancien backend => périmètre par `companyId`
+        // - base PostgreSQL locale actuelle => périmètre par `userId`
+        const ownerScopeId = getOwnerScopeId(request)
+        logger.info('🏢 Scope ID:', { ownerScopeId })
+
+        if (!ownerScopeId) {
+          return reply.status(401).send({
+            success: false,
+            message: 'Contexte d’authentification incomplet',
+          })
+        }
 
         const query = request.query as z.infer<typeof clientQuerySchema>
         logger.info('📋 Query reçue:', { query })
@@ -110,7 +131,7 @@ export default async function clientRoutes(server: FastifyInstance) {
         logger.info('🔍 Filtres:', { filters })
 
         logger.info('🚀 Appel du service ClientService.getClients...')
-        const result = await ClientService.getClients(companyId, filters, pagination)
+        const result = await ClientService.getClients(ownerScopeId, filters, pagination)
         logger.info('✅ Service appelé avec succès, nombre de clients:', { count: result.data.length })
 
         return reply.send({
@@ -122,7 +143,8 @@ export default async function clientRoutes(server: FastifyInstance) {
         logger.error('❌ Erreur lors de la récupération des clients', {
           error: error.message,
           stack: error.stack,
-          companyId: request.user?.companyId
+          companyId: request.user?.companyId,
+          userId: request.user?.userId || request.user?.id,
         })
         return reply.status(500).send({
           success: false,
@@ -134,13 +156,20 @@ export default async function clientRoutes(server: FastifyInstance) {
 
   // Récupérer un client par ID
   server.get('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    preHandler: [(server as any).authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const client = await ClientService.getClientById(id, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const client = await ClientService.getClientById(id, ownerScopeId)
 
       if (!client) {
         return reply.status(404).send({
@@ -164,14 +193,21 @@ export default async function clientRoutes(server: FastifyInstance) {
 
   // Mettre à jour un client
   server.put('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    preHandler: [(server as any).authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const data = request.body as any
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const client = await ClientService.updateClient(id, data, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const client = await ClientService.updateClient(id, data, ownerScopeId)
 
       return reply.send({
         success: true,
@@ -192,12 +228,19 @@ export default async function clientRoutes(server: FastifyInstance) {
     {
       preHandler: [server.authenticate],
     },
-    async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { id } = request.params as { id: string }
-        const { companyId } = request.user
+        const ownerScopeId = getOwnerScopeId(request)
 
-        await ClientService.deleteClient(id, companyId)
+        if (!ownerScopeId) {
+          return reply.status(401).send({
+            success: false,
+            message: 'Contexte d’authentification incomplet',
+          })
+        }
+
+        await ClientService.deleteClient(id, ownerScopeId)
 
         return reply.send({
           success: true,
@@ -216,39 +259,65 @@ export default async function clientRoutes(server: FastifyInstance) {
   // Exporter les clients
   server.get('/export', {
     preHandler: [server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
-      const query = request.query as z.infer<typeof exportQuerySchema>
-      
+      const ownerScopeId = getOwnerScopeId(request)
+
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      // Validation manuelle plus robuste
+      const rawQuery = request.query as any
+      console.log('🔍 Raw query params:', rawQuery)
+
+      if (!rawQuery.format || !['xlsx', 'pdf'].includes(rawQuery.format)) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Format requis: xlsx ou pdf'
+        })
+      }
+
       const filters = {
-        search: query.search,
-        type: query.type,
-        city: query.city,
-        isActive: query.isActive,
+        search: rawQuery.search,
+        type: rawQuery.type,
+        city: rawQuery.city,
+        isActive: rawQuery.isActive === 'true' ? true : rawQuery.isActive === 'false' ? false : undefined,
       }
 
       // Récupérer tous les clients (sans pagination) avec les filtres
-      const { data: clients } = await ClientService.getClients(companyId, filters)
+      console.log('🔍 Récupération des clients avec filtres:', filters)
+      const { data: clients } = await ClientService.getClients(ownerScopeId, filters)
+      console.log(`✅ ${clients.length} clients récupérés`)
 
       let fileBuffer: Buffer;
       let contentType: string;
       let filename: string;
       const timestamp = new Date().toISOString().replace(/:/g, '-');
 
-      if (query.format === 'xlsx') {
+      if (rawQuery.format === 'xlsx') {
+        console.log('📊 Génération Excel clients...')
         fileBuffer = await ExportService.generateClientsExcel(clients);
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         filename = `clients_${timestamp}.xlsx`;
       } else { // pdf
-        const company = await prisma.company.findUnique({ where: { id: companyId } });
-        if (!company) {
-          return reply.status(404).send({ success: false, message: "Informations de l'entreprise non trouvées." });
-        }
-        fileBuffer = await ExportService.generateClientsPdf(clients, company);
+        console.log('📄 Génération PDF clients...')
+        const companyId = (request as any).user?.companyId
+        const company = companyId
+          ? await prisma.company.findUnique({ where: { id: companyId } })
+          : null
+
+        fileBuffer = await ExportService.generateClientsPdf(clients, {
+          name: company?.name || 'Gestion Commerciale',
+        });
         contentType = 'application/pdf';
         filename = `clients_${timestamp}.pdf`;
       }
+
+      console.log(`✅ Fichier généré: ${filename} (${fileBuffer.length} bytes)`)
 
       reply.header('Content-Disposition', `attachment; filename="${filename}"`);
       reply.type(contentType);
@@ -266,18 +335,18 @@ export default async function clientRoutes(server: FastifyInstance) {
   // Importer des clients depuis un fichier Excel
   // Import Excel des clients
   server.post('/import/excel', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Import Excel des clients',
       tags: ['Clients'],
       security: [{ bearerAuth: [] }],
       consumes: ['multipart/form-data'],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     let tempFilePath: string | null = null
 
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
       // Récupérer le fichier uploadé
       const data = await request.file()
@@ -404,7 +473,7 @@ export default async function clientRoutes(server: FastifyInstance) {
   // Importer des clients depuis un fichier Excel
   server.post('/import', {
     preHandler: [server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ success: false, message: 'Aucun fichier uploadé.' });
@@ -412,7 +481,7 @@ export default async function clientRoutes(server: FastifyInstance) {
 
     try {
       const fileBuffer = await data.toBuffer();
-      const { companyId } = request.user;
+      const { companyId } = (request as any).user;
       
       const report = await ImportService.importClientsFromExcel(fileBuffer, companyId);
 

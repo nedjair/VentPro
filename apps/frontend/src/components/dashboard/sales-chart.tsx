@@ -88,23 +88,23 @@ export function SalesChart() {
     <div className="card">
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-gray-900">Évolution des ventes</h3>
+          <h3 className="text-lg font-semibold text-card-foreground">Évolution des ventes</h3>
           <div className="flex space-x-2">
             <button
               onClick={() => setSelectedPeriod('7d')}
-              className={`px-3 py-1 text-sm rounded-md ${selectedPeriod === '7d' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`px-3 py-1 text-sm rounded-md ${selectedPeriod === '7d' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
             >
               7j
             </button>
             <button
               onClick={() => setSelectedPeriod('30d')}
-              className={`px-3 py-1 text-sm rounded-md ${selectedPeriod === '30d' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`px-3 py-1 text-sm rounded-md ${selectedPeriod === '30d' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
             >
               30j
             </button>
             <button
               onClick={() => setSelectedPeriod('6m')}
-              className={`px-3 py-1 text-sm rounded-md ${selectedPeriod === '6m' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`px-3 py-1 text-sm rounded-md ${selectedPeriod === '6m' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
             >
               6m
             </button>
@@ -112,18 +112,18 @@ export function SalesChart() {
         </div>
 
         {loading ? (
-          <div className="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+          <div className="h-64 bg-secondary rounded-lg flex items-center justify-center">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <p className="text-gray-500">Chargement des données...</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+              <p className="text-muted-foreground">Chargement des données...</p>
             </div>
           </div>
         ) : error ? (
-          <div className="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+          <div className="h-64 bg-secondary rounded-lg flex items-center justify-center">
             <div className="text-center">
-              <BarChart3 className="h-12 w-12 text-red-400 mx-auto mb-2" />
-              <p className="text-red-500">Erreur de chargement</p>
-              <p className="text-sm text-gray-400">{error}</p>
+              <BarChart3 className="h-12 w-12 text-destructive mx-auto mb-2" />
+              <p className="text-destructive">Erreur de chargement</p>
+              <p className="text-sm text-muted-foreground">{error}</p>
               <button
                 onClick={loadChartData}
                 className="mt-2 px-3 py-1 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200"
@@ -137,18 +137,18 @@ export function SalesChart() {
             {/* Tendance des ventes */}
             {safeSalesTrend.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Tendance mensuelle</h4>
+                <h4 className="text-sm font-medium text-card-foreground mb-3">Tendance mensuelle</h4>
                 <div className="grid grid-cols-6 gap-2">
                   {safeSalesTrend.map((item, index) => (
                     <div key={item.month} className="text-center">
-                      <div className="text-xs text-gray-500 mb-1">{item.month}</div>
+                      <div className="text-xs text-muted-foreground mb-1">{item.month}</div>
                       <div
-                        className="bg-blue-500 rounded-t"
+                        className="bg-primary rounded-t"
                         style={{
                           height: `${Math.max(20, (item.sales / Math.max(...safeSalesTrend.map(s => s.sales))) * 80)}px`
                         }}
                       ></div>
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-xs text-muted-foreground mt-1">
                         {formatCurrency(item.sales)}
                       </div>
                     </div>
@@ -160,17 +160,17 @@ export function SalesChart() {
             {/* Top produits */}
             {safeTopProducts.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Top produits</h4>
+                <h4 className="text-sm font-medium text-card-foreground mb-3">Top produits</h4>
                 <div className="space-y-2">
                   {safeTopProducts.slice(0, 3).map((product, index) => (
                     <div key={product.id} className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
-                        <div className={`w-2 h-2 rounded-full ${index === 0 ? 'bg-green-500' : index === 1 ? 'bg-blue-500' : 'bg-orange-500'}`}></div>
-                        <span className="text-sm text-gray-700">{product.name}</span>
+                        <div className={`w-2 h-2 rounded-full ${index === 0 ? 'bg-primary' : index === 1 ? 'bg-accent' : 'bg-secondary'}`}></div>
+                        <span className="text-sm text-card-foreground">{product.name}</span>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium text-gray-900">{formatCurrency(product.revenue)}</div>
-                        <div className="text-xs text-gray-500">{product.sales} ventes</div>
+                        <div className="text-sm font-medium text-card-foreground">{formatCurrency(product.revenue)}</div>
+                        <div className="text-xs text-muted-foreground">{product.sales} ventes</div>
                       </div>
                     </div>
                   ))}

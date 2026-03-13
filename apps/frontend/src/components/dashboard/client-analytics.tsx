@@ -81,6 +81,20 @@ export function ClientAnalyticsComponent() {
   }
 
   const getSegmentColor = (segment: string) => {
+    if (typeof window !== 'undefined') {
+      const style = getComputedStyle(document.documentElement)
+      switch (segment) {
+        case 'VIP':
+          return `hsl(${style.getPropertyValue('--color-accent')})`
+        case 'Premium':
+          return `hsl(${style.getPropertyValue('--color-primary')})`
+        case 'Standard':
+          return `hsl(${style.getPropertyValue('--color-secondary')})`
+        default:
+          return `hsl(${style.getPropertyValue('--color-muted')})`
+      }
+    }
+    // Fallback pour SSR
     switch (segment) {
       case 'VIP':
         return '#F59E0B'
@@ -93,14 +107,30 @@ export function ClientAnalyticsComponent() {
     }
   }
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4']
+  // Utilisation des couleurs CSS variables pour le thème
+  const getThemeColors = () => {
+    if (typeof window !== 'undefined') {
+      const style = getComputedStyle(document.documentElement)
+      return [
+        `hsl(${style.getPropertyValue('--color-primary')})`,
+        `hsl(${style.getPropertyValue('--color-accent')})`,
+        `hsl(${style.getPropertyValue('--color-secondary')})`,
+        `hsl(${style.getPropertyValue('--color-destructive')})`,
+        `hsl(${style.getPropertyValue('--color-muted')})`,
+        `hsl(${style.getPropertyValue('--color-border')})`
+      ]
+    }
+    return ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4']
+  }
+
+  const COLORS = getThemeColors()
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow p-6 animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+        <div className="bg-card rounded-lg shadow border border-border p-6 animate-pulse">
+          <div className="h-6 bg-secondary rounded w-1/3 mb-4"></div>
+          <div className="h-64 bg-secondary rounded"></div>
         </div>
       </div>
     )
@@ -124,7 +154,7 @@ export function ClientAnalyticsComponent() {
     <div className="space-y-6">
       {/* En-tête */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Analytics Clients</h2>
+        <h2 className="text-2xl font-bold text-card-foreground">Analytics Clients</h2>
         <button
           onClick={loadClientAnalytics}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -136,13 +166,13 @@ export function ClientAnalyticsComponent() {
       {/* Métriques de segmentation */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {safeMap(ensureArray(clientData.segmentation), (segment: any) => (
-          <div key={segment.segment} className="bg-white rounded-lg shadow p-4 border-l-4" 
+          <div key={segment.segment} className="bg-card rounded-lg shadow border border-border p-4 border-l-4"
                style={{ borderLeftColor: getSegmentColor(segment.segment) }}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">{segment.segment}</p>
-                <p className="text-xl font-bold">{segment.clientCount} clients</p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-muted-foreground">{segment.segment}</p>
+                <p className="text-xl font-bold text-card-foreground">{segment.clientCount} clients</p>
+                <p className="text-xs text-muted-foreground">
                   {formatCurrency(segment.avgRevenue)} / client
                 </p>
               </div>
@@ -153,8 +183,8 @@ export function ClientAnalyticsComponent() {
       </div>
 
       {/* Segmentation par valeur */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className="bg-card rounded-lg shadow border border-border p-6">
+        <h3 className="text-lg font-semibold text-card-foreground mb-4">
           Segmentation par Valeur Client
         </h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -169,7 +199,7 @@ export function ClientAnalyticsComponent() {
                   `${segment} (${(percent * 100).toFixed(0)}%)`
                 }
                 outerRadius={100}
-                fill="#8884d8"
+                fill="hsl(var(--color-primary))"
                 dataKey="segmentRevenue"
               >
                 {safeMap(ensureArray(clientData.segmentation), (entry: any, index: number) => (
@@ -181,7 +211,7 @@ export function ClientAnalyticsComponent() {
           </ResponsiveContainer>
           
           <div className="space-y-3">
-            <h4 className="font-medium text-gray-900">Détails par segment</h4>
+            <h4 className="font-medium text-card-foreground">Détails par segment</h4>
             {safeMap(ensureArray(clientData.segmentation), (segment: any) => (
               <div key={segment.segment} className="flex items-center justify-between py-2">
                 <div className="flex items-center">
@@ -193,7 +223,7 @@ export function ClientAnalyticsComponent() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-medium">{formatCurrency(segment.segmentRevenue)}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     {segment.clientCount} clients • {formatCurrency(segment.avgRevenue)} moy.
                   </div>
                 </div>
@@ -204,8 +234,8 @@ export function ClientAnalyticsComponent() {
       </div>
 
       {/* Répartition géographique */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className="bg-card rounded-lg shadow border border-border p-6">
+        <h3 className="text-lg font-semibold text-card-foreground mb-4">
           Répartition Géographique (Top 10 Villes)
         </h3>
         <ResponsiveContainer width="100%" height={300}>
@@ -222,54 +252,54 @@ export function ClientAnalyticsComponent() {
               }}
             />
             <Legend />
-            <Bar yAxisId="left" dataKey="totalRevenue" fill="#3B82F6" name="CA" />
-            <Bar yAxisId="right" dataKey="clientCount" fill="#10B981" name="Nb Clients" />
+            <Bar yAxisId="left" dataKey="totalRevenue" fill="hsl(var(--color-primary))" name="CA" />
+            <Bar yAxisId="right" dataKey="clientCount" fill="hsl(var(--color-accent))" name="Nb Clients" />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Clients les plus actifs */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
+      <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h3 className="text-lg font-semibold text-card-foreground">
             Top 10 Clients les Plus Actifs
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-secondary">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Client
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Type
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Ville
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Factures
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   CA Total
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Dernière Facture
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-card divide-y divide-border">
               {safeMap(ensureArray(clientData.mostActiveClients), (client: any) => (
-                <tr key={client.id} className="hover:bg-gray-50">
+                <tr key={client.id} className="hover:bg-secondary">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       {client.type === 'COMPANY' ? (
-                        <Building className="h-5 w-5 text-gray-400 mr-2" />
+                        <Building className="h-5 w-5 text-muted-foreground mr-2" />
                       ) : (
-                        <Users className="h-5 w-5 text-gray-400 mr-2" />
+                        <Users className="h-5 w-5 text-muted-foreground mr-2" />
                       )}
-                      <div className="text-sm font-medium text-gray-900">{client.name}</div>
+                      <div className="text-sm font-medium text-card-foreground">{client.name}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -282,18 +312,18 @@ export function ClientAnalyticsComponent() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center text-sm text-gray-900">
-                      <MapPin className="h-4 w-4 text-gray-400 mr-1" />
+                    <div className="flex items-center text-sm text-card-foreground">
+                      <MapPin className="h-4 w-4 text-muted-foreground mr-1" />
                       {client.city || 'Non renseigné'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                     {client.invoiceCount}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-card-foreground">
                     {formatCurrency(client.totalRevenue)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                     {formatDate(client.lastInvoiceDate)}
                   </td>
                 </tr>

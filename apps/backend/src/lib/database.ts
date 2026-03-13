@@ -1,7 +1,7 @@
-import { PrismaClient, prisma } from '@gestion/database'
+import { prisma } from './prisma'
 import { logger } from '../utils/logger'
 
-// Utiliser le client Prisma du package database
+// Utiliser le client Prisma centralisé
 export { prisma }
 
 // Log des requêtes en développement
@@ -40,6 +40,25 @@ export async function closeDatabaseConnection(): Promise<void> {
 export async function seedDatabase(): Promise<void> {
   try {
     logger.info('🌱 Initialisation de la base de données...')
+
+    // Sécurité de compatibilité : le backend historique tente d'initialiser
+    // l'ancien schéma Prisma (tables `companies`, `users`, `products`, ...).
+    // Dans l'environnement PostgreSQL réellement utilisé en local, ce schéma
+    // n'existe pas. On détecte donc sa présence avant de lancer le seed pour
+    // éviter un bruit d'erreur inutile au démarrage.
+    const legacyCompaniesTable = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'companies'
+      ) AS exists
+    `
+
+    if (!legacyCompaniesTable[0]?.exists) {
+      logger.info('ℹ️ Seed legacy ignoré : la table public.companies n’existe pas dans la base locale active')
+      return
+    }
 
     // Vérifier si des données existent déjà
     const existingCompany = await prisma.company.findFirst()
@@ -85,7 +104,7 @@ export async function seedDatabase(): Promise<void> {
       update: {},
       create: {
         email: 'admin@test.com',
-        password: hashedPassword,
+        passwordHash: hashedPassword,
         firstName: 'Admin',
         lastName: 'Test',
         role: 'ADMIN',

@@ -23,7 +23,7 @@ import {
   formatStockThresholds,
   type ProductWithStock
 } from '@/lib/stock-utils'
-import { useUnifiedProducts } from '@/hooks/useUnifiedStockData'
+import { useUnifiedProducts } from '@/hooks/useUnifiedStockCache'
 
 interface Stock {
   id: string
@@ -66,10 +66,7 @@ export function StocksPage() {
     normalStockProducts
   } = useUnifiedProducts()
 
-  // États locaux pour la compatibilité et les filtres
-  const [stocks, setStocks] = useState<Stock[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // États locaux pour les filtres
   const [filters, setFilters] = useState<StockFilters>({
     search: '',
     lowStock: false,
@@ -78,117 +75,85 @@ export function StocksPage() {
   })
   const [showFilters, setShowFilters] = useState(false)
 
-  const loadStocks = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const queryParams = new URLSearchParams()
-      if (filters.search) queryParams.append('search', filters.search)
-      if (filters.lowStock) queryParams.append('lowStock', 'true')
-      if (filters.outOfStock) queryParams.append('outOfStock', 'true')
-      if (filters.categoryId) queryParams.append('categoryId', filters.categoryId)
-
-      const response = await api.get(`/api/v1/stock?${queryParams.toString()}`)
-      
-      if (response.data.success) {
-        // Programmation défensive pour les arrays
-        const stocksData = Array.isArray(response.data.data) ? response.data.data : []
-        setStocks(stocksData)
-      } else {
-        setError(response.data.message || 'Erreur lors du chargement des stocks')
+  // Filtrer les produits unifiés selon les critères
+  const filteredProducts = unifiedProducts.filter(product => {
+    // Filtre de recherche
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase()
+      if (!product.name.toLowerCase().includes(searchLower) &&
+          !product.sku?.toLowerCase().includes(searchLower)) {
+        return false
       }
-    } catch (err: any) {
-      console.error('Erreur lors du chargement des stocks:', err)
-      setError('Erreur lors du chargement des stocks')
-      // Programmation défensive - initialiser avec un array vide
-      setStocks([])
-    } finally {
-      setLoading(false)
     }
-  }
 
-  useEffect(() => {
-    loadStocks()
-  }, [filters])
-
-
-
-  // Adapter les données de stock au format ProductWithStock pour utiliser la logique unifiée
-  const adaptStockForCalculation = (stock: Stock): ProductWithStock => {
-    return {
-      id: stock.id,
-      name: stock.product?.name || 'Produit inconnu',
-      stockQuantity: stock.quantiteActuelle,
-      minStock: stock.quantiteMinimale,
-      maxStock: stock.quantiteMaximale || null,
-      isService: false, // Les stocks ne concernent que les produits physiques
-      isActive: true,
-      unit: stock.product?.unit || 'unité'
+    // Filtre par catégorie
+    if (filters.categoryId && product.category !== filters.categoryId) {
+      return false
     }
-  }
 
-  // Utiliser la logique unifiée de calcul du statut
-  const getStockStatus = (stock: Stock) => {
-    const adaptedStock = adaptStockForCalculation(stock)
-    return calculateStockStatus(adaptedStock)
-  }
+    // Filtre par statut de stock
+    if (filters.lowStock && product.status !== 'low') {
+      return false
+    }
 
-  const filteredStocks = Array.isArray(stocks) ? stocks.filter(stock => {
-    if (!stock || !stock.product) return false
-    
-    const matchesSearch = !filters.search || 
-      stock.product.name.toLowerCase().includes(filters.search.toLowerCase()) ||
-      (stock.product.sku && stock.product.sku.toLowerCase().includes(filters.search.toLowerCase()))
-    
-    // Utiliser la logique unifiée pour les filtres
-    const stockStatus = getStockStatus(stock)
-    const matchesLowStock = !filters.lowStock || stockStatus.status === 'faible'
-    const matchesOutOfStock = !filters.outOfStock || stockStatus.status === 'rupture'
-    
-    return matchesSearch && matchesLowStock && matchesOutOfStock
-  }) : []
+    if (filters.outOfStock && product.status !== 'out') {
+      return false
+    }
+
+    return true
+  })
+
+
+
+  // Statistiques basées sur les données unifiées
+  const stats = {
+    total: unifiedProducts.length,
+    outOfStock: outOfStockProducts.length,
+    lowStock: lowStockProducts.length,
+    overStock: overStockProducts.length,
+    normal: normalStockProducts.length
+  }
 
   const actions = (
     <button
       onClick={() => router.push('/stocks/new')}
-      className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+      className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
     >
       <Plus className="h-4 w-4 mr-2" />
       Nouveau Stock
     </button>
   )
 
-  if (loading) {
+  if (unifiedLoading) {
     return (
       <MainLayout title="Gestion de Stock" subtitle="Chargement..." actions={actions}>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       </MainLayout>
     )
   }
 
   return (
-    <MainLayout 
-      title="Gestion de Stock" 
-      subtitle={`${filteredStocks.length} stock${filteredStocks.length > 1 ? 's' : ''} trouvé${filteredStocks.length > 1 ? 's' : ''}`}
+    <MainLayout
+      title="Gestion de Stock"
+      subtitle={`${filteredProducts.length} produit${filteredProducts.length > 1 ? 's' : ''} trouvé${filteredProducts.length > 1 ? 's' : ''}`}
       actions={actions}
     >
       <div className="space-y-6">
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        {unifiedError && (
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
             <div className="flex">
-              <AlertTriangle className="h-5 w-5 text-red-400" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Erreur</h3>
-                <div className="mt-2 text-sm text-red-700">
-                  <p>{error}</p>
+                <h3 className="text-sm font-medium text-destructive">Erreur</h3>
+                <div className="mt-2 text-sm text-destructive">
+                  <p>{unifiedError}</p>
                 </div>
                 <div className="mt-4">
                   <button
-                    onClick={loadStocks}
-                    className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
+                    onClick={refreshUnified}
+                    className="bg-destructive/10 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/20"
                   >
                     Réessayer
                   </button>
@@ -201,19 +166,19 @@ export function StocksPage() {
         {/* Barre de recherche et filtres */}
         <div className="flex items-center space-x-4">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <input
               type="text"
               placeholder="Rechercher un produit..."
               value={filters.search}
               onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="pl-10 pr-4 py-2 w-full border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-card text-card-foreground placeholder:text-muted-foreground"
             />
           </div>
           
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors"
           >
             <Filter className="h-4 w-4 mr-2" />
             Filtres
@@ -222,14 +187,14 @@ export function StocksPage() {
 
         {/* Filtres avancés */}
         {showFilters && (
-          <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+          <div className="bg-secondary p-4 rounded-lg space-y-4">
             <div className="flex flex-wrap gap-4">
               <label className="flex items-center space-x-2">
                 <input
                   type="checkbox"
                   checked={filters.lowStock}
                   onChange={(e) => setFilters(prev => ({ ...prev, lowStock: e.target.checked }))}
-                  className="rounded border-gray-300"
+                  className="rounded border-border text-primary focus:ring-primary"
                 />
                 <span className="text-sm">Stock faible</span>
               </label>
@@ -239,7 +204,7 @@ export function StocksPage() {
                   type="checkbox"
                   checked={filters.outOfStock}
                   onChange={(e) => setFilters(prev => ({ ...prev, outOfStock: e.target.checked }))}
-                  className="rounded border-gray-300"
+                  className="rounded border-border text-primary focus:ring-primary"
                 />
                 <span className="text-sm">Rupture de stock</span>
               </label>
@@ -248,15 +213,15 @@ export function StocksPage() {
         )}
 
         {/* Liste des stocks */}
-        <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div className="bg-card border border-border shadow rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-secondary">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Produit
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Stock Actuel
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -273,70 +238,69 @@ export function StocksPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {Array.isArray(filteredStocks) && filteredStocks.length > 0 ? (
-                  filteredStocks.map((stock) => {
-                    const stockStatus = getStockStatus(stock)
-                    const StatusIcon = stockStatus.icon
-                    
+              <tbody className="bg-card divide-y divide-border">
+                {filteredProducts.length > 0 ? (
+                  filteredProducts.map((product) => {
+                    const StatusIcon = getStockStatusIcon({ status: product.status } as any)
+
                     return (
-                      <tr key={stock.id} className="hover:bg-gray-50">
+                      <tr key={product.id} className="hover:bg-secondary">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <Package className="h-8 w-8 text-gray-400 mr-3" />
+                            <Package className="h-8 w-8 text-muted-foreground mr-3" />
                             <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {stock.product?.name || 'Nom non disponible'}
+                              <div className="text-sm font-medium text-card-foreground">
+                                {product.name}
                               </div>
-                              <div className="text-sm text-gray-500">
-                                {stock.product?.sku && `SKU: ${stock.product.sku}`}
-                                {stock.product?.category && ` • ${stock.product.category.name}`}
+                              <div className="text-sm text-muted-foreground">
+                                {product.sku && `SKU: ${product.sku}`}
+                                {product.category && ` • ${product.category}`}
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {formatStockQuantity(adaptStockForCalculation(stock))}
+                            <div className="text-sm font-medium text-card-foreground">
+                              {product.stockQuantity} {product.unit}
                             </div>
-                            <div className="text-xs text-gray-500">
-                              Actuel: {stock.quantiteActuelle}
+                            <div className="text-xs text-muted-foreground">
+                              MAJ: {new Date(product.lastUpdate).toLocaleDateString()}
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {formatStockThresholds(adaptStockForCalculation(stock))}
+                          <div className="text-sm text-card-foreground">
+                            Min: {product.minStock} {product.maxStock ? `• Max: ${product.maxStock}` : ''}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatCurrency(stock.quantiteActuelle * (stock.product?.price || 0), 'DA')}
+                          <div className="text-sm font-medium text-card-foreground">
+                            {formatCurrency(product.value)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {(() => {
-                            const StatusIcon = getStockStatusIcon(stockStatus)
-                            return (
-                              <span className={getStockStatusClasses(stockStatus)}>
-                                <StatusIcon className="h-3 w-3 mr-1" />
-                                {stockStatus.label}
-                              </span>
-                            )
-                          })()}
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            product.status === 'out' ? 'bg-destructive/10 text-destructive' :
+                            product.status === 'low' ? 'bg-accent text-accent-foreground' :
+                            product.status === 'over' ? 'bg-secondary text-card-foreground' :
+                            'bg-primary/10 text-primary'
+                          }`}>
+                            <StatusIcon className="h-3 w-3 mr-1" />
+                            {product.statusLabel}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                           <button
-                            onClick={() => router.push(`/stocks/${stock.id}`)}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="Voir les détails"
+                            onClick={() => router.push(`/products/${product.id}`)}
+                            className="text-primary hover:text-card-foreground"
+                            title="Voir le produit"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => router.push(`/stocks/${stock.id}/edit`)}
-                            className="text-indigo-600 hover:text-indigo-900"
+                            onClick={() => router.push(`/products/${product.id}/edit`)}
+                            className="text-primary hover:text-card-foreground"
                             title="Modifier"
                           >
                             <Edit className="h-4 w-4" />
@@ -347,8 +311,8 @@ export function StocksPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
-                      {loading ? 'Chargement...' : 'Aucun stock trouvé'}
+                    <td colSpan={6} className="px-6 py-4 text-center text-muted-foreground">
+                      {unifiedLoading ? 'Chargement...' : 'Aucun produit trouvé'}
                     </td>
                   </tr>
                 )}

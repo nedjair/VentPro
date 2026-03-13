@@ -1,4 +1,5 @@
-import { prisma, Prisma, Client, ClientType } from '@gestion/database'
+import { prisma } from '../lib/prisma'
+import { Prisma, Client, ClientType } from '../../prisma/generated/client'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
 
@@ -54,16 +55,61 @@ export interface InteractionData {
   userId?: string
 }
 
+interface CurrentSchemaClientRow {
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+  address: string | null
+  createdAt: Date
+  updatedAt: Date
+  userId: string
+}
+
 export class ClientService {
+  private static normalizeCurrentSchemaClient(client: CurrentSchemaClientRow): Client {
+    return {
+      id: client.id,
+      type: 'COMPANY',
+      firstName: null,
+      lastName: null,
+      companyName: client.name,
+      email: client.email || '',
+      phone: client.phone || undefined,
+      address: client.address || undefined,
+      postalCode: undefined,
+      city: undefined,
+      country: undefined,
+      notes: undefined,
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
+    } as unknown as Client
+  }
+
+  private static buildClientName(data: Partial<CreateClientData>, fallback = ''): string {
+    const companyName = data.companyName?.trim()
+    const individualName = `${data.firstName?.trim() || ''} ${data.lastName?.trim() || ''}`.trim()
+
+    if (data.type === 'COMPANY') {
+      return companyName || fallback
+    }
+
+    if (data.type === 'INDIVIDUAL') {
+      return individualName || fallback
+    }
+
+    return companyName || individualName || fallback
+  }
+
   /**
    * Créer un nouveau client
    */
   static async createClient(
     data: CreateClientData,
-    companyId: string
+    ownerScopeId: string
   ): Promise<Client> {
     try {
-      logger.info('Création d\'un nouveau client', { companyId, type: data.type })
+      logger.info('Création d\'un nouveau client', { ownerScopeId, type: data.type })
 
       // Validation métier
       if (data.type === 'INDIVIDUAL' && (!data.firstName || !data.lastName)) {
@@ -74,12 +120,50 @@ export class ClientService {
         throw new Error('Le nom de l\'entreprise est requis pour une société')
       }
 
+      const normalizedName = this.buildClientName(data)
+      if (!normalizedName) {
+        throw new Error('Le nom du client est requis')
+      }
+
+      try {
+        if (data.email) {
+          const existingClient = await prisma.client.findFirst({
+            where: {
+              email: data.email,
+              userId: ownerScopeId,
+            },
+          })
+
+          if (existingClient) {
+            throw new Error('Un client avec cet email existe déjà')
+          }
+        }
+
+        const client = await prisma.client.create({
+          data: {
+            name: normalizedName,
+            email: data.email?.trim() || null,
+            phone: data.phone?.trim() || null,
+            address: data.address?.trim() || null,
+            userId: ownerScopeId,
+          },
+        })
+
+        logger.info('Client créé avec succès via le schéma local courant', { clientId: client.id })
+        return this.normalizeCurrentSchemaClient(client)
+      } catch (currentSchemaError) {
+        if (currentSchemaError instanceof Error && currentSchemaError.message === 'Un client avec cet email existe déjà') {
+          throw currentSchemaError
+        }
+        logger.warn('Fallback createClient vers schéma legacy', { error: currentSchemaError, ownerScopeId })
+      }
+
       // Vérifier l'unicité de l'email dans l'entreprise
       if (data.email) {
-        const existingClient = await prisma.client.findFirst({
+        const existingClient = await (prisma.client as any).findFirst({
           where: {
             email: data.email,
-            companyId,
+            companyId: ownerScopeId,
           },
         })
 
@@ -90,10 +174,10 @@ export class ClientService {
 
       // Vérifier l'unicité du SIRET
       if (data.siret) {
-        const existingClient = await prisma.client.findFirst({
+        const existingClient = await (prisma.client as any).findFirst({
           where: {
             siret: data.siret,
-            companyId,
+            companyId: ownerScopeId,
           },
         })
 
@@ -102,11 +186,11 @@ export class ClientService {
         }
       }
 
-      const client = await prisma.client.create({
+      const client = await (prisma.client as any).create({
         data: {
           ...data,
-          companyId,
-          country: data.country || 'France',
+          companyId: ownerScopeId,
+          country: data.country || 'Algérie',
           paymentTerms: data.paymentTerms || 30,
           discount: data.discount || 0,
         },
@@ -123,12 +207,27 @@ export class ClientService {
   /**
    * Récupérer un client par ID
    */
-  static async getClientById(id: string, companyId: string): Promise<Client | null> {
+  static async getClientById(id: string, ownerScopeId: string): Promise<Client | null> {
     try {
-      const client = await prisma.client.findFirst({
+      try {
+        const client = await prisma.client.findFirst({
+          where: {
+            id,
+            userId: ownerScopeId,
+          },
+        })
+
+        if (client) {
+          return this.normalizeCurrentSchemaClient(client)
+        }
+      } catch (currentSchemaError) {
+        logger.warn('Fallback getClientById vers schéma legacy', { error: currentSchemaError, id, ownerScopeId })
+      }
+
+      const client = await (prisma.client as any).findFirst({
         where: {
           id,
-          companyId,
+          companyId: ownerScopeId,
         },
       })
 
@@ -142,18 +241,33 @@ export class ClientService {
   /**
    * Récupérer un client par email
    */
-  static async getClientByEmail(email: string, companyId: string): Promise<Client | null> {
+  static async getClientByEmail(email: string, ownerScopeId: string): Promise<Client | null> {
     try {
-      const client = await prisma.client.findFirst({
+      try {
+        const client = await prisma.client.findFirst({
+          where: {
+            email,
+            userId: ownerScopeId,
+          },
+        })
+
+        if (client) {
+          return this.normalizeCurrentSchemaClient(client)
+        }
+      } catch (currentSchemaError) {
+        logger.warn('Fallback getClientByEmail vers schéma legacy', { error: currentSchemaError, email, ownerScopeId })
+      }
+
+      const client = await (prisma.client as any).findFirst({
         where: {
           email,
-          companyId,
+          companyId: ownerScopeId,
         },
       })
 
       return client
     } catch (error) {
-      logger.error('Erreur lors de la récupération du client par email', { error, email, companyId })
+      logger.error('Erreur lors de la récupération du client par email', { error, email, ownerScopeId })
       throw error
     }
   }
@@ -175,6 +289,105 @@ export class ClientService {
       } = pagination || {};
 
       const { search, type, city, country, isActive } = filters
+
+      // 1) Schéma PostgreSQL réellement observé en local :
+      //    table `Client` liée à l'utilisateur via `userId`.
+      //    Le modèle courant est plus simple que l'ancien schéma Prisma legacy,
+      //    on normalise donc les données pour rester compatible avec le frontend.
+      try {
+        const searchTerm = search?.trim()
+
+        const clients = searchTerm
+          ? await prisma.$queryRaw<Array<any>>`
+              SELECT
+                c.id,
+                c.name,
+                c.email,
+                c.phone,
+                c.address,
+                c."createdAt",
+                c."updatedAt",
+                c."userId"
+              FROM "Client" c
+              WHERE c."userId" = ${companyId}
+                AND (
+                  LOWER(COALESCE(c.name, '')) LIKE LOWER(${`%${searchTerm}%`})
+                  OR LOWER(COALESCE(c.email, '')) LIKE LOWER(${`%${searchTerm}%`})
+                  OR LOWER(COALESCE(c.phone, '')) LIKE LOWER(${`%${searchTerm}%`})
+                  OR LOWER(COALESCE(c.address, '')) LIKE LOWER(${`%${searchTerm}%`})
+                )
+              ORDER BY c."createdAt" DESC
+              LIMIT ${limit}
+              OFFSET ${Math.max(0, (page - 1) * limit)}
+            `
+          : await prisma.$queryRaw<Array<any>>`
+              SELECT
+                c.id,
+                c.name,
+                c.email,
+                c.phone,
+                c.address,
+                c."createdAt",
+                c."updatedAt",
+                c."userId"
+              FROM "Client" c
+              WHERE c."userId" = ${companyId}
+              ORDER BY c."createdAt" DESC
+              LIMIT ${limit}
+              OFFSET ${Math.max(0, (page - 1) * limit)}
+            `
+
+        const totalRows = searchTerm
+          ? await prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
+              SELECT COUNT(*) AS count
+              FROM "Client" c
+              WHERE c."userId" = ${companyId}
+                AND (
+                  LOWER(COALESCE(c.name, '')) LIKE LOWER(${`%${searchTerm}%`})
+                  OR LOWER(COALESCE(c.email, '')) LIKE LOWER(${`%${searchTerm}%`})
+                  OR LOWER(COALESCE(c.phone, '')) LIKE LOWER(${`%${searchTerm}%`})
+                  OR LOWER(COALESCE(c.address, '')) LIKE LOWER(${`%${searchTerm}%`})
+                )
+            `
+          : await prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
+              SELECT COUNT(*) AS count
+              FROM "Client" c
+              WHERE c."userId" = ${companyId}
+            `
+
+        const total = Number(totalRows[0]?.count || 0)
+
+        const normalizedClients = clients.map((client) => ({
+          id: client.id,
+          type: 'COMPANY',
+          firstName: null,
+          lastName: null,
+          companyName: client.name,
+          email: client.email,
+          phone: client.phone,
+          address: client.address,
+          postalCode: null,
+          city: null,
+          country: null,
+          notes: null,
+          createdAt: client.createdAt,
+          updatedAt: client.updatedAt,
+        })) as Client[]
+
+        return {
+          data: normalizedClients,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasNext: page < Math.ceil(total / limit),
+            hasPrev: page > 1,
+          },
+        }
+      } catch (currentSchemaError) {
+        logger.warn('Fallback clients : schéma PostgreSQL actuel non accessible via SQL brut', { error: currentSchemaError })
+      }
 
       // Construction de la clause WHERE
       const where: Prisma.ClientWhereInput = {
@@ -235,23 +448,66 @@ export class ClientService {
   static async updateClient(
     id: string,
     data: UpdateClientData,
-    companyId: string
+    ownerScopeId: string
   ): Promise<Client> {
     try {
-      logger.info('Mise à jour du client', { clientId: id, companyId })
+      logger.info('Mise à jour du client', { clientId: id, ownerScopeId })
+
+      try {
+        const existingClient = await prisma.client.findFirst({
+          where: {
+            id,
+            userId: ownerScopeId,
+          },
+        })
+
+        if (existingClient) {
+          if (data.email && data.email !== existingClient.email) {
+            const emailExists = await prisma.client.findFirst({
+              where: {
+                email: data.email,
+                userId: ownerScopeId,
+                id: { not: id },
+              },
+            })
+
+            if (emailExists) {
+              throw new Error('Un client avec cet email existe déjà')
+            }
+          }
+
+          const updatedClient = await prisma.client.update({
+            where: { id },
+            data: {
+              name: this.buildClientName(data, existingClient.name),
+              email: data.email !== undefined ? data.email?.trim() || null : undefined,
+              phone: data.phone !== undefined ? data.phone?.trim() || null : undefined,
+              address: data.address !== undefined ? data.address?.trim() || null : undefined,
+            },
+          })
+
+          logger.info('Client mis à jour avec succès via le schéma local courant', { clientId: id })
+          return this.normalizeCurrentSchemaClient(updatedClient)
+        }
+      } catch (currentSchemaError) {
+        if (currentSchemaError instanceof Error && currentSchemaError.message === 'Un client avec cet email existe déjà') {
+          throw currentSchemaError
+        }
+        logger.warn('Fallback updateClient vers schéma legacy', { error: currentSchemaError, id, ownerScopeId })
+      }
 
       // Vérifier que le client existe et appartient à l'entreprise
-      const existingClient = await this.getClientById(id, companyId)
+      const existingClient = await this.getClientById(id, ownerScopeId)
       if (!existingClient) {
         throw new Error('Client non trouvé')
       }
 
       // Vérifier l'unicité de l'email si modifié
       if (data.email && data.email !== existingClient.email) {
-        const emailExists = await prisma.client.findFirst({
+        const emailExists = await (prisma.client as any).findFirst({
           where: {
             email: data.email,
-            companyId,
+            companyId: ownerScopeId,
             id: { not: id },
           },
         })
@@ -263,10 +519,10 @@ export class ClientService {
 
       // Vérifier l'unicité du SIRET si modifié
       if (data.siret && data.siret !== existingClient.siret) {
-        const siretExists = await prisma.client.findFirst({
+        const siretExists = await (prisma.client as any).findFirst({
           where: {
             siret: data.siret,
-            companyId,
+            companyId: ownerScopeId,
             id: { not: id },
           },
         })
@@ -276,7 +532,7 @@ export class ClientService {
         }
       }
 
-      const updatedClient = await prisma.client.update({
+      const updatedClient = await (prisma.client as any).update({
         where: { id },
         data,
       })
@@ -292,12 +548,49 @@ export class ClientService {
   /**
    * Supprimer un client
    */
-  static async deleteClient(id: string, companyId: string): Promise<void> {
+  static async deleteClient(id: string, ownerScopeId: string): Promise<void> {
     try {
-      logger.info('Suppression du client', { clientId: id, companyId })
+      logger.info('Suppression du client', { clientId: id, ownerScopeId })
+
+      try {
+        const existingClient = await prisma.client.findFirst({
+          where: {
+            id,
+            userId: ownerScopeId,
+          },
+        })
+
+        if (existingClient) {
+          const [ordersCount, invoicesCount] = await Promise.all([
+            prisma.order.count({ where: { clientId: id, userId: ownerScopeId } }),
+            prisma.invoice.count({ where: { clientId: id, userId: ownerScopeId } }),
+          ])
+
+          if (ordersCount > 0 || invoicesCount > 0) {
+            throw new Error(
+              'Impossible de supprimer ce client car il a des commandes ou factures associées'
+            )
+          }
+
+          await prisma.client.delete({
+            where: { id },
+          })
+
+          logger.info('Client supprimé avec succès via le schéma local courant', { clientId: id })
+          return
+        }
+      } catch (currentSchemaError) {
+        if (
+          currentSchemaError instanceof Error &&
+          currentSchemaError.message === 'Impossible de supprimer ce client car il a des commandes ou factures associées'
+        ) {
+          throw currentSchemaError
+        }
+        logger.warn('Fallback deleteClient vers schéma legacy', { error: currentSchemaError, id, ownerScopeId })
+      }
 
       // Vérifier que le client existe et appartient à l'entreprise
-      const existingClient = await this.getClientById(id, companyId)
+      const existingClient = await this.getClientById(id, ownerScopeId)
       if (!existingClient) {
         throw new Error('Client non trouvé')
       }
@@ -314,7 +607,7 @@ export class ClientService {
         )
       }
 
-      await prisma.client.delete({
+      await (prisma.client as any).delete({
         where: { id },
       })
 

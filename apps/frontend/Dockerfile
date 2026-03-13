@@ -50,8 +50,10 @@ WORKDIR /app
 COPY apps/frontend/ apps/frontend/
 
 # Variables d'environnement pour le build
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG INTERNAL_API_BASE_URL=http://localhost:3001
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV INTERNAL_API_BASE_URL=$INTERNAL_API_BASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
@@ -78,6 +80,7 @@ COPY --from=build --chown=nextjs:nodejs /app/apps/frontend/public ./apps/fronten
 # Variables d'environnement de production
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV INTERNAL_API_BASE_URL=http://localhost:3001
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 

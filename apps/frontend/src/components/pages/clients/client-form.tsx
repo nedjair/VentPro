@@ -6,6 +6,8 @@ import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { api, Client } from '@/lib/api'
+import { ensureApiAuthentication } from '@/lib/auth-utils'
+import { DEFAULT_BUSINESS_COUNTRY } from '@/lib/countries'
 
 interface ClientFormPageProps {
   mode: 'create' | 'edit'
@@ -42,7 +44,7 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
     address: '',
     city: '',
     postalCode: '',
-    country: 'Algérie',
+    country: DEFAULT_BUSINESS_COUNTRY,
     notes: ''
   })
 
@@ -74,7 +76,7 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
           address: client.address || '',
           city: client.city || '',
           postalCode: client.postalCode || '',
-          country: client.country || 'Algérie',
+          country: client.country || DEFAULT_BUSINESS_COUNTRY,
           notes: client.notes || ''
         })
         setError(null)
@@ -121,42 +123,7 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
     return null
   }
 
-  const ensureAuthentication = async () => {
-    // Vérifier si l'utilisateur est déjà connecté
-    const authToken = api.getAuthToken()
-    if (authToken) {
-      return true
-    }
-
-    // Tentative de connexion automatique avec les identifiants de démonstration
-    try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gestion-dz.com',
-        password: 'admin123'
-      })
-
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-
-        // Sauvegarder les tokens
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-
-        console.log('✅ Connexion automatique réussie')
-        return true
-      }
-    } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
-    }
-
-    return false
-  }
+  const ensureAuthentication = () => ensureApiAuthentication()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -223,24 +190,6 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
     ? 'Créer un nouveau client dans la base de données' 
     : 'Modifier les informations du client'
 
-  const actions = (
-    <div className="flex space-x-2">
-      <Button variant="outline" onClick={handleCancel} disabled={saving}>
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Retour
-      </Button>
-      <Button 
-        type="submit" 
-        form="client-form"
-        disabled={saving}
-        className="bg-blue-600 hover:bg-blue-700"
-      >
-        <Save className="h-4 w-4 mr-2" />
-        {saving ? 'Sauvegarde...' : 'Sauvegarder'}
-      </Button>
-    </div>
-  )
-
   if (loading) {
     return (
       <MainLayout title={title} subtitle="Chargement...">
@@ -253,7 +202,7 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
   }
 
   return (
-    <MainLayout title={title} subtitle={subtitle} actions={actions}>
+    <MainLayout title={title} subtitle={subtitle}>
       <div className="max-w-4xl mx-auto">
         {/* Message d'erreur */}
         {error && (
@@ -463,6 +412,27 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
                 placeholder="Notes internes sur le client..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+            </div>
+          </div>
+
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex flex-col gap-4 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-gray-500">
+                {mode === 'create'
+                  ? 'Vérifiez les informations du client avant de créer la fiche.'
+                  : 'Enregistrez vos modifications une fois la fiche client mise à jour.'}
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-3">
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Retour
+                </Button>
+                <Button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-700">
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+                </Button>
+              </div>
             </div>
           </div>
         </form>

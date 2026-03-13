@@ -1,4 +1,5 @@
-import { prisma } from '@gestion/database'
+import { StockAlertService } from '../services/stock-alert.service'
+import { prisma, StockMovement, Product } from '@gestion/database'
 import { StockService } from '../services/stock.service'
 import { StockAlertService } from '../services/stock-alert.service'
 import { StockSyncService } from '../services/stock-sync.service'
@@ -63,7 +64,7 @@ async function testStockRealTime() {
       reference: 'TEST-ENTRY-001',
       comment: 'Test entrée de stock',
     }, company.id)
-    console.log(`   ✅ Entrée créée: +${entryMovement.quantity} unités`)
+    console.log(`   ✅ Entrée créée: +${entryMovement.quantiteActuelle} unités`)
 
     // Réservation de stock
     const reservation = await StockService.reserveStock(
@@ -73,7 +74,7 @@ async function testStockRealTime() {
       undefined,
       undefined // Pas d'userId pour éviter les erreurs de contrainte
     )
-    console.log(`   ✅ Réservation créée: ${reservation.quantity} unités`)
+    console.log(`   ✅ Réservation créée: ${reservation.quantiteActuelle} unités`)
 
     // Sortie de stock
     const exitMovement = await StockService.createStockMovement({
@@ -83,7 +84,7 @@ async function testStockRealTime() {
       reference: 'TEST-EXIT-001',
       comment: 'Test sortie de stock',
     }, company.id)
-    console.log(`   ✅ Sortie créée: -${exitMovement.quantity} unités`)
+    console.log(`   ✅ Sortie créée: -${exitMovement.quantiteActuelle} unités`)
 
     // 6. Vérifier le stock après mouvements
     console.log('\n🔍 Vérification du stock après mouvements...')
@@ -130,7 +131,7 @@ async function testStockRealTime() {
       reference: 'TEST-ADJUSTMENT-001',
       comment: 'Test ajustement déclenchant alerte',
     }, company.id)
-    console.log(`   ✅ Ajustement créé: ${adjustmentMovement.quantity} unités`)
+    console.log(`   ✅ Ajustement créé: ${adjustmentMovement.quantiteActuelle} unités`)
 
     // Vérifier les nouvelles alertes
     const newAlerts = await StockAlertService.getAlerts(company.id, { isActive: true })
@@ -145,7 +146,7 @@ async function testStockRealTime() {
       undefined,
       undefined // Pas d'userId pour éviter les erreurs de contrainte
     )
-    console.log(`   ✅ Libération créée: ${release.quantity} unités`)
+    console.log(`   ✅ Libération créée: ${release.quantiteActuelle} unités`)
 
     // 12. État final du stock
     console.log('\n📋 État final du stock...')

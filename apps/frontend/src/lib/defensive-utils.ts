@@ -73,6 +73,27 @@ export function ensureArray<T>(value: unknown): T[] {
 }
 
 /**
+ * Extrait une collection depuis une charge utile API qui peut être soit :
+ * - un tableau direct
+ * - un objet paginé de forme `{ data: [...] }`
+ *
+ * Cette normalisation évite que le frontend casse quand différentes routes
+ * backend ne sérialisent pas la pagination exactement de la même manière.
+ */
+export function extractCollection<T>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value as T[]
+  }
+
+  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) {
+    return (value as { data: T[] }).data
+  }
+
+  console.warn('⚠️ Impossible d’extraire une collection depuis la réponse API:', value)
+  return []
+}
+
+/**
  * Filtre sécurisé avec validation préalable
  * @param array - Tableau à filtrer
  * @param predicate - Fonction de filtrage

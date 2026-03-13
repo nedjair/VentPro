@@ -4,15 +4,15 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
-import { 
-  ArrowLeft, 
-  Edit, 
-  Package, 
-  AlertTriangle, 
+import {
+  ArrowLeft,
+  Edit,
+  Package,
+  AlertTriangle,
   TrendingDown,
   Calendar,
   Tag,
-  DollarSign
+  DollarSign,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
@@ -55,11 +55,11 @@ export function StockDetailPage({ stockId }: StockDetailProps) {
       setError(null)
 
       const response = await api.get(`/api/v1/stock/${stockId}`)
-      
+
       if (response.data.success && response.data.data) {
         setStock(response.data.data)
       } else {
-        setError('Stock non trouvé')
+        setError('Stock non trouve')
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement du stock:', err)
@@ -75,30 +75,30 @@ export function StockDetailPage({ stockId }: StockDetailProps) {
     }
   }, [stockId])
 
-  const getStockStatus = (stock: Stock) => {
-    if (stock.quantiteActuelle === 0) {
-      return { 
-        status: 'Rupture de stock', 
-        color: 'text-red-600 bg-red-100 border-red-200', 
-        icon: AlertTriangle 
+  const getStockStatus = (currentStock: Stock) => {
+    if (currentStock.quantiteActuelle === 0) {
+      return {
+        status: 'Rupture de stock',
+        color: 'text-destructive bg-destructive/10 border-destructive/20',
+        icon: AlertTriangle,
       }
     }
-    if (stock.quantiteActuelle <= stock.quantiteMinimale) {
-      return { 
-        status: 'Stock faible', 
-        color: 'text-orange-600 bg-orange-100 border-orange-200', 
-        icon: TrendingDown 
+    if (currentStock.quantiteActuelle <= currentStock.quantiteMinimale) {
+      return {
+        status: 'Stock faible',
+        color: 'text-accent-foreground bg-accent border-border',
+        icon: TrendingDown,
       }
     }
-    return { 
-      status: 'Stock normal', 
-      color: 'text-green-600 bg-green-100 border-green-200', 
-      icon: Package 
+    return {
+      status: 'Stock normal',
+      color: 'text-green-600 bg-green-100 border-green-200',
+      icon: Package,
     }
   }
 
   const actions = (
-    <div className="flex items-center space-x-2">
+    <div className="flex flex-wrap items-center gap-3">
       <Button
         variant="outline"
         onClick={() => router.push('/stocks')}
@@ -121,9 +121,9 @@ export function StockDetailPage({ stockId }: StockDetailProps) {
 
   if (loading) {
     return (
-      <MainLayout title="Détails du Stock" actions={actions}>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <MainLayout title="Details du stock">
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
         </div>
       </MainLayout>
     )
@@ -131,21 +131,21 @@ export function StockDetailPage({ stockId }: StockDetailProps) {
 
   if (error || !stock) {
     return (
-      <MainLayout title="Détails du Stock" actions={actions}>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+      <MainLayout title="Details du stock">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4">
           <div className="flex">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
+            <AlertTriangle className="h-5 w-5 text-destructive" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Erreur</h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>{error || 'Stock non trouvé'}</p>
+              <h3 className="text-sm font-medium text-destructive">Erreur</h3>
+              <div className="mt-2 text-sm text-destructive">
+                <p>{error || 'Stock non trouve'}</p>
               </div>
               <div className="mt-4">
                 <button
                   onClick={loadStock}
-                  className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
+                  className="rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/20"
                 >
-                  Réessayer
+                  Reessayer
                 </button>
               </div>
             </div>
@@ -161,159 +161,169 @@ export function StockDetailPage({ stockId }: StockDetailProps) {
   const stockCostValue = stock.quantiteActuelle * (stock.product?.cost || 0)
 
   return (
-    <MainLayout 
-      title="Détails du Stock"
+    <MainLayout
+      title="Details du stock"
       subtitle={stock.product?.name || 'Stock'}
-      actions={actions}
     >
       <div className="space-y-6">
-        {/* Statut du stock */}
-        <div className={`border rounded-lg p-4 ${stockStatus.color}`}>
+        <div className={`rounded-lg border p-4 ${stockStatus.color}`}>
           <div className="flex items-center">
-            <StatusIcon className="h-6 w-6 mr-3" />
+            <StatusIcon className="mr-3 h-6 w-6" />
             <div>
               <h3 className="text-lg font-medium">{stockStatus.status}</h3>
               <p className="text-sm opacity-75">
-                {stock.quantiteActuelle} {stock.product?.unit || 'unité'} en stock
+                {stock.quantiteActuelle} {stock.product?.unit || 'unite'} en stock
               </p>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Informations du produit */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                <Package className="h-5 w-5 mr-2 text-blue-600" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="rounded-lg border border-border bg-card shadow">
+            <div className="border-b border-border px-6 py-4">
+              <h3 className="flex items-center text-lg font-medium text-card-foreground">
+                <Package className="mr-2 h-5 w-5 text-primary" />
                 Informations du produit
               </h3>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="space-y-4 p-6">
               <div>
-                <label className="text-sm font-medium text-gray-500">Nom</label>
-                <p className="text-lg font-medium text-gray-900">{stock.product?.name}</p>
+                <label className="text-sm font-medium text-muted-foreground">Nom</label>
+                <p className="text-lg font-medium text-card-foreground">{stock.product?.name}</p>
               </div>
-              
+
               {stock.product?.sku && (
                 <div>
-                  <label className="text-sm font-medium text-gray-500">SKU</label>
-                  <p className="text-gray-900">{stock.product.sku}</p>
+                  <label className="text-sm font-medium text-muted-foreground">SKU</label>
+                  <p className="text-card-foreground">{stock.product.sku}</p>
                 </div>
               )}
-              
+
               {stock.product?.description && (
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Description</label>
-                  <p className="text-gray-900">{stock.product.description}</p>
+                  <label className="text-sm font-medium text-muted-foreground">Description</label>
+                  <p className="text-card-foreground">{stock.product.description}</p>
                 </div>
               )}
-              
+
               {stock.product?.category && (
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Catégorie</label>
-                  <p className="text-gray-900 flex items-center">
-                    <Tag className="h-4 w-4 mr-1" />
+                  <label className="text-sm font-medium text-muted-foreground">Categorie</label>
+                  <p className="flex items-center text-card-foreground">
+                    <Tag className="mr-1 h-4 w-4" />
                     {stock.product.category.name}
                   </p>
                 </div>
               )}
-              
+
               <div>
-                <label className="text-sm font-medium text-gray-500">Prix unitaire</label>
-                <p className="text-gray-900 flex items-center">
-                  <DollarSign className="h-4 w-4 mr-1" />
+                <label className="text-sm font-medium text-muted-foreground">Prix unitaire</label>
+                <p className="flex items-center text-card-foreground">
+                  <DollarSign className="mr-1 h-4 w-4" />
                   {formatCurrency(stock.product?.price || 0, 'DA')}
                 </p>
               </div>
-              
+
               {stock.product?.cost && (
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Coût unitaire</label>
-                  <p className="text-gray-900">
+                  <label className="text-sm font-medium text-muted-foreground">Cout unitaire</label>
+                  <p className="text-card-foreground">
                     {formatCurrency(stock.product.cost, 'DA')}
                   </p>
                 </div>
               )}
-              
+
               <div>
-                <label className="text-sm font-medium text-gray-500">Unité</label>
-                <p className="text-gray-900">{stock.product?.unit || 'unité'}</p>
+                <label className="text-sm font-medium text-muted-foreground">Unite</label>
+                <p className="text-card-foreground">{stock.product?.unit || 'unite'}</p>
               </div>
             </div>
           </div>
 
-          {/* Informations du stock */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                <Package className="h-5 w-5 mr-2 text-green-600" />
+          <div className="rounded-lg border border-border bg-card shadow">
+            <div className="border-b border-border px-6 py-4">
+              <h3 className="flex items-center text-lg font-medium text-card-foreground">
+                <Package className="mr-2 h-5 w-5 text-primary" />
                 Informations du stock
               </h3>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="space-y-4 p-6">
               <div>
-                <label className="text-sm font-medium text-gray-500">Quantité actuelle</label>
-                <p className="text-2xl font-bold text-gray-900">
-                  {stock.quantiteActuelle} {stock.product?.unit || 'unité'}
+                <label className="text-sm font-medium text-muted-foreground">Quantite actuelle</label>
+                <p className="text-2xl font-bold text-card-foreground">
+                  {stock.quantiteActuelle} {stock.product?.unit || 'unite'}
                 </p>
               </div>
-              
+
               <div>
-                <label className="text-sm font-medium text-gray-500">Quantité minimale</label>
-                <p className="text-lg text-gray-900">
-                  {stock.quantiteMinimale} {stock.product?.unit || 'unité'}
+                <label className="text-sm font-medium text-muted-foreground">Quantite minimale</label>
+                <p className="text-lg text-card-foreground">
+                  {stock.quantiteMinimale} {stock.product?.unit || 'unite'}
                 </p>
               </div>
-              
+
               {stock.quantiteMaximale && (
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Quantité maximale</label>
-                  <p className="text-lg text-gray-900">
-                    {stock.quantiteMaximale} {stock.product?.unit || 'unité'}
+                  <label className="text-sm font-medium text-muted-foreground">Quantite maximale</label>
+                  <p className="text-lg text-card-foreground">
+                    {stock.quantiteMaximale} {stock.product?.unit || 'unite'}
                   </p>
                 </div>
               )}
-              
+
               <div>
-                <label className="text-sm font-medium text-gray-500">Valeur du stock (prix de vente)</label>
-                <p className="text-lg font-medium text-green-600">
+                <label className="text-sm font-medium text-muted-foreground">Valeur du stock (prix de vente)</label>
+                <p className="text-lg font-medium text-primary">
                   {formatCurrency(stockValue, 'DA')}
                 </p>
               </div>
-              
+
               {stock.product?.cost && (
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Valeur du stock (coût)</label>
-                  <p className="text-lg text-gray-600">
+                  <label className="text-sm font-medium text-muted-foreground">Valeur du stock (cout)</label>
+                  <p className="text-lg text-muted-foreground">
                     {formatCurrency(stockCostValue, 'DA')}
                   </p>
                 </div>
               )}
-              
+
               <div>
-                <label className="text-sm font-medium text-gray-500">Dernière mise à jour</label>
-                <p className="text-gray-900 flex items-center">
-                  <Calendar className="h-4 w-4 mr-1" />
+                <label className="text-sm font-medium text-muted-foreground">Derniere mise a jour</label>
+                <p className="flex items-center text-card-foreground">
+                  <Calendar className="mr-1 h-4 w-4" />
                   {new Date(stock.dateLastUpdate).toLocaleDateString('fr-FR', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric',
                     hour: '2-digit',
-                    minute: '2-digit'
+                    minute: '2-digit',
                   })}
                 </p>
               </div>
-              
+
               <div>
-                <label className="text-sm font-medium text-gray-500">Date de création</label>
-                <p className="text-gray-900">
+                <label className="text-sm font-medium text-muted-foreground">Date de creation</label>
+                <p className="text-card-foreground">
                   {new Date(stock.createdAt).toLocaleDateString('fr-FR', {
                     year: 'numeric',
                     month: 'long',
-                    day: 'numeric'
+                    day: 'numeric',
                   })}
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card shadow">
+          <div className="p-6">
+            <div className="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-muted-foreground">
+                Vous pouvez revenir a la liste des stocks ou modifier cette fiche si necessaire.
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-3">
+                {actions}
               </div>
             </div>
           </div>

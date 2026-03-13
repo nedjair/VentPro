@@ -5,6 +5,7 @@ import jwt from '@fastify/jwt'
 import multipart from '@fastify/multipart'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
+import { resolveJwtSecret } from '../config/security'
 // import { fastifyCorsOptions, logCorsConfig } from '../config/cors' // Supprimé
 
 export async function registerPlugins(server: FastifyInstance) {
@@ -29,10 +30,15 @@ export async function registerPlugins(server: FastifyInstance) {
   // Log de la configuration CORS pour le debugging
   // logCorsConfig()
 
+  const jwtSecretResolution = resolveJwtSecret(process.env)
+  if (jwtSecretResolution.warning) {
+    server.log.warn(jwtSecretResolution.warning)
+  }
+
   // JWT (sans Redis pour le moment)
   // @ts-ignore - Problème de compatibilité de types avec Fastify
   await server.register(jwt, {
-    secret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+    secret: jwtSecretResolution.secret,
     sign: {
       expiresIn: process.env.JWT_EXPIRES_IN || '15m',
     },
@@ -95,7 +101,16 @@ export async function registerPlugins(server: FastifyInstance) {
   // Plugin personnalisé pour l'authentification
   server.decorate('authenticate', async function (request: any, reply: any) {
     try {
-      await request.jwtVerify()
+      const payload = await request.jwtVerify() as any
+
+      // Mapper le payload JWT vers la structure attendue par l'application
+      request.user = {
+        id: payload.userId,        // Mapper userId vers id
+        userId: payload.userId,    // Garder userId pour compatibilité
+        email: payload.email,
+        role: payload.role,
+        companyId: payload.companyId
+      }
     } catch (err) {
       reply.send(err)
     }

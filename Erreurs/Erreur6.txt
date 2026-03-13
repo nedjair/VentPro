@@ -1,9 +1,0 @@
-
-
-Unifier les schémas : Gardez un seul schéma Prisma dans le package @gestion/database et faites-en la source unique de vérité.
-
-Utiliser des références : Dans le dossier apps/backend/prisma , vous pouvez créer un lien symbolique ou simplement référencer le schéma principal dans vos scripts.
-
-Mettre à jour les scripts : Modifiez tous vos scripts pour qu'ils utilisent uniquement le schéma principal :
-
-supprimer les schémas prisma inutile 

@@ -1,12 +1,11 @@
+import { Product } from '@gestion/database'
 /**
  * Service unifié pour la gestion des alertes de stock
  * Source de vérité unique basée sur la table products
  */
 
-import { PrismaClient } from '@prisma/client'
 import { logger } from '../utils/logger'
-
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 export interface UnifiedStockAlert {
   id: string

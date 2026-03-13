@@ -1,5 +1,6 @@
+import { Product } from '@gestion/database'
 import { FastifyRequest, FastifyReply } from 'fastify'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../../prisma/generated/client'
 import { stockDiagnosticService } from '../services/stockDiagnosticService'
 
 const prisma = new PrismaClient()
@@ -158,13 +159,13 @@ class StockCorrectionController {
       
       for (const product of products) {
         if (product.stock) {
-          const shouldAlert = product.stock.quantity <= product.stock.minThreshold
+          const shouldAlert = product.stock.quantiteActuelle <= product.stock.quantiteMinimale
           
           // Vérifier s'il y a déjà une alerte
           const existingAlert = await prisma.stockAlert.findFirst({
             where: {
               productId: product.id,
-              resolved: false
+              resolvedAt: null
             }
           })
           
@@ -174,10 +175,10 @@ class StockCorrectionController {
               data: {
                 productId: product.id,
                 type: 'LOW_STOCK',
-                message: `Stock faible pour ${product.name}: ${product.stock.quantity} unités restantes`,
-                threshold: product.stock.minThreshold,
-                currentQuantity: product.stock.quantity,
-                resolved: false
+                message: `Stock faible pour ${product.name}: ${product.stock.quantiteActuelle} unités restantes`,
+                // threshold: product.stock.quantiteMinimale,
+                currentQuantity: product.stock.quantiteActuelle,
+                resolvedAt: null
               }
             })
             syncCount++
@@ -185,7 +186,7 @@ class StockCorrectionController {
             // Résoudre l'alerte existante
             await prisma.stockAlert.update({
               where: { id: existingAlert.id },
-              data: { resolved: true }
+              data: { resolvedAt: { not: null } }
             })
             syncCount++
           }
@@ -374,7 +375,7 @@ class StockCorrectionController {
       
       const deletedAlerts = await prisma.stockAlert.deleteMany({
         where: {
-          resolved: true,
+          resolvedAt: { not: null },
           createdAt: {
             lt: thirtyDaysAgo
           }

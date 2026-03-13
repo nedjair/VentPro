@@ -51,7 +51,7 @@ async function main() {
   const adminUser = await prisma.user.create({
     data: {
       email: 'admin@technocommerce.dz',
-      password: hashedPassword,
+      passwordHash: hashedPassword,
       firstName: 'Ahmed',
       lastName: 'Benali',
       role: 'ADMIN',
@@ -62,7 +62,7 @@ async function main() {
   const managerUser = await prisma.user.create({
     data: {
       email: 'manager@technocommerce.dz',
-      password: hashedPassword,
+      passwordHash: hashedPassword,
       firstName: 'Fatima',
       lastName: 'Khelifi',
       role: 'MANAGER',
@@ -73,7 +73,7 @@ async function main() {
   const employeeUser = await prisma.user.create({
     data: {
       email: 'employee@technocommerce.dz',
-      password: hashedPassword,
+      passwordHash: hashedPassword,
       firstName: 'Youcef',
       lastName: 'Boumediene',
       role: 'EMPLOYEE',

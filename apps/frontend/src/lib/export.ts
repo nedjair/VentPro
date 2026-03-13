@@ -1,18 +1,16 @@
 /**
  * Module d'export PDF/Excel pour le frontend
- * Gestion des téléchargements et exports côté client
+ * Gestion des tÃ©lÃ©chargements et exports cÃ´tÃ© client
  */
 
 import { api } from './api';
-
-// Configuration de l'API backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+import { buildApiUrl } from './api-config';
 
 /**
- * Extrait le nom de fichier à partir de l'en-tête Content-Disposition
- * @param contentDisposition En-tête Content-Disposition
- * @param defaultFilename Nom de fichier par défaut si aucun n'est trouvé
- * @returns Nom de fichier extrait ou valeur par défaut
+ * Extrait le nom de fichier Ã  partir de l'en-tÃªte Content-Disposition
+ * @param contentDisposition En-tÃªte Content-Disposition
+ * @param defaultFilename Nom de fichier par dÃ©faut si aucun n'est trouvÃ©
+ * @returns Nom de fichier extrait ou valeur par dÃ©faut
  */
 function extractFilenameFromContentDisposition(contentDisposition: string | null, defaultFilename: string): string {
   if (!contentDisposition) {
@@ -27,74 +25,208 @@ function extractFilenameFromContentDisposition(contentDisposition: string | null
   return defaultFilename;
 }
 
+/**
+ * Construit une query string d'export sans propager les valeurs indÃ©finies.
+ *
+ * Pourquoi : `URLSearchParams({ foo: undefined })` sÃ©rialise `foo=undefined`,
+ * ce qui casse les routes d'export validÃ©es par schÃ©ma (ex. fournisseurs).
+ * Les boolÃ©ens `false` restent valides et doivent donc Ãªtre conservÃ©s.
+ */
+function buildExportQuery(params?: Record<string, any>, format?: 'xlsx' | 'pdf'): string {
+  const query = new URLSearchParams();
+
+  if (format) {
+    query.set('format', format);
+  }
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return;
+      }
+
+      query.set(key, value.join(','));
+      return;
+    }
+
+    query.set(key, String(value));
+  });
+
+  return query.toString();
+}
+
+function getExportAuthToken(): string | null {
+  const memoryToken = api.getAuthToken();
+  if (memoryToken) {
+    return memoryToken;
+  }
+
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const storedTokens = window.localStorage.getItem('auth-tokens');
+    if (!storedTokens) {
+      return null;
+    }
+
+    const tokens = JSON.parse(storedTokens);
+    const accessToken = tokens?.accessToken;
+
+    if (typeof accessToken === 'string' && accessToken.length > 0) {
+      api.setAuthToken(accessToken);
+      return accessToken;
+    }
+  } catch (error) {
+    console.error('Erreur lors de la récupération du token d\'export:', error);
+  }
+
+  return null;
+}
+
+async function readExportErrorMessage(response: Response): Promise<string> {
+  try {
+    const payload = await response.clone().json();
+    if (payload?.message) {
+      return String(payload.message);
+    }
+    if (payload?.error) {
+      return String(payload.error);
+    }
+  } catch {
+  }
+
+  try {
+    const text = await response.text();
+    if (text?.trim()) {
+      return text.slice(0, 300);
+    }
+  } catch {
+  }
+
+  return `Erreur HTTP: ${response.status}`;
+}
 export class ExportService {
   /**
-   * Télécharge un blob en tant que fichier
+   * TÃ©lÃ©charge un blob en tant que fichier
    */
   private static downloadBlob(blob: Blob, filename: string): void {
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    try {
+      console.log(`ðŸ’¾ TÃ©lÃ©chargement du fichier: ${filename} (${blob.size} bytes)`);
+
+      // VÃ©rifier que le blob n'est pas vide
+      if (blob.size === 0) {
+        throw new Error('Le fichier gÃ©nÃ©rÃ© est vide');
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+
+      document.body.appendChild(a);
+      a.click();
+
+      // Nettoyer aprÃ¨s un dÃ©lai pour s'assurer que le tÃ©lÃ©chargement a commencÃ©
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 100);
+
+      console.log(`âœ… TÃ©lÃ©chargement initiÃ©: ${filename}`);
+    } catch (error) {
+      console.error('âŒ Erreur lors du tÃ©lÃ©chargement:', error);
+      throw error;
+    }
   }
   /**
-   * Télécharge le PDF d'une facture
+   * TÃ©lÃ©charge le PDF d'une facture
    */
   static async downloadInvoicePDF(invoiceId: string): Promise<void> {
     try {
-      console.log(`📄 Téléchargement PDF facture ${invoiceId}...`);
+      const normalizedInvoiceId = String(invoiceId || '').trim();
+      if (!normalizedInvoiceId) {
+        throw new Error('Identifiant de facture invalide');
+      }
+
+      console.log(`ðŸ“„ TÃ©lÃ©chargement PDF facture ${invoiceId}...`);
       
-      // S'assurer que l'utilisateur est authentifié
-      const authToken = api.getAuthToken();
+      // S'assurer que l'utilisateur est authentifiÃ©
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/invoices/${invoiceId}/pdf`, {
+      const baseUrl = buildApiUrl(`/api/v1/invoices/${encodeURIComponent(normalizedInvoiceId)}/pdf`);
+      const fetchOptions: RequestInit = {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
+          'Accept': 'application/pdf',
         },
-      });
+      };
+
+      const response = await fetch(baseUrl, fetchOptions);
 
       if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
+        const backendMessage = await readExportErrorMessage(response);
+        throw new Error(`Export PDF facture Ã©chouÃ© (${response.status}) : ${backendMessage}`);
       }
 
-      // Récupérer le nom du fichier depuis les en-têtes
+      // RÃ©cupÃ©rer le nom du fichier depuis les en-tÃªtes
       const contentDisposition = response.headers.get('Content-Disposition');
-      const filename = extractFilenameFromContentDisposition(contentDisposition, `facture_${invoiceId}.pdf`);
+      const filename = extractFilenameFromContentDisposition(contentDisposition, `facture_${normalizedInvoiceId}.pdf`);
 
-      // Télécharger le fichier
-      const blob = await response.blob();
+      // TÃ©lÃ©charger le fichier
+      let blob = await response.blob();
+      if (blob.size === 0) {
+        const retryResponse = await fetch(`${baseUrl}?_=${Date.now()}`, fetchOptions);
+        if (!retryResponse.ok) {
+          const backendMessage = await readExportErrorMessage(retryResponse);
+          throw new Error(`Export PDF facture Ã©chouÃ© (${retryResponse.status}) : ${backendMessage}`);
+        }
+        blob = await retryResponse.blob();
+      }
+
+      if (blob.size === 0) {
+        throw new Error('Le PDF retournÃ© est vide. Veuillez rÃ©essayer ou ouvrir la facture depuis "Voir".');
+      }
+
       this.downloadBlob(blob, filename);
       
-      console.log('✅ PDF téléchargé avec succès');
+      console.log('âœ… PDF tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement PDF:', error);
+      if (error instanceof TypeError && /failed to fetch/i.test(error.message)) {
+        const networkError = new Error('Impossible de joindre le service PDF. Vérifiez la connexion réseau ou la configuration CORS.');
+        console.error('❌ Erreur téléchargement PDF:', { invoiceId, error: networkError });
+        throw networkError;
+      }
+      console.error('âŒ Erreur tÃ©lÃ©chargement PDF:', { invoiceId, error });
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export Excel des clients
+   * TÃ©lÃ©charge l'export Excel des clients
    */
   static async downloadClientsExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📊 Téléchargement Excel clients...', { params });
+      console.log('ðŸ“Š TÃ©lÃ©chargement Excel clients...', { params });
       
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'xlsx', ...params }).toString();
+      const query = buildExportQuery(params, 'xlsx');
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/clients/export?${query}`, {
+      const response = await fetch(buildApiUrl(`/api/v1/clients/export?${query}`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -111,27 +243,27 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
       
-      console.log('✅ Excel clients téléchargé avec succès');
+      console.log('âœ… Excel clients tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement Excel clients:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement Excel clients:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export Excel des produits
+   * TÃ©lÃ©charge l'export Excel des produits
    */
   static async downloadProductsExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📊 Téléchargement Excel produits...');
+      console.log('ðŸ“Š TÃ©lÃ©chargement Excel produits...');
       
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'xlsx', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/products/export?${query}`, {
+      const query = buildExportQuery(params, 'xlsx');
+      const response = await fetch(buildApiUrl(`/api/v1/products/export?${query}`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -148,27 +280,67 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
       
-      console.log('✅ Excel produits téléchargé avec succès');
+      console.log('âœ… Excel produits tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement Excel produits:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement Excel produits:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export Excel des commandes
+   * TÃ©lÃ©charge le PDF d'une commande.
    */
-  static async downloadOrdersExcel(params?: Record<string, any>): Promise<void> {
+  static async downloadOrderPDF(orderId: string): Promise<void> {
     try {
-      console.log('📊 Téléchargement Excel commandes...');
-      
-      const authToken = api.getAuthToken();
+      console.log(`ðŸ“„ TÃ©lÃ©chargement PDF commande ${orderId}...`);
+
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'xlsx', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/orders/export?${query}`, {
+      const response = await fetch(buildApiUrl(`/api/v1/orders/${orderId}/pdf`), {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = extractFilenameFromContentDisposition(
+        contentDisposition,
+        `commande-${orderId}.pdf`
+      );
+
+      const blob = await response.blob();
+      ExportService.downloadBlob(blob, filename);
+    } catch (error) {
+      console.error(`âŒ Erreur tÃ©lÃ©chargement PDF commande ${orderId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * TÃ©lÃ©charge l'export Excel des commandes
+   */
+  static async downloadOrdersExcel(params?: Record<string, any>): Promise<void> {
+    try {
+      console.log('ðŸ“Š TÃ©lÃ©chargement Excel commandes...');
+      
+      const authToken = getExportAuthToken();
+      if (!authToken) {
+        throw new Error('Authentification requise');
+      }
+
+      const query = buildExportQuery(params);
+      const url = query
+        ? buildApiUrl(`/api/v1/orders/export/excel?${query}`)
+        : buildApiUrl('/api/v1/orders/export/excel');
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -185,27 +357,28 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
       
-      console.log('✅ Excel commandes téléchargé avec succès');
+      console.log('âœ… Excel commandes tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement Excel commandes:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement Excel commandes:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export Excel des factures
+   * TÃ©lÃ©charge l'export Excel des factures
    */
   static async downloadInvoicesExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📊 Téléchargement Excel factures...');
+      console.log('ðŸ“Š TÃ©lÃ©chargement Excel factures...', { params });
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'xlsx', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/invoices/export?${query}`, {
+      const query = buildExportQuery(params, 'xlsx');
+      const url = buildApiUrl(`/api/v1/invoices/export?${query}`);
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -213,7 +386,8 @@ export class ExportService {
       });
 
       if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
+        const backendMessage = await readExportErrorMessage(response);
+        throw new Error(`Export Excel factures Ã©chouÃ© (${response.status}) : ${backendMessage}`);
       }
 
       const contentDisposition = response.headers.get('Content-Disposition');
@@ -222,27 +396,30 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ Excel factures téléchargé avec succès');
+      console.log('âœ… Excel factures tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement Excel factures:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement Excel factures:', {
+        error,
+        params,
+      });
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export PDF des clients
+   * TÃ©lÃ©charge l'export PDF des clients
    */
   static async downloadClientsPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📄 Téléchargement PDF clients...', { params });
+      console.log('ðŸ“„ TÃ©lÃ©chargement PDF clients...', { params });
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'pdf', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/clients/export?${query}`, {
+      const query = buildExportQuery(params, 'pdf');
+      const response = await fetch(buildApiUrl(`/api/v1/clients/export?${query}`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -259,27 +436,27 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ PDF clients téléchargé avec succès');
+      console.log('âœ… PDF clients tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement PDF clients:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement PDF clients:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export PDF des produits
+   * TÃ©lÃ©charge l'export PDF des produits
    */
   static async downloadProductsPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📄 Téléchargement PDF produits...');
+      console.log('ðŸ“„ TÃ©lÃ©chargement PDF produits...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'pdf', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/products/export?${query}`, {
+      const query = buildExportQuery(params, 'pdf');
+      const response = await fetch(buildApiUrl(`/api/v1/products/export?${query}`), {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${authToken}`,
@@ -296,27 +473,27 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ PDF produits téléchargé avec succès');
+      console.log('âœ… PDF produits tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement PDF produits:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement PDF produits:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export Excel des fournisseurs
+   * TÃ©lÃ©charge l'export Excel des fournisseurs
    */
   static async downloadSuppliersExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📊 Téléchargement Excel fournisseurs...');
+      console.log('ðŸ“Š TÃ©lÃ©chargement Excel fournisseurs...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'xlsx', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/suppliers/export?${query}`, {
+      const query = buildExportQuery(params, 'xlsx');
+      const response = await fetch(buildApiUrl(`/api/v1/suppliers/export?${query}`), {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${authToken}`,
@@ -336,27 +513,27 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ Excel fournisseurs téléchargé avec succès');
+      console.log('âœ… Excel fournisseurs tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement Excel fournisseurs:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement Excel fournisseurs:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export PDF des fournisseurs
+   * TÃ©lÃ©charge l'export PDF des fournisseurs
    */
   static async downloadSuppliersPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📄 Téléchargement PDF fournisseurs...');
+      console.log('ðŸ“„ TÃ©lÃ©chargement PDF fournisseurs...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'pdf', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/suppliers/export?${query}`, {
+      const query = buildExportQuery(params, 'pdf');
+      const response = await fetch(buildApiUrl(`/api/v1/suppliers/export?${query}`), {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${authToken}`,
@@ -376,26 +553,26 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ PDF fournisseurs téléchargé avec succès');
+      console.log('âœ… PDF fournisseurs tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement PDF fournisseurs:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement PDF fournisseurs:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge le template d'importation
+   * TÃ©lÃ©charge le template d'importation
    */
   static async downloadImportTemplate(type: 'clients' | 'products' | 'suppliers'): Promise<void> {
     try {
-      console.log(`📋 Téléchargement template ${type}...`);
+      console.log(`ðŸ“‹ TÃ©lÃ©chargement template ${type}...`);
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/${type}/import/template`, {
+      const response = await fetch(buildApiUrl(`/api/v1/${type}/import/template`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -412,27 +589,30 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log(`✅ Template ${type} téléchargé avec succès`);
+      console.log(`âœ… Template ${type} tÃ©lÃ©chargÃ© avec succÃ¨s`);
     } catch (error) {
-      console.error(`❌ Erreur téléchargement template ${type}:`, error);
+      console.error(`âŒ Erreur tÃ©lÃ©chargement template ${type}:`, error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export PDF des commandes
+   * TÃ©lÃ©charge l'export PDF des commandes
    */
   static async downloadOrdersPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📄 Téléchargement PDF commandes...');
+      console.log('ðŸ“„ TÃ©lÃ©chargement PDF commandes...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const query = new URLSearchParams({ format: 'pdf', ...params }).toString();
-      const response = await fetch(`${API_BASE_URL}/api/v1/orders/export?${query}`, {
+      const query = buildExportQuery(params);
+      const url = query
+        ? buildApiUrl(`/api/v1/orders/export/pdf?${query}`)
+        : buildApiUrl('/api/v1/orders/export/pdf');
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${authToken}`,
@@ -452,26 +632,29 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ PDF commandes téléchargé avec succès');
+      console.log('âœ… PDF commandes tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement PDF commandes:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement PDF commandes:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge l'export PDF des factures
+   * TÃ©lÃ©charge l'export PDF des factures
    */
-  static async downloadInvoicesPDF(): Promise<void> {
+  static async downloadInvoicesPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('📄 Téléchargement PDF factures...');
+      console.log('ðŸ“„ TÃ©lÃ©chargement PDF factures...', { params });
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/invoices/export/pdf`, {
+      const query = buildExportQuery(params, 'pdf');
+      const url = buildApiUrl(`/api/v1/invoices/export?${query}`);
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -479,7 +662,8 @@ export class ExportService {
       });
 
       if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
+        const backendMessage = await readExportErrorMessage(response);
+        throw new Error(`Export PDF factures Ã©chouÃ© (${response.status}) : ${backendMessage}`);
       }
 
       const contentDisposition = response.headers.get('Content-Disposition');
@@ -488,26 +672,29 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ PDF factures téléchargé avec succès');
+      console.log('âœ… PDF factures tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement PDF factures:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement PDF factures:', {
+        error,
+        params,
+      });
       throw error;
     }
   }
 
   /**
-   * Télécharge le rapport de ventes PDF
+   * TÃ©lÃ©charge le rapport de ventes PDF
    */
   static async downloadSalesReportPDF(period: string): Promise<void> {
     try {
-      console.log(`📄 Téléchargement rapport ventes PDF (${period})...`);
+      console.log(`ðŸ“„ TÃ©lÃ©chargement rapport ventes PDF (${period})...`);
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/reports/sales/pdf?period=${period}`, {
+      const response = await fetch(buildApiUrl(`/api/v1/reports/sales/pdf?period=${period}`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -524,26 +711,26 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ Rapport ventes PDF téléchargé avec succès');
+      console.log('âœ… Rapport ventes PDF tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement rapport ventes PDF:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement rapport ventes PDF:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge le rapport de ventes Excel
+   * TÃ©lÃ©charge le rapport de ventes Excel
    */
   static async downloadSalesReportExcel(period: string): Promise<void> {
     try {
-      console.log(`📊 Téléchargement rapport ventes Excel (${period})...`);
+      console.log(`ðŸ“Š TÃ©lÃ©chargement rapport ventes Excel (${period})...`);
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/reports/sales/excel?period=${period}`, {
+      const response = await fetch(buildApiUrl(`/api/v1/reports/sales/excel?period=${period}`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -560,9 +747,9 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log('✅ Rapport ventes Excel téléchargé avec succès');
+      console.log('âœ… Rapport ventes Excel tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
-      console.error('❌ Erreur téléchargement rapport ventes Excel:', error);
+      console.error('âŒ Erreur tÃ©lÃ©chargement rapport ventes Excel:', error);
       throw error;
     }
   }
@@ -571,18 +758,18 @@ export class ExportService {
    * Valide un fichier d'import
    */
   static validateImportFile(file: File): { isValid: boolean; message?: string } {
-    // Vérifier l'extension du fichier
+    // VÃ©rifier l'extension du fichier
     const allowedExtensions = ['.xlsx', '.xls', '.csv'];
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
 
     if (!allowedExtensions.includes(fileExtension)) {
       return {
         isValid: false,
-        message: 'Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv'
+        message: 'Format de fichier non supportÃ©. Utilisez .xlsx, .xls ou .csv'
       };
     }
 
-    // Vérifier la taille du fichier (max 10MB)
+    // VÃ©rifier la taille du fichier (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
       return {
@@ -599,9 +786,9 @@ export class ExportService {
    */
   static async importClientsFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('📥 Import clients depuis Excel...');
+      console.log('ðŸ“¥ Import clients depuis Excel...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
@@ -609,7 +796,7 @@ export class ExportService {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/clients/import/excel`, {
+      const response = await fetch(buildApiUrl('/api/v1/clients/import/excel'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -622,7 +809,7 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('✅ Import clients terminé avec succès');
+      console.log('âœ… Import clients terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -630,7 +817,7 @@ export class ExportService {
         count: result.data?.imported
       };
     } catch (error) {
-      console.error('❌ Erreur import clients:', error);
+      console.error('âŒ Erreur import clients:', error);
       throw error;
     }
   }
@@ -640,9 +827,9 @@ export class ExportService {
    */
   static async importProductsFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('📥 Import produits depuis Excel...');
+      console.log('ðŸ“¥ Import produits depuis Excel...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
@@ -650,7 +837,7 @@ export class ExportService {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/products/import/excel`, {
+      const response = await fetch(buildApiUrl('/api/v1/products/import/excel'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -663,7 +850,7 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('✅ Import produits terminé avec succès');
+      console.log('âœ… Import produits terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -671,7 +858,7 @@ export class ExportService {
         count: result.data?.imported
       };
     } catch (error) {
-      console.error('❌ Erreur import produits:', error);
+      console.error('âŒ Erreur import produits:', error);
       throw error;
     }
   }
@@ -681,9 +868,9 @@ export class ExportService {
    */
   static async importSuppliersFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('📥 Import fournisseurs depuis Excel...');
+      console.log('ðŸ“¥ Import fournisseurs depuis Excel...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
@@ -691,7 +878,7 @@ export class ExportService {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/suppliers/import/excel`, {
+      const response = await fetch(buildApiUrl('/api/v1/suppliers/import/excel'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -704,7 +891,7 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('✅ Import fournisseurs terminé avec succès');
+      console.log('âœ… Import fournisseurs terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -712,7 +899,7 @@ export class ExportService {
         count: result.data?.imported
       };
     } catch (error) {
-      console.error('❌ Erreur import fournisseurs:', error);
+      console.error('âŒ Erreur import fournisseurs:', error);
       throw error;
     }
   }
@@ -722,9 +909,9 @@ export class ExportService {
    */
   static async importOrdersFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('📥 Import commandes depuis Excel...');
+      console.log('ðŸ“¥ Import commandes depuis Excel...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
@@ -732,7 +919,7 @@ export class ExportService {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/orders/import/excel`, {
+      const response = await fetch(buildApiUrl('/api/v1/orders/import/excel'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -745,7 +932,7 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('✅ Import commandes terminé avec succès');
+      console.log('âœ… Import commandes terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -753,7 +940,7 @@ export class ExportService {
         count: result.data?.imported
       };
     } catch (error) {
-      console.error('❌ Erreur import commandes:', error);
+      console.error('âŒ Erreur import commandes:', error);
       throw error;
     }
   }
@@ -763,9 +950,9 @@ export class ExportService {
    */
   static async importInvoicesFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('📥 Import factures depuis Excel...');
+      console.log('ðŸ“¥ Import factures depuis Excel...');
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
@@ -773,7 +960,7 @@ export class ExportService {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/invoices/import/excel`, {
+      const response = await fetch(buildApiUrl('/api/v1/invoices/import/excel'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -786,7 +973,7 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('✅ Import factures terminé avec succès');
+      console.log('âœ… Import factures terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -794,24 +981,24 @@ export class ExportService {
         count: result.data?.imported
       };
     } catch (error) {
-      console.error('❌ Erreur import factures:', error);
+      console.error('âŒ Erreur import factures:', error);
       throw error;
     }
   }
 
   /**
-   * Télécharge un template d'export Excel générique
+   * TÃ©lÃ©charge un template d'export Excel gÃ©nÃ©rique
    */
   static async downloadTemplateExcel(type: string): Promise<void> {
     try {
-      console.log(`📋 Téléchargement template Excel ${type}...`);
+      console.log(`ðŸ“‹ TÃ©lÃ©chargement template Excel ${type}...`);
 
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         throw new Error('Authentification requise');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/${type}/export/template`, {
+      const response = await fetch(buildApiUrl(`/api/v1/${type}/export/template`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -828,15 +1015,15 @@ export class ExportService {
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
 
-      console.log(`✅ Template Excel ${type} téléchargé avec succès`);
+      console.log(`âœ… Template Excel ${type} tÃ©lÃ©chargÃ© avec succÃ¨s`);
     } catch (error) {
-      console.error(`❌ Erreur téléchargement template Excel ${type}:`, error);
+      console.error(`âŒ Erreur tÃ©lÃ©chargement template Excel ${type}:`, error);
       throw error;
     }
   }
 
   /**
-   * Génère un rapport personnalisé (fonctionnalité future)
+   * GÃ©nÃ¨re un rapport personnalisÃ© (fonctionnalitÃ© future)
    */
   static async generateCustomReport(config: {
     type: 'sales' | 'clients' | 'products' | 'invoices';
@@ -846,40 +1033,42 @@ export class ExportService {
     filters?: Record<string, any>;
   }): Promise<void> {
     try {
-      console.log('📊 Génération rapport personnalisé...', config);
+      console.log('ðŸ“Š GÃ©nÃ©ration rapport personnalisÃ©...', config);
 
-      // TODO: Implémenter la génération de rapports personnalisés
-      // Cette fonctionnalité sera ajoutée dans une future version
+      // TODO: ImplÃ©menter la gÃ©nÃ©ration de rapports personnalisÃ©s
+      // Cette fonctionnalitÃ© sera ajoutÃ©e dans une future version
 
-      throw new Error('Fonctionnalité en cours de développement');
+      throw new Error('FonctionnalitÃ© en cours de dÃ©veloppement');
     } catch (error) {
-      console.error('❌ Erreur génération rapport personnalisé:', error);
+      console.error('âŒ Erreur gÃ©nÃ©ration rapport personnalisÃ©:', error);
       throw error;
     }
   }
 
   /**
-   * Vérifie si les exports sont disponibles (connexion backend)
+   * VÃ©rifie si les exports sont disponibles (connexion backend)
    */
   static async checkExportAvailability(): Promise<boolean> {
     try {
-      const authToken = api.getAuthToken();
+      const authToken = getExportAuthToken();
       if (!authToken) {
         return false;
       }
 
-      // Test simple avec un endpoint de santé
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      // Test simple avec un endpoint de santÃ©
+      const response = await fetch(buildApiUrl('/health'), {
         method: 'GET',
       });
 
       return response.ok;
     } catch (error) {
-      console.error('❌ Exports non disponibles:', error);
+      console.error('âŒ Exports non disponibles:', error);
       return false;
     }
   }
 }
 
 export default ExportService;
+
+
 

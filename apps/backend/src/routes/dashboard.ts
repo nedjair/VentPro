@@ -1,13 +1,14 @@
+import { Product } from '@gestion/database'
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { z } from 'zod'
+// import { z } from 'zod' // Removed unused import
 import { DashboardService } from '../services/dashboard.service'
-import { AuthenticatedRequest } from '../types/common'
+// AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
 
 export default async function dashboardRoutes(server: FastifyInstance) {
   // Récupérer les statistiques du dashboard
   server.get('/stats', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer les statistiques du dashboard',
       tags: ['Dashboard'],
@@ -33,10 +34,10 @@ export default async function dashboardRoutes(server: FastifyInstance) {
                   type: 'object',
                   properties: {
                     total: { type: 'number' },
-                    active: { type: 'number' },
-                    services: { type: 'number' },
+                    inStock: { type: 'number' },
+                    outOfStock: { type: 'number' },
                     lowStock: { type: 'number' },
-                    totalStockQuantity: { type: 'number' },
+                    totalStockValue: { type: 'number' },
                   },
                 },
                 stock: {
@@ -88,11 +89,18 @@ export default async function dashboardRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      const stats = await DashboardService.getDashboardStats(companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const stats = await DashboardService.getDashboardStats(ownerScopeId)
 
       // Headers pour éviter le cache et forcer le rafraîchissement
       reply.headers({
@@ -120,7 +128,7 @@ export default async function dashboardRoutes(server: FastifyInstance) {
 
   // Récupérer les activités récentes
   server.get('/activity', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer les activités récentes',
       tags: ['Dashboard'],
@@ -132,12 +140,12 @@ export default async function dashboardRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { limit = 10 } = request.query as { limit?: number }
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      const activities = await DashboardService.getRecentActivity(companyId, limit)
+      const activities = await DashboardService.getRecentActivity(ownerScopeId, limit)
 
       return reply.send({
         success: true,
@@ -154,17 +162,17 @@ export default async function dashboardRoutes(server: FastifyInstance) {
 
   // Récupérer les alertes
   server.get('/alerts', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer les alertes importantes',
       tags: ['Dashboard'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      const alerts = await DashboardService.getAlerts(companyId)
+      const alerts = await DashboardService.getAlerts(ownerScopeId)
 
       return reply.send({
         success: true,
@@ -181,17 +189,17 @@ export default async function dashboardRoutes(server: FastifyInstance) {
 
   // Récupérer les données pour les graphiques
   server.get('/charts', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Récupérer les données pour les graphiques du dashboard',
       tags: ['Dashboard'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      const chartData = await DashboardService.getChartData(companyId)
+      const chartData = await DashboardService.getChartData(ownerScopeId)
 
       return reply.send({
         success: true,

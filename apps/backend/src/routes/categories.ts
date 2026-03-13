@@ -1,7 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { CategoryService } from '../services/category.service'
-import { AuthenticatedRequest } from '@gestion/shared'
 import { logger } from '../utils/logger'
 
 // Schémas de validation
@@ -13,12 +12,17 @@ const CreateCategorySchema = z.object({
 
 const UpdateCategorySchema = CreateCategorySchema.partial()
 
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.companyId || user?.id || user?.userId
+}
+
 
 
 export default async function categoryRoutes(server: FastifyInstance) {
   // Créer une catégorie
   server.post('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Créer une nouvelle catégorie',
       tags: ['Catégories'],
@@ -51,12 +55,19 @@ export default async function categoryRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = CreateCategorySchema.parse(request.body)
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const category = await CategoryService.createCategory(data, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const category = await CategoryService.createCategory(data, ownerScopeId)
 
       return reply.status(201).send({
         success: true,
@@ -79,11 +90,18 @@ export default async function categoryRoutes(server: FastifyInstance) {
       tags: ['Catégories'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const categories = await CategoryService.getCategories(companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const categories = await CategoryService.getCategories(ownerScopeId)
 
       return reply.send({
         success: true,
@@ -106,11 +124,15 @@ export default async function categoryRoutes(server: FastifyInstance) {
       tags: ['Catégories'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const categoryTree = await CategoryService.getCategoryTree(companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({ success: false, message: 'Contexte d’authentification incomplet' })
+      }
+
+      const categoryTree = await CategoryService.getCategoryTree(ownerScopeId)
 
       return reply.send({
         success: true,
@@ -133,11 +155,15 @@ export default async function categoryRoutes(server: FastifyInstance) {
       tags: ['Catégories'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const rootCategories = await CategoryService.getRootCategories(companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({ success: false, message: 'Contexte d’authentification incomplet' })
+      }
+
+      const rootCategories = await CategoryService.getRootCategories(ownerScopeId)
 
       return reply.send({
         success: true,
@@ -167,12 +193,16 @@ export default async function categoryRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const category = await CategoryService.getCategoryById(id, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({ success: false, message: 'Contexte d’authentification incomplet' })
+      }
+
+      const category = await CategoryService.getCategoryById(id, ownerScopeId)
 
       if (!category) {
         return reply.status(404).send({
@@ -217,13 +247,17 @@ export default async function categoryRoutes(server: FastifyInstance) {
         }
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const data = UpdateCategorySchema.parse(request.body)
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const category = await CategoryService.updateCategory(id, data, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({ success: false, message: 'Contexte d’authentification incomplet' })
+      }
+
+      const category = await CategoryService.updateCategory(id, data, ownerScopeId)
 
       return reply.send({
         success: true,
@@ -253,12 +287,16 @@ export default async function categoryRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      await CategoryService.deleteCategory(id, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({ success: false, message: 'Contexte d’authentification incomplet' })
+      }
+
+      await CategoryService.deleteCategory(id, ownerScopeId)
 
       return reply.send({
         success: true,
@@ -281,11 +319,15 @@ export default async function categoryRoutes(server: FastifyInstance) {
       tags: ['Catégories'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const stats = await CategoryService.getCategoryStats(companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({ success: false, message: 'Contexte d’authentification incomplet' })
+      }
+
+      const stats = await CategoryService.getCategoryStats(ownerScopeId)
 
       return reply.send({
         success: true,

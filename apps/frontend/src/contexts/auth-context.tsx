@@ -9,13 +9,17 @@ export interface User {
   email: string
   firstName: string
   lastName: string
-  role: string
+  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE'
+  isActive: boolean
   companyId: string
   company?: {
     id: string
     name: string
-    currency: string
+    currency?: string
   }
+  createdAt: string
+  updatedAt: string
+  lastLoginAt?: string | null
 }
 
 export interface AuthTokens {
@@ -32,6 +36,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   logout: () => void
   refreshAuth: () => Promise<void>
+  updateUser: (userData: User) => void
 }
 
 // Contexte
@@ -55,11 +60,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
   const [tokens, setTokens] = useState<AuthTokens | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
 
   const isAuthenticated = !!user && !!tokens
 
+  // Gérer l'hydratation côté client
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   // Charger les données d'authentification depuis localStorage
   useEffect(() => {
+    if (!mounted) return
     const loadAuthData = () => {
       try {
         const storedUser = localStorage.getItem('auth-user')
@@ -69,14 +81,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const userData = JSON.parse(storedUser)
           const tokensData = JSON.parse(storedTokens)
 
+
+
           // Vérifier si le token n'est pas expiré
           const now = Date.now()
-          const tokenExpiry = tokensData.expiresAt || 0
+          let tokenExpiry = tokensData.expiresAt || 0
+          let accessToken = tokensData.accessToken
 
-          if (now < tokenExpiry) {
+          // Gérer l'ancien format de tokens si nécessaire
+          if (!tokenExpiry && tokensData.access) {
+            // Ancien format: {"access": "date", "refresh": "date"}
+            const accessDate = new Date(tokensData.access).getTime()
+            // Considérer le token valide pendant 24h par défaut
+            tokenExpiry = accessDate + (24 * 60 * 60 * 1000)
+            accessToken = tokensData.access // Utiliser la date comme token temporairement
+            console.log('🔄 Auth: Conversion de l\'ancien format de tokens')
+          }
+
+
+
+          // Ajouter une petite marge de 5 secondes pour éviter les problèmes de timing
+          if (now <= tokenExpiry + 5000) {
             setUser(userData)
-            setTokens(tokensData)
-            api.setAuthToken(tokensData.accessToken)
+            // Normaliser la structure des tokens
+            const normalizedTokens = {
+              accessToken: accessToken || tokensData.accessToken,
+              refreshToken: tokensData.refreshToken || tokensData.refresh,
+              expiresAt: tokenExpiry,
+              expiresIn: Math.floor((tokenExpiry - now) / 1000)
+            }
+            setTokens(normalizedTokens)
+            api.setAuthToken(normalizedTokens.accessToken)
             console.log('✅ Auth: Données d\'authentification restaurées')
           } else {
             console.log('⚠️ Auth: Token expiré, nettoyage')
@@ -92,7 +127,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     loadAuthData()
-  }, [])
+  }, [mounted])
 
   // Sauvegarder les données d'authentification
   const saveAuthData = (userData: User, tokensData: AuthTokens) => {
@@ -205,6 +240,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }
 
+  // Mettre à jour les données utilisateur
+  const updateUser = (userData: User) => {
+    try {
+      setUser(userData)
+      localStorage.setItem('auth-user', JSON.stringify(userData))
+      console.log('✅ Auth: Données utilisateur mises à jour')
+    } catch (error) {
+      console.error('❌ Auth: Erreur lors de la mise à jour utilisateur:', error)
+    }
+  }
+
   // Auto-refresh du token
   useEffect(() => {
     if (!tokens || !isAuthenticated) return
@@ -236,11 +282,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     tokens,
-    isLoading,
-    isAuthenticated,
+    isLoading: isLoading || !mounted,
+    isAuthenticated: mounted ? isAuthenticated : false,
     login,
     logout,
     refreshAuth,
+    updateUser,
+  }
+
+  // Éviter l'hydratation mismatch en affichant un loader côté serveur
+  if (!mounted) {
+    return (
+      <AuthContext.Provider value={{
+        user: null,
+        tokens: null,
+        isLoading: true,
+        isAuthenticated: false,
+        login,
+        logout,
+        refreshAuth,
+        updateUser,
+      }}>
+        {children}
+      </AuthContext.Provider>
+    )
   }
 
   return (

@@ -90,14 +90,30 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
     })
   }
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4']
+  // Utilisation des couleurs CSS variables pour le thème
+  const getThemeColors = () => {
+    if (typeof window !== 'undefined') {
+      const style = getComputedStyle(document.documentElement)
+      return [
+        `hsl(${style.getPropertyValue('--color-primary')})`,
+        `hsl(${style.getPropertyValue('--color-accent')})`,
+        `hsl(${style.getPropertyValue('--color-secondary')})`,
+        `hsl(${style.getPropertyValue('--color-destructive')})`,
+        `hsl(${style.getPropertyValue('--color-muted')})`,
+        `hsl(${style.getPropertyValue('--color-border')})`
+      ]
+    }
+    return ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4']
+  }
+
+  const COLORS = getThemeColors()
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow p-6 animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+        <div className="bg-card rounded-lg shadow border border-border p-6 animate-pulse">
+          <div className="h-6 bg-secondary rounded w-1/4 mb-4"></div>
+          <div className="h-64 bg-secondary rounded"></div>
         </div>
       </div>
     )
@@ -121,7 +137,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
     <div className="space-y-6">
       {/* Contrôles de période */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Analytics Avancées</h2>
+        <h2 className="text-2xl font-bold text-card-foreground">Analytics Avancées</h2>
         <div className="flex space-x-2">
           {['1m', '3m', '6m', '12m'].map((p) => (
             <button
@@ -129,8 +145,8 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
               onClick={() => setSelectedPeriod(p)}
               className={`px-3 py-1 rounded text-sm font-medium ${
                 selectedPeriod === p
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-card-foreground hover:bg-secondary/80'
               }`}
             >
               {p}
@@ -141,8 +157,8 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
 
       {/* Évolution du CA */}
       {evolutionData && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="bg-card rounded-lg shadow border border-border p-6">
+          <h3 className="text-lg font-semibold text-card-foreground mb-4">
             Évolution du Chiffre d'Affaires
           </h3>
           {evolutionData.data && Array.isArray(evolutionData.data) && evolutionData.data.length > 0 ? (
@@ -161,14 +177,14 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                 <Area
                   type="monotone"
                   dataKey="value"
-                  stroke="#3B82F6"
-                  fill="#3B82F6"
+                  stroke="hsl(var(--color-primary))"
+                  fill="hsl(var(--color-primary))"
                   fillOpacity={0.3}
                 />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-64 text-gray-500">
+            <div className="flex items-center justify-center h-64 text-muted-foreground">
               <p>Aucune donnée d'évolution disponible</p>
             </div>
           )}
@@ -179,8 +195,8 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
       {salesData && (
         <>
           {/* CA mensuel détaillé */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-card rounded-lg shadow border border-border p-6">
+            <h3 className="text-lg font-semibold text-card-foreground mb-4">
               Détail Mensuel des Ventes
             </h3>
             {salesData.monthlyRevenue && Array.isArray(salesData.monthlyRevenue) && salesData.monthlyRevenue.length > 0 ? (
@@ -202,20 +218,20 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                     labelFormatter={(label) => formatMonth(label)}
                   />
                   <Legend />
-                  <Bar dataKey="revenue" fill="#3B82F6" name="CA" />
-                  <Bar dataKey="invoiceCount" fill="#10B981" name="Nb Factures" />
+                  <Bar dataKey="revenue" fill="hsl(var(--color-primary))" name="CA" />
+                  <Bar dataKey="invoiceCount" fill="hsl(var(--color-accent))" name="Nb Factures" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-64 text-gray-500">
+              <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <p>Aucune donnée de vente mensuelle disponible</p>
               </div>
             )}
           </div>
 
           {/* Top clients */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-card rounded-lg shadow border border-border p-6">
+            <h3 className="text-lg font-semibold text-card-foreground mb-4">
               Top 10 Clients par CA
             </h3>
             {salesData.topClients && Array.isArray(salesData.topClients) && salesData.topClients.length > 0 ? (
@@ -235,19 +251,19 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                   <Tooltip
                     formatter={(value: number) => [formatCurrency(value), 'CA']}
                   />
-                  <Bar dataKey="totalRevenue" fill="#10B981" />
+                  <Bar dataKey="totalRevenue" fill="hsl(var(--color-primary))" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-64 text-gray-500">
+              <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <p>Aucune donnée client disponible</p>
               </div>
             )}
           </div>
 
           {/* Répartition par type de client */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-card rounded-lg shadow border border-border p-6">
+            <h3 className="text-lg font-semibold text-card-foreground mb-4">
               Répartition par Type de Client
             </h3>
             {salesData.clientTypeDistribution && Array.isArray(salesData.clientTypeDistribution) && salesData.clientTypeDistribution.length > 0 ? (
@@ -261,7 +277,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                       labelLine={false}
                       label={({ type, percent }) => `${type} (${(percent * 100).toFixed(0)}%)`}
                       outerRadius={80}
-                      fill="#8884d8"
+                      fill="hsl(var(--color-primary))"
                       dataKey="revenue"
                     >
                       {(salesData.clientTypeDistribution || []).map((entry: any, index: number) => (
@@ -273,7 +289,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                 </ResponsiveContainer>
 
                 <div className="space-y-3">
-                  <h4 className="font-medium text-gray-900">Détails par type</h4>
+                  <h4 className="font-medium text-card-foreground">Détails par type</h4>
                   {(salesData.clientTypeDistribution || []).map((item: any, index: number) => (
                     <div key={item.type} className="flex items-center justify-between">
                       <div className="flex items-center">
@@ -287,14 +303,14 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                       </div>
                       <div className="text-right">
                         <div className="text-sm font-medium">{formatCurrency(item.revenue)}</div>
-                        <div className="text-xs text-gray-500">{item.invoiceCount} factures</div>
+                        <div className="text-xs text-muted-foreground">{item.invoiceCount} factures</div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-64 text-gray-500">
+              <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <p>Aucune donnée de répartition par type de client disponible</p>
               </div>
             )}

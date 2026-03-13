@@ -1,33 +1,25 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
+import { DM_Sans, Outfit } from 'next/font/google'
 import { AuthProvider } from '@/contexts/auth-context'
+import { ThemeProvider } from '@/contexts/ThemeContext'
+import { ToastProvider } from '@/components/ui/toast'
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary'
 
-const inter = Inter({ subsets: ['latin'] })
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-body',
+  display: 'swap',
+})
 
-export const metadata: Metadata = {
-  title: {
-    default: 'Gestion Commerciale TPE',
-    template: '%s | Gestion Commerciale TPE'
-  },
-  description: 'Application de gestion commerciale pour TPE - Dashboard, clients, produits, facturation',
-  keywords: ['gestion', 'commercial', 'TPE', 'clients', 'produits', 'facturation'],
-  authors: [{ name: 'Équipe Développement' }],
-  creator: 'Gestion Commerciale TPE',
-  publisher: 'Gestion Commerciale TPE',
-  robots: {
-    index: false,
-    follow: false,
-  },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#3b82f6' },
-    { media: '(prefers-color-scheme: dark)', color: '#1d4ed8' },
-  ],
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-display',
+  display: 'swap',
+})
+
+export const metadata = {
+  title: 'Gestion Commerciale TPE',
+  description: 'Application de gestion commerciale pour TPE',
 }
 
 export default function RootLayout({
@@ -38,14 +30,17 @@ export default function RootLayout({
   return (
     <html lang="fr" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/favicon.ico" />
-        <meta name="application-name" content="Gestion Commerciale TPE" />
-        <meta name="theme-color" content="#3b82f6" />
+        <meta name="theme-color" content="#F7F8FC" />
       </head>
-      <body className={`${inter.className} min-h-screen bg-gray-50`}>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+      <body className={`${dmSans.variable} ${outfit.variable} min-h-screen transition-colors duration-300`}>
+        <ChunkErrorBoundary>
+          <ThemeProvider>
+            <AuthProvider>
+              {children}
+              <ToastProvider />
+            </AuthProvider>
+          </ThemeProvider>
+        </ChunkErrorBoundary>
       </body>
     </html>
   )

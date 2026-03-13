@@ -23,19 +23,9 @@ interface NotificationItem {
 }
 
 export function DiscreteStockNotifications() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [isEnabled, setIsEnabled] = useState(() => {
-    // Utiliser le service de préférences utilisateur
-    return UserPreferencesService.areStockPopupsEnabled()
-  })
-  const [lastAlertCounts, setLastAlertCounts] = useState<any>(null)
-  const [isTemporarilyDisabled, setIsTemporarilyDisabled] = useState(false)
-
-  // DÉSACTIVATION PERMANENTE: Les popups sont désactivés par défaut
-  // Ce composant ne s'affiche que si explicitement activé par l'utilisateur
-  if (!isEnabled) {
-    return null // Retour anticipé pour éviter tout rendu
-  }
+  // DÉSACTIVATION COMPLÈTE: Ce composant ne s'affiche jamais
+  // Toutes les notifications popup sont définitivement désactivées
+  return null
   
   const { 
     alerts, 
@@ -209,13 +199,13 @@ export function DiscreteStockNotifications() {
 
   if (!isEnabled) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed top-4 right-20 z-20">
         <button
           onClick={toggleNotifications}
-          className="p-2 bg-gray-100 text-gray-600 rounded-full shadow-lg hover:bg-gray-200 transition-colors"
+          className="p-2 bg-gray-100 text-gray-600 rounded-full shadow-md hover:bg-gray-200 transition-colors"
           title="Activer les notifications de stock"
         >
-          <BellOff className="h-5 w-5" />
+          <BellOff className="h-4 w-4" />
         </button>
       </div>
     )
@@ -223,11 +213,11 @@ export function DiscreteStockNotifications() {
 
   if (isTemporarilyDisabled) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
-        <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-3 shadow-lg max-w-sm">
+      <div className="fixed top-4 right-20 z-20">
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-2 shadow-md max-w-sm">
           <div className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <div className="text-sm">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            <div className="text-xs">
               <div className="font-medium">Correction en cours</div>
               <div className="text-xs opacity-75">Notifications temporairement désactivées</div>
             </div>
@@ -238,7 +228,7 @@ export function DiscreteStockNotifications() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 space-y-2">
+    <div className="fixed top-4 right-20 z-20 space-y-2">
       {/* Bouton de contrôle */}
       <div className="flex justify-end">
         <div className="flex items-center gap-2">
@@ -252,10 +242,10 @@ export function DiscreteStockNotifications() {
           )}
           <button
             onClick={toggleNotifications}
-            className="p-2 bg-white text-gray-600 rounded-full shadow-lg hover:bg-gray-50 transition-colors border"
+            className="p-2 bg-white text-gray-600 rounded-full shadow-md hover:bg-gray-50 transition-colors border"
             title="Désactiver les notifications de stock"
           >
-            <Bell className="h-4 w-4" />
+            <Bell className="h-3 w-3" />
           </button>
         </div>
       </div>

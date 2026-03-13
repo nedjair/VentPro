@@ -14,19 +14,8 @@ export async function createServer(): Promise<FastifyInstance> {
   })
 
   try {
-    // Middleware de debugging CORS
-    server.addHook('onRequest', async (request, reply) => {
-      const origin = request.headers.origin;
-      console.log(`🔍 CORS Debug - Origin: ${origin || 'undefined'}`);
-      console.log(`🔍 CORS Debug - Method: ${request.method}`);
-      console.log(`🔍 CORS Debug - URL: ${request.url}`);
-    });
-
-    // Enregistrement du plugin CORS avec la configuration centralisée
+    // Enregistrement du plugin CORS avec la configuration centralisée.
     await server.register(fastifyCors, fastifyCorsOptions)
-
-    // Configuration CORS manuelle - Utilise la configuration centralisée
-    // server.addHook('onRequest', corsMiddleware)
 
     // Enregistrement des plugins
     await registerPlugins(server)

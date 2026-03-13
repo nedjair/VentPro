@@ -141,7 +141,7 @@ export function NotificationSettings() {
               </div>
               <div className="text-amber-700 mt-1">
                 Les notifications popup ont été désactivées par défaut pour éviter les interruptions. 
-                Les alertes de stock restent visibles dans le dashboard et les pages de gestion.
+                Les alertes de stock restent visibles dans le tableau de bord et les pages de gestion.
               </div>
             </div>
           </div>

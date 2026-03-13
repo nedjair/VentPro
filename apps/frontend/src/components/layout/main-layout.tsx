@@ -1,48 +1,27 @@
 'use client'
 
-import { ReactNode, useState, useEffect } from 'react'
+import { ReactNode } from 'react'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
-import { ProtectedRoute } from '@/components/auth/protected-route'
-import { StockSyncMonitor } from '@/components/stock/StockSyncMonitor'
-import { DiscreteStockNotifications } from '@/components/notifications/DiscreteStockNotifications'
-import UserPreferencesService from '@/services/userPreferences'
+import { ProtectedRouteSimple as ProtectedRoute } from '@/components/auth/protected-route-simple'
 
 interface MainLayoutProps {
   children: ReactNode
   title: string
   subtitle?: string
   actions?: ReactNode
-  showStockMonitor?: boolean
 }
 
-export function MainLayout({ children, title, subtitle, actions, showStockMonitor = true }: MainLayoutProps) {
-  console.log('🏗️ MainLayout: RENDU - title:', title)
-
-  const [showNotifications, setShowNotifications] = useState(false)
-
-  useEffect(() => {
-    // Vérifier les préférences utilisateur au montage
-    setShowNotifications(UserPreferencesService.areStockPopupsEnabled())
-
-    // Écouter les changements de préférences
-    const handlePreferencesChange = (event: any) => {
-      setShowNotifications(event.detail.stockNotifications.popupsEnabled)
-    }
-
-    window.addEventListener('userPreferencesChanged', handlePreferencesChange)
-    return () => window.removeEventListener('userPreferencesChanged', handlePreferencesChange)
-  }, [])
-
+export function MainLayout({ children, title, subtitle, actions }: MainLayoutProps) {
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="flex h-screen">
+      <div className="min-h-screen bg-background transition-colors duration-300">
+        <div className="flex h-screen bg-background">
           {/* Sidebar */}
           <Sidebar />
 
           {/* Contenu principal */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
             {/* Header */}
             <Header
               title={title}
@@ -51,19 +30,16 @@ export function MainLayout({ children, title, subtitle, actions, showStockMonito
             />
 
             {/* Contenu */}
-            <main className="flex-1 overflow-y-auto">
-              <div className="px-6 py-6">
+            <main className="premium-scrollbar flex-1 overflow-y-auto bg-background">
+              <div className="px-6 py-6 xl:px-8 xl:py-7">
                 {children}
               </div>
             </main>
           </div>
         </div>
 
-        {/* Moniteur de synchronisation des stocks */}
-        {showStockMonitor && <StockSyncMonitor />}
-
-        {/* Notifications popup - Affichées seulement si activées par l'utilisateur */}
-        {showNotifications && <DiscreteStockNotifications />}
+        {/* NOTIFICATIONS POPUP COMPLÈTEMENT DÉSACTIVÉES */}
+        {/* Moniteur de synchronisation et notifications popup supprimés pour une interface épurée */}
       </div>
     </ProtectedRoute>
   )

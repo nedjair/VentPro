@@ -5,6 +5,7 @@ import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Edit, FileText, Download, Mail, Check, X, Clock } from 'lucide-react'
 import { api, Order } from '@/lib/api'
+import { ExportService } from '@/lib/export'
 import Link from 'next/link'
 
 interface OrderDetailPageProps {
@@ -14,7 +15,8 @@ interface OrderDetailPageProps {
 export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     loadOrder()
@@ -27,13 +29,14 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
       
       if (response.success && response.data) {
         setOrder(response.data)
-        setError(null)
+        setLoadError(null)
+        setActionError(null)
       } else {
-        throw new Error('Commande non trouvée')
+        throw new Error('Commande non trouvee')
       }
     } catch (err) {
       console.error('Erreur lors du chargement de la commande:', err)
-      setError(err instanceof Error ? err.message : 'Erreur de chargement')
+      setLoadError(err instanceof Error ? err.message : 'Erreur de chargement')
     } finally {
       setLoading(false)
     }
@@ -42,14 +45,14 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
   const getStatusBadge = (status: Order['status']) => {
     const statusConfig = {
       DRAFT: { label: 'Brouillon', className: 'bg-gray-100 text-gray-800', icon: Clock },
-      SENT: { label: 'Envoyé', className: 'bg-blue-100 text-blue-800', icon: Mail },
-      ACCEPTED: { label: 'Accepté', className: 'bg-green-100 text-green-800', icon: Check },
-      REJECTED: { label: 'Rejeté', className: 'bg-red-100 text-red-800', icon: X },
-      EXPIRED: { label: 'Expiré', className: 'bg-orange-100 text-orange-800', icon: Clock },
-      CANCELLED: { label: 'Annulé', className: 'bg-gray-100 text-gray-800', icon: X },
+      SENT: { label: 'Envoye', className: 'bg-blue-100 text-blue-800', icon: Mail },
+      ACCEPTED: { label: 'Accepte', className: 'bg-green-100 text-green-800', icon: Check },
+      REJECTED: { label: 'Rejete', className: 'bg-red-100 text-red-800', icon: X },
+      EXPIRED: { label: 'Expire', className: 'bg-orange-100 text-orange-800', icon: Clock },
+      CANCELLED: { label: 'Annule', className: 'bg-gray-100 text-gray-800', icon: X },
     }
     
-    // @ts-ignore - Nous utilisons un accès dynamique au statut
+    // @ts-ignore - Nous utilisons un acces dynamique au statut
     const config = statusConfig[status]
     const Icon = config.icon
     
@@ -61,14 +64,35 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
     )
   }
 
-  const handleDownloadPDF = () => {
-    console.log('Téléchargement PDF de la commande:', orderId)
-    // TODO: Implémenter le téléchargement PDF
+  const handleDownloadPDF = async () => {
+    try {
+      setActionError(null)
+      await ExportService.downloadOrderPDF(orderId)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erreur lors du telechargement du PDF')
+    }
   }
 
   const handleSendEmail = () => {
-    console.log('Envoi par email de la commande:', orderId)
-    // TODO: Implémenter l'envoi par email
+    const recipientEmail = order?.client?.email
+
+    if (!recipientEmail) {
+      setActionError('Aucune adresse email client n est disponible pour cette commande.')
+      return
+    }
+
+    setActionError(null)
+
+    const clientName = order?.client?.companyName
+      || [order?.client?.firstName, order?.client?.lastName].filter(Boolean).join(' ')
+      || 'client'
+
+    const subject = encodeURIComponent(`Commande ${order?.number} - ${clientName}`)
+    const body = encodeURIComponent(
+      `Bonjour,\n\nVeuillez trouver ci-joint la commande ${order?.number}.\n\nCordialement,`
+    )
+
+    window.open(`mailto:${recipientEmail}?subject=${subject}&body=${body}`, '_self')
   }
 
   const actions = order ? (
@@ -81,7 +105,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
       </Link>
       <Button variant="outline" size="sm" onClick={handleDownloadPDF}>
         <Download className="h-4 w-4 mr-2" />
-        Télécharger PDF
+        Telecharger le PDF
       </Button>
       <Button variant="outline" size="sm" onClick={handleSendEmail}>
         <Mail className="h-4 w-4 mr-2" />
@@ -98,7 +122,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
 
   if (loading) {
     return (
-      <MainLayout title="Détail de la commande">
+      <MainLayout title="Detail de la commande">
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           <span className="ml-2">Chargement...</span>
@@ -107,7 +131,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
     )
   }
 
-  if (error || !order) {
+  if (loadError || !order) {
     return (
       <MainLayout title="Erreur">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -115,7 +139,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
             <h3 className="text-lg font-medium text-red-800 mb-2">
               Erreur de chargement
             </h3>
-            <p className="text-red-700 mb-4">{error || 'Commande non trouvée'}</p>
+            <p className="text-red-700 mb-4">{loadError || 'Commande non trouvee'}</p>
             <Link href="/orders">
               <Button variant="outline">
                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -130,30 +154,41 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
 
   return (
     <MainLayout 
-      title={`Commande ${order.reference}`}
-      subtitle={`Créé le ${new Date(order.createdAt).toLocaleDateString('fr-FR')}`}
-      actions={actions}
+      title={`Commande ${order.number}`}
+      subtitle={`Cree le ${new Date(order.createdAt).toLocaleDateString('fr-FR')}`}
     >
-      <div className="space-y-6">
-        {/* En-tête avec statut */}
-        <div className="card">
-          <div className="card-content">
+      <div className="mx-auto max-w-4xl space-y-6">
+        {actionError && (
+          <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+            {actionError}
+          </div>
+        )}
+
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex flex-wrap justify-end gap-3">
+            {actions}
+          </div>
+        </div>
+
+        {/* En-tete avec statut */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <div>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <FileText className="h-8 w-8 text-blue-600" />
                 <div>
                   <h2 className="text-xl font-bold">
-                    Commande {order.reference}
+                    Commande {order.number}
                   </h2>
                   <p className="text-gray-600">
-                    Commande créée le {new Date(order.createdAt).toLocaleDateString('fr-FR')}
+                    Commande creee le {new Date(order.createdAt).toLocaleDateString('fr-FR')}
                   </p>
                 </div>
               </div>
               <div className="text-right">
                 {getStatusBadge(order.status)}
                 <div className="mt-2 text-2xl font-bold text-blue-600">
-                  {Number(order.totalTTC).toFixed(2)} €
+                  {Number(order.total).toFixed(2)} DZD
                 </div>
               </div>
             </div>
@@ -162,11 +197,11 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Informations client */}
-          <div className="card">
-            <div className="card-header">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="mb-4">
               <h3 className="text-lg font-medium">Informations client</h3>
             </div>
-            <div className="card-content">
+            <div>
               <div className="space-y-3">
                 <div>
                   <span className="text-sm font-medium text-gray-500">Nom:</span>
@@ -183,7 +218,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
                 </div>
                 {order.client?.phone && (
                   <div>
-                    <span className="text-sm font-medium text-gray-500">Téléphone:</span>
+                    <span className="text-sm font-medium text-gray-500">Telephone:</span>
                     <div className="text-sm text-gray-900">{order.client.phone}</div>
                   </div>
                 )}
@@ -202,12 +237,12 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
             </div>
           </div>
 
-          {/* Informations commande */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="text-lg font-medium">Informations commande</h3>
+          {/* Informations de commande */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-medium">Informations de commande</h3>
             </div>
-            <div className="card-content">
+            <div>
               <div className="space-y-3">
                 <div>
                   <span className="text-sm font-medium text-gray-500">Type:</span>
@@ -229,11 +264,11 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
         </div>
 
         {/* Articles */}
-        <div className="card">
-          <div className="card-header">
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="mb-4">
             <h3 className="text-lg font-medium">Articles</h3>
           </div>
-          <div className="card-content">
+          <div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -242,7 +277,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
                       Produit
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quantité
+                      Quantite
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Prix unitaire
@@ -269,7 +304,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
                           </div>
                           {item.product?.reference && (
                             <div className="text-sm text-gray-500">
-                              Réf: {item.product.reference}
+                              Ref: {item.product.reference}
                             </div>
                           )}
                         </td>
@@ -277,7 +312,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
                           {item.quantity}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {Number(item.unitPrice).toFixed(2)} €
+                          {Number(item.unitPrice).toFixed(2)} DZD
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {item.vatRate}%
@@ -286,7 +321,7 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
                           {item.discount || 0}%
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {Number(itemTotal).toFixed(2)} €
+                          {Number(itemTotal).toFixed(2)} DZD
                         </td>
                       </tr>
                     )
@@ -301,16 +336,16 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
                 <div className="w-64 space-y-2">
                   <div className="flex justify-between">
                     <span>Sous-total HT:</span>
-                    <span>{Number(order.totalHT).toFixed(2)} €</span>
+                    <span>{Number(order.subtotal).toFixed(2)} DZD</span>
                   </div>
                   <div className="flex justify-between">
                     <span>TVA:</span>
-                    <span>{Number(order.totalVAT).toFixed(2)} €</span>
+                    <span>{Number(order.vatAmount).toFixed(2)} DZD</span>
                   </div>
 
                   <div className="flex justify-between font-bold text-lg border-t pt-2">
                     <span>Total TTC:</span>
-                    <span>{Number(order.totalTTC).toFixed(2)} €</span>
+                    <span>{Number(order.total).toFixed(2)} DZD</span>
                   </div>
                 </div>
               </div>
@@ -322,11 +357,11 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
         {order.notes && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {order.notes && (
-              <div className="card">
-                <div className="card-header">
+              <div className="bg-white shadow rounded-lg p-6">
+                <div className="mb-4">
                   <h3 className="text-lg font-medium">Notes client</h3>
                 </div>
-                <div className="card-content">
+                <div>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{order.notes}</p>
                 </div>
               </div>
@@ -335,7 +370,9 @@ export function OrderDetailPage({ orderId }: OrderDetailPageProps) {
 
           </div>
         )}
+
       </div>
     </MainLayout>
   )
 }
+

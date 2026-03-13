@@ -1,3 +1,5 @@
+import { StockAlertService } from '../services/stock-alert.service'
+import { Product } from '@gestion/database'
 import { FastifyInstance } from 'fastify'
 import { StockService } from '../services/stock.service'
 import { StockAlertService } from '../services/stock-alert.service'

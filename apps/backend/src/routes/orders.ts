@@ -1,11 +1,18 @@
-import { FastifyInstance, FastifyReply } from 'fastify'
-import { OrderService, CreateOrderData, UpdateOrderData, OrderFilters } from '../services/order.service'
-import { AuthenticatedRequest } from '@gestion/shared'
+import { ImportService } from '../services/import.service'
+import { Quote } from '@gestion/database'
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { OrderService, CreateOrderData, UpdateOrderData, OrderFilters } from '../services/order-sales.service'
+// AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
 import { ExportService } from '../services/export.service'
 import { prisma } from '../lib/database'
 
-// Types pour la validation des données
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.companyId || user?.id || user?.userId
+}
+
+// Types pour la validation des donnÃ©es
 interface CreateOrderItem {
   productId: string
   quantity: number
@@ -53,11 +60,11 @@ interface UpdateStatusRequest {
 }
 
 export default async function orderRoutes(server: FastifyInstance) {
-  // Créer une commande/devis
+  // CrÃ©er une commande/devis
   server.post('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
-      description: 'Créer une nouvelle commande ou devis',
+      description: 'CrÃ©er une nouvelle commande ou devis',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
       body: {
@@ -108,19 +115,18 @@ export default async function orderRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = request.body as CreateOrderRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       // Validation basique
       if (!data.type || !data.clientId || !data.items || data.items.length === 0) {
         return reply.status(400).send({
           success: false,
-          message: 'Données manquantes: type, clientId et items sont requis',
+          message: 'DonnÃ©es manquantes: type, clientId et items sont requis',
         })
       }
-
       // Convertir les dates string en Date objects
       const orderData: CreateOrderData = {
         ...data,
@@ -136,19 +142,19 @@ export default async function orderRoutes(server: FastifyInstance) {
         data: order,
       })
     } catch (error: any) {
-      logger.error('Erreur lors de la création de la commande', { error: error.message })
+      logger.error('Erreur lors de la crÃ©ation de la commande', { error: error.message })
       return reply.status(400).send({
         success: false,
-        message: error.message || 'Erreur lors de la création de la commande',
+        message: error.message || 'Erreur lors de la crÃ©ation de la commande',
       })
     }
   })
 
-  // Récupérer la liste des commandes
+  // RÃ©cupÃ©rer la liste des commandes
   server.get('/', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
-      description: 'Récupérer la liste des commandes avec filtres et pagination',
+      description: 'RÃ©cupÃ©rer la liste des commandes avec filtres et pagination',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
       querystring: {
@@ -167,12 +173,19 @@ export default async function orderRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = request.query as OrderFiltersRequest
-      const { companyId } = request.user
+      const ownerScopeId = (request as any).user?.companyId || (request as any).user?.id || (request as any).user?.userId
 
-      // Pagination avec valeurs par défaut
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte dâ€™authentification incomplet',
+        })
+      }
+
+      // Pagination avec valeurs par dÃ©faut
       const pagination = {
         page: query.page || 1,
         limit: Math.min(query.limit || 20, 100),
@@ -188,7 +201,7 @@ export default async function orderRoutes(server: FastifyInstance) {
         dateTo: query.dateTo ? new Date(query.dateTo) : undefined,
       }
 
-      const result = await OrderService.getOrders(companyId, orderFilters, pagination)
+      const result = await OrderService.getOrders(ownerScopeId, orderFilters, pagination)
 
       return reply.send({
         success: true,
@@ -196,19 +209,19 @@ export default async function orderRoutes(server: FastifyInstance) {
         pagination: result.pagination,
       })
     } catch (error: any) {
-      logger.error('Erreur lors de la récupération des commandes', { error: error.message })
+      logger.error('Erreur lors de la rÃ©cupÃ©ration des commandes', { error: error.message })
       return reply.status(500).send({
         success: false,
-        message: 'Erreur lors de la récupération des commandes',
+        message: 'Erreur lors de la rÃ©cupÃ©ration des commandes',
       })
     }
   })
 
-  // Récupérer une commande par ID
-  server.get('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+  // Export PDF d'une commande
+  server.get('/:id/pdf', {
+    preHandler: [(server as any).authenticate],
     schema: {
-      description: 'Récupérer une commande par son ID',
+      description: 'Export PDF d\'une commande',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
       params: {
@@ -219,17 +232,81 @@ export default async function orderRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       const order = await OrderService.getOrderById(id, companyId)
 
       if (!order) {
         return reply.status(404).send({
           success: false,
-          message: 'Commande non trouvée',
+          message: 'Commande non trouvÃ©e',
+        })
+      }
+
+      const exportService = new ExportService()
+      const filename = `commande_${order.number}_${Date.now()}.pdf`
+      const fs = require('fs')
+      const path = require('path')
+
+      const exportsDir = path.join(process.cwd(), 'exports')
+      if (!fs.existsSync(exportsDir)) {
+        fs.mkdirSync(exportsDir, { recursive: true })
+      }
+
+      const outputPath = path.join(exportsDir, filename)
+      await exportService.generateOrderPDF(order, outputPath)
+
+      reply.type('application/pdf')
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`)
+
+      const fileStream = fs.createReadStream(outputPath)
+      reply.send(fileStream)
+
+      fileStream.on('end', () => {
+        setTimeout(() => {
+          if (fs.existsSync(outputPath)) {
+            fs.unlinkSync(outputPath)
+          }
+        }, 5000)
+      })
+    } catch (error: any) {
+      logger.error('Erreur lors de l\'export PDF de la commande', { error: error.message })
+      return reply.status(500).send({
+        success: false,
+        message: 'Erreur lors de l\'export PDF de la commande',
+      })
+    }
+  })
+
+  // RÃ©cupÃ©rer une commande par ID
+  server.get('/:id', {
+    preHandler: [(server as any).authenticate],
+    schema: {
+      description: 'RÃ©cupÃ©rer une commande par son ID',
+      tags: ['Commandes'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+        },
+        required: ['id'],
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const companyId = getOwnerScopeId(request)
+
+      const order = await OrderService.getOrderById(id, companyId)
+
+      if (!order) {
+        return reply.status(404).send({
+          success: false,
+          message: 'Commande non trouvÃ©e',
         })
       }
 
@@ -238,19 +315,19 @@ export default async function orderRoutes(server: FastifyInstance) {
         data: order,
       })
     } catch (error: any) {
-      logger.error('Erreur lors de la récupération de la commande', { error: error.message })
+      logger.error('Erreur lors de la rÃ©cupÃ©ration de la commande', { error: error.message })
       return reply.status(500).send({
         success: false,
-        message: 'Erreur lors de la récupération de la commande',
+        message: 'Erreur lors de la rÃ©cupÃ©ration de la commande',
       })
     }
   })
 
-  // Mettre à jour une commande
+  // Mettre Ã  jour une commande
   server.put('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
-      description: 'Mettre à jour une commande',
+      description: 'Mettre Ã  jour une commande',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
       params: {
@@ -286,11 +363,11 @@ export default async function orderRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const data = request.body as UpdateOrderRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       // Convertir les dates string en Date objects
       const updateData: UpdateOrderData = {
@@ -307,17 +384,17 @@ export default async function orderRoutes(server: FastifyInstance) {
         data: order,
       })
     } catch (error: any) {
-      logger.error('Erreur lors de la mise à jour de la commande', { error: error.message })
+      logger.error('Erreur lors de la mise Ã  jour de la commande', { error: error.message })
       return reply.status(400).send({
         success: false,
-        message: error.message || 'Erreur lors de la mise à jour de la commande',
+        message: error.message || 'Erreur lors de la mise Ã  jour de la commande',
       })
     }
   })
 
   // Changer le statut d'une commande
   server.patch('/:id/status', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Changer le statut d\'une commande',
       tags: ['Commandes'],
@@ -337,11 +414,11 @@ export default async function orderRoutes(server: FastifyInstance) {
         },
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
       const { status } = request.body as UpdateStatusRequest
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       if (!status) {
         return reply.status(400).send({
@@ -367,7 +444,7 @@ export default async function orderRoutes(server: FastifyInstance) {
 
   // Convertir un devis en commande
   server.post('/:id/convert', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Convertir un devis en commande',
       tags: ['Commandes'],
@@ -380,10 +457,10 @@ export default async function orderRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       const order = await OrderService.convertQuoteToOrder(id, companyId)
 
@@ -402,7 +479,7 @@ export default async function orderRoutes(server: FastifyInstance) {
 
   // Supprimer une commande
   server.delete('/:id', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Supprimer une commande',
       tags: ['Commandes'],
@@ -415,16 +492,16 @@ export default async function orderRoutes(server: FastifyInstance) {
         required: ['id'],
       },
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       await OrderService.deleteOrder(id, companyId)
 
       return reply.send({
         success: true,
-        message: 'Commande supprimée avec succès',
+        message: 'Commande supprimÃ©e avec succÃ¨s',
       })
     } catch (error: any) {
       logger.error('Erreur lors de la suppression de la commande', { error: error.message })
@@ -437,50 +514,28 @@ export default async function orderRoutes(server: FastifyInstance) {
 
   // Export Excel des commandes
   server.get('/export/excel', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Export Excel des commandes',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
-      // Récupérer toutes les commandes pour l'export
+      // RÃ©cupÃ©rer toutes les commandes pour l'export
       const result = await OrderService.getOrders(companyId, {}, { page: 1, limit: 10000 })
       const orders = result.data
 
-      // Utiliser le service d'export
-      const exportService = new ExportService()
-
       const filename = `commandes_${Date.now()}.xlsx`
-      const fs = require('fs')
-      const path = require('path')
-
-      // Créer le dossier exports s'il n'existe pas
-      const exportsDir = path.join(process.cwd(), 'exports')
-      if (!fs.existsSync(exportsDir)) {
-        fs.mkdirSync(exportsDir, { recursive: true })
-      }
-
-      const outputPath = path.join(exportsDir, filename)
-      await exportService.generateExcelReport(orders, 'orders', outputPath)
+      const fileBuffer = await ExportService.generateOrdersExcel(orders as any)
 
       reply.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       reply.header('Content-Disposition', `attachment; filename="${filename}"`)
+      reply.header('Content-Length', String(fileBuffer.length))
 
-      const fileStream = fs.createReadStream(outputPath)
-      reply.send(fileStream)
-
-      // Nettoyer le fichier après envoi
-      fileStream.on('end', () => {
-        setTimeout(() => {
-          if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath)
-          }
-        }, 5000)
-      })
+      return reply.send(fileBuffer)
 
     } catch (error: any) {
       logger.error('Erreur lors de l\'export Excel des commandes', { error: error.message })
@@ -493,15 +548,15 @@ export default async function orderRoutes(server: FastifyInstance) {
 
   // Statistiques des commandes
   server.get('/stats/overview', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Statistiques des commandes',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
       const stats = await OrderService.getOrderStats(companyId)
 
@@ -520,52 +575,31 @@ export default async function orderRoutes(server: FastifyInstance) {
 
   // Export PDF des commandes
   server.get('/export/pdf', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Export PDF des commandes',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const companyId = getOwnerScopeId(request)
 
-      // Récupérer toutes les commandes pour l'export
+      // RÃ©cupÃ©rer toutes les commandes pour l'export
       const result = await OrderService.getOrders(companyId, {}, { page: 1, limit: 10000 })
       const orders = result.data
 
-      // Utiliser le service d'export
-      const exportService = new ExportService()
-
       const filename = `commandes_${Date.now()}.pdf`
-      const fs = require('fs')
-      const path = require('path')
-
-      // Créer le dossier exports s'il n'existe pas
-      const exportsDir = path.join(process.cwd(), 'exports')
-      if (!fs.existsSync(exportsDir)) {
-        fs.mkdirSync(exportsDir, { recursive: true })
-      }
-
-      const outputPath = path.join(exportsDir, filename)
-      await exportService.generatePDFReport(orders, 'Liste des Commandes', outputPath)
+      const fileBuffer = await ExportService.generateOrdersPdf(orders as any, {
+        name: 'Gestion Commerciale',
+      } as any)
 
       reply.type('application/pdf')
       reply.header('Content-Disposition', `attachment; filename="${filename}"`)
+      reply.header('Content-Length', String(fileBuffer.length))
 
-      const fileStream = fs.createReadStream(outputPath)
-      reply.send(fileStream)
-
-      // Nettoyer le fichier après envoi
-      fileStream.on('end', () => {
-        setTimeout(() => {
-          if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath)
-          }
-        }, 5000)
-      })
-
-      logger.info('✅ Export PDF commandes généré avec succès')
+      logger.info('âœ… Export PDF commandes gÃ©nÃ©rÃ© avec succÃ¨s')
+      return reply.send(fileBuffer)
     } catch (error: any) {
       logger.error('Erreur lors de l\'export PDF des commandes', { error: error.message })
       return reply.status(500).send({
@@ -577,20 +611,20 @@ export default async function orderRoutes(server: FastifyInstance) {
 
   // Import Excel des commandes
   server.post('/import/excel', {
-    preHandler: [/* @ts-ignore */ server.authenticate],
+    preHandler: [(server as any).authenticate],
     schema: {
       description: 'Import Excel des commandes',
       tags: ['Commandes'],
       security: [{ bearerAuth: [] }],
       consumes: ['multipart/form-data'],
     },
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     let tempFilePath: string | null = null
 
     try {
-      const { companyId } = request.user
+      const { companyId } = (request as any).user
 
-      // Récupérer le fichier uploadé
+      // RÃ©cupÃ©rer le fichier uploadÃ©
       const data = await request.file()
       if (!data) {
         return reply.status(400).send({
@@ -599,7 +633,7 @@ export default async function orderRoutes(server: FastifyInstance) {
         })
       }
 
-      // Créer le dossier temporaire
+      // CrÃ©er le dossier temporaire
       const fs = require('fs')
       const path = require('path')
       const tempDir = path.join(process.cwd(), 'temp')
@@ -618,12 +652,12 @@ export default async function orderRoutes(server: FastifyInstance) {
 
       const result = await importService.importOrdersFromExcel(tempFilePath, companyId)
 
-      logger.info('✅ Import Excel commandes traité avec succès')
+      logger.info('âœ… Import Excel commandes traitÃ© avec succÃ¨s')
 
       return {
         success: true,
         data: result,
-        message: `Import terminé: ${result.imported} commandes importées, ${result.errors.length} erreurs, ${result.warnings.length} avertissements`
+        message: `Import terminÃ©: ${result.imported} commandes importÃ©es, ${result.errors.length} erreurs, ${result.warnings.length} avertissements`
       }
     } catch (error: any) {
       logger.error('Erreur lors de l\'import Excel des commandes', { error: error.message })
@@ -637,16 +671,16 @@ export default async function orderRoutes(server: FastifyInstance) {
         try {
           require('fs').unlinkSync(tempFilePath)
         } catch (cleanupError) {
-          logger.warn('⚠️ Erreur nettoyage fichier temporaire:', cleanupError)
+          logger.warn('âš ï¸ Erreur nettoyage fichier temporaire:', cleanupError)
         }
       }
     }
   })
 
-  // Télécharger le template d'importation
+  // TÃ©lÃ©charger le template d'importation
   server.get('/import/template', {
     schema: {
-      description: 'Télécharger le template d\'importation des commandes',
+      description: 'TÃ©lÃ©charger le template d\'importation des commandes',
       tags: ['Commandes'],
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -663,12 +697,12 @@ export default async function orderRoutes(server: FastifyInstance) {
       const buffer = await workbook.xlsx.writeBuffer()
       reply.send(buffer)
 
-      logger.info('✅ Template import commandes généré avec succès')
+      logger.info('âœ… Template import commandes gÃ©nÃ©rÃ© avec succÃ¨s')
     } catch (error: any) {
-      logger.error('Erreur lors de la génération du template commandes', { error: error.message })
+      logger.error('Erreur lors de la gÃ©nÃ©ration du template commandes', { error: error.message })
       return reply.status(500).send({
         success: false,
-        message: 'Erreur lors de la génération du template',
+        message: 'Erreur lors de la gÃ©nÃ©ration du template',
       })
     }
   })
@@ -694,10 +728,19 @@ export default async function orderRoutes(server: FastifyInstance) {
         required: ['format']
       }
     }
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user;
+      const { companyId } = (request as any).user;
       const query = request.query as any;
+
+      console.log('ðŸ” Orders export - Raw query params:', query)
+
+      if (!query.format || !['xlsx', 'pdf'].includes(query.format)) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Format requis: xlsx ou pdf'
+        })
+      }
 
       const filters: OrderFilters = {
         search: query.search,
@@ -708,7 +751,9 @@ export default async function orderRoutes(server: FastifyInstance) {
         dateTo: query.dateTo ? new Date(query.dateTo) : undefined,
       };
 
+      console.log('ðŸ” Orders export - Filtres:', filters)
       const { data: orders } = await OrderService.getOrders(companyId, filters);
+      console.log(`âœ… ${orders.length} commandes rÃ©cupÃ©rÃ©es`)
 
       let fileBuffer: Buffer;
       let contentType: string;
@@ -716,18 +761,20 @@ export default async function orderRoutes(server: FastifyInstance) {
       const timestamp = new Date().toISOString().replace(/:/g, '-');
 
       if (query.format === 'xlsx') {
+        console.log('ðŸ“Š GÃ©nÃ©ration Excel commandes...')
         fileBuffer = await ExportService.generateOrdersExcel(orders as any);
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         filename = `commandes_${timestamp}.xlsx`;
       } else { // pdf
-        const company = await prisma.company.findUnique({ where: { id: companyId } });
-        if (!company) {
-          return reply.status(404).send({ success: false, message: "Informations de l'entreprise non trouvées." });
-        }
-        fileBuffer = await ExportService.generateOrdersPdf(orders as any, company);
+        console.log('ðŸ“„ GÃ©nÃ©ration PDF commandes...')
+        fileBuffer = await ExportService.generateOrdersPdf(orders as any, {
+          name: 'Gestion Commerciale',
+        } as any);
         contentType = 'application/pdf';
         filename = `commandes_${timestamp}.pdf`;
       }
+
+      console.log(`âœ… Fichier gÃ©nÃ©rÃ©: ${filename} (${fileBuffer.length} bytes)`)
 
       reply.header('Content-Disposition', `attachment; filename="${filename}"`);
       reply.type(contentType);
@@ -742,4 +789,5 @@ export default async function orderRoutes(server: FastifyInstance) {
     }
   });
 }
+
 

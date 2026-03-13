@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Save, Building2, User, Star } from 'lucide-react'
+import { Save, Building2, User, Star } from 'lucide-react'
 import { api, Supplier } from '@/lib/api'
+import { DEFAULT_BUSINESS_COUNTRY, SUPPLIER_COUNTRY_OPTIONS } from '@/lib/countries'
 import { safeTextRender } from '@/lib/defensive-utils'
 
 interface SupplierFormPageProps {
@@ -57,13 +58,13 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
     address: '',
     postalCode: '',
     city: '',
-    country: 'France',
+    country: DEFAULT_BUSINESS_COUNTRY,
     siret: '',
     vatNumber: '',
     rcs: '',
     paymentTerms: 30,
     discount: 0,
-    currency: 'EUR',
+    currency: 'DZD',
     rating: 0,
     isActive: true,
     isPreferred: false,
@@ -80,53 +81,6 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
     }
   }, [mode, supplierId])
 
-  // Fonction d'authentification automatique
-  const ensureAuthentication = async (): Promise<boolean> => {
-    // Vérifier si un token existe déjà
-    if (typeof window !== 'undefined') {
-      const existingTokens = localStorage.getItem('auth-tokens')
-      if (existingTokens) {
-        try {
-          const tokens = JSON.parse(existingTokens)
-          if (tokens.accessToken) {
-            api.setAuthToken(tokens.accessToken)
-            console.log('✅ Token existant trouvé et configuré')
-            return true
-          }
-        } catch (error) {
-          console.log('⚠️ Token existant invalide, nouvelle connexion nécessaire')
-        }
-      }
-    }
-
-    try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gctpe.dz',
-        password: 'admin123'
-      })
-
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-
-        console.log('✅ Connexion automatique réussie')
-        return true
-      }
-    } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
-    }
-
-    return false
-  }
-
   const loadSupplier = async () => {
     if (!supplierId) return
 
@@ -134,13 +88,6 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
       setLoading(true)
       setError(null)
       console.log('🔍 Chargement du fournisseur:', supplierId)
-
-      // S'assurer que l'utilisateur est authentifié
-      const isAuthenticated = await ensureAuthentication()
-      if (!isAuthenticated) {
-        setError('Erreur d\'authentification. Impossible de charger le fournisseur.')
-        return
-      }
 
       const response = await api.getSupplier(supplierId)
 
@@ -201,6 +148,10 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
     handleInputChange('tags', tags)
   }
 
+  const handleCancel = () => {
+    router.push('/suppliers')
+  }
+
   const validateForm = (): string | null => {
     if (!formData.name.trim()) {
       return 'Le nom du fournisseur est requis'
@@ -253,13 +204,6 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
       setSaving(true)
       setError(null)
 
-      // S'assurer que l'utilisateur est authentifié
-      const isAuthenticated = await ensureAuthentication()
-      if (!isAuthenticated) {
-        setError('Erreur d\'authentification. Impossible de sauvegarder le fournisseur.')
-        return
-      }
-
       console.log(`💾 ${mode === 'create' ? 'Création' : 'Modification'} du fournisseur...`)
       console.log('📋 Données du formulaire:', formData)
 
@@ -308,10 +252,6 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
       if (!submitData.rcs || !submitData.rcs.trim()) {
         delete submitData.rcs
       }
-      if (!submitData.deliveryTerms || !submitData.deliveryTerms.trim()) {
-        delete submitData.deliveryTerms
-      }
-
       console.log('📤 Données à envoyer:', submitData)
 
       let response
@@ -327,7 +267,10 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
 
       if (response.success) {
         console.log('✅ Fournisseur sauvegardé avec succès')
-        router.push('/suppliers')
+
+        // Redirection avec paramètre de rafraîchissement pour forcer le reload de la liste
+        const timestamp = Date.now()
+        router.push(`/suppliers?refresh=${timestamp}`)
       } else {
         console.error('❌ Erreur de sauvegarde:', response.message)
         setError(response.message || 'Erreur lors de la sauvegarde')
@@ -336,12 +279,22 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
       console.error('❌ Erreur lors de la sauvegarde:', err)
 
       let errorMessage = 'Erreur lors de la sauvegarde du fournisseur'
+
+      // Gestion spécifique des erreurs HTTP
       if (err.message.includes('401')) {
         errorMessage = 'Erreur d\'authentification. Veuillez vous reconnecter.'
       } else if (err.message.includes('404')) {
         errorMessage = 'Fournisseur non trouvé.'
       } else if (err.message.includes('409')) {
-        errorMessage = 'Un fournisseur avec ces informations existe déjà.'
+        // Extraire le message d'erreur détaillé du backend
+        try {
+          const response = JSON.parse(err.message.split('Response: ')[1] || '{}')
+          errorMessage = response.message || 'Un fournisseur avec ces informations existe déjà.'
+        } catch {
+          errorMessage = 'Un fournisseur avec cet email existe déjà. Veuillez utiliser un autre email.'
+        }
+      } else if (err.message.includes('400')) {
+        errorMessage = 'Données invalides. Veuillez vérifier les champs requis.'
       } else {
         errorMessage = err.message || errorMessage
       }
@@ -352,36 +305,14 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
     }
   }
 
-  const handleCancel = () => {
-    router.push('/suppliers')
-  }
-
   const title = mode === 'create' ? 'Nouveau fournisseur' : 'Modifier le fournisseur'
   const subtitle = mode === 'create' 
     ? 'Créer un nouveau fournisseur dans la base de données' 
     : 'Modifier les informations du fournisseur'
 
-  const actions = (
-    <div className="flex space-x-2">
-      <Button variant="outline" onClick={handleCancel} disabled={saving}>
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Retour
-      </Button>
-      <Button 
-        type="submit" 
-        form="supplier-form"
-        disabled={saving}
-        className="bg-blue-600 hover:bg-blue-700"
-      >
-        <Save className="h-4 w-4 mr-2" />
-        {saving ? 'Sauvegarde...' : 'Sauvegarder'}
-      </Button>
-    </div>
-  )
-
   if (loading) {
     return (
-      <MainLayout title={title} subtitle="Chargement..." actions={actions}>
+      <MainLayout title={title} subtitle="Chargement...">
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
@@ -390,7 +321,7 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
   }
 
   return (
-    <MainLayout title={title} subtitle={subtitle} actions={actions}>
+    <MainLayout title={title} subtitle={subtitle}>
       <div className="max-w-4xl mx-auto">
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
@@ -412,16 +343,16 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
 
         <form id="supplier-form" onSubmit={handleSubmit} className="space-y-8">
           {/* Informations générales */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-card rounded-lg border border-border p-6">
             <div className="flex items-center mb-6">
-              <Building2 className="h-5 w-5 text-gray-400 mr-2" />
-              <h2 className="text-lg font-semibold text-gray-900">Informations générales</h2>
+              <Building2 className="h-5 w-5 text-muted-foreground mr-2" />
+              <h2 className="text-lg font-semibold text-card-foreground">Informations générales</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Type de fournisseur */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Type de fournisseur *
                 </label>
                 <div className="flex space-x-4">
@@ -454,14 +385,14 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
 
               {/* Nom */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   {formData.type === 'COMPANY' ? 'Nom de l\'entreprise' : 'Nom complet'} *
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder={formData.type === 'COMPANY' ? 'Ex: TechCorp Solutions' : 'Ex: Jean Dupont'}
                   required
                 />
@@ -469,14 +400,14 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
 
               {/* Contact principal */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Contact principal
                 </label>
                 <input
                   type="text"
                   value={formData.contactName}
                   onChange={(e) => handleInputChange('contactName', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="Nom du contact principal"
                 />
               </div>
@@ -484,76 +415,76 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
           </div>
 
           {/* Informations de contact */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">Informations de contact</h2>
+          <div className="bg-card rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-card-foreground mb-6">Informations de contact</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Email */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Email
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="contact@exemple.com"
                 />
               </div>
 
               {/* Téléphone */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Téléphone
                 </label>
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="01 23 45 67 89"
                 />
               </div>
 
               {/* Mobile */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Mobile
                 </label>
                 <input
                   type="tel"
                   value={formData.mobile}
                   onChange={(e) => handleInputChange('mobile', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="06 12 34 56 78"
                 />
               </div>
 
               {/* Fax */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Fax
                 </label>
                 <input
                   type="tel"
                   value={formData.fax}
                   onChange={(e) => handleInputChange('fax', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="01 23 45 67 90"
                 />
               </div>
 
               {/* Site web */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Site web
                 </label>
                 <input
                   type="url"
                   value={formData.website}
                   onChange={(e) => handleInputChange('website', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="https://www.exemple.com"
                 />
               </div>
@@ -561,71 +492,65 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
           </div>
 
           {/* Adresse */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">Adresse</h2>
+          <div className="bg-card rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-card-foreground mb-6">Adresse</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Adresse */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Adresse
                 </label>
                 <input
                   type="text"
                   value={formData.address}
                   onChange={(e) => handleInputChange('address', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="123 Rue de la République"
                 />
               </div>
 
               {/* Code postal */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Code postal
                 </label>
                 <input
                   type="text"
                   value={formData.postalCode}
                   onChange={(e) => handleInputChange('postalCode', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="75001"
                 />
               </div>
 
               {/* Ville */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Ville
                 </label>
                 <input
                   type="text"
                   value={formData.city}
                   onChange={(e) => handleInputChange('city', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="Paris"
                 />
               </div>
 
               {/* Pays */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Pays
                 </label>
                 <select
                   value={formData.country}
                   onChange={(e) => handleInputChange('country', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                 >
-                  <option value="France">France</option>
-                  <option value="Belgique">Belgique</option>
-                  <option value="Suisse">Suisse</option>
-                  <option value="Luxembourg">Luxembourg</option>
-                  <option value="Allemagne">Allemagne</option>
-                  <option value="Espagne">Espagne</option>
-                  <option value="Italie">Italie</option>
-                  <option value="Royaume-Uni">Royaume-Uni</option>
-                  <option value="Autre">Autre</option>
+                  {SUPPLIER_COUNTRY_OPTIONS.map((countryOption) => (
+                    <option key={countryOption} value={countryOption}>{countryOption}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -633,48 +558,48 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
 
           {/* Informations professionnelles */}
           {formData.type === 'COMPANY' && (
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-6">Informations professionnelles</h2>
+            <div className="bg-card rounded-lg border border-border p-6">
+              <h2 className="text-lg font-semibold text-card-foreground mb-6">Informations professionnelles</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* SIRET */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">
                     SIRET
                   </label>
                   <input
                     type="text"
                     value={formData.siret}
                     onChange={(e) => handleInputChange('siret', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                     placeholder="12345678901234"
                   />
                 </div>
 
                 {/* Numéro TVA */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">
                     Numéro de TVA
                   </label>
                   <input
                     type="text"
                     value={formData.vatNumber}
                     onChange={(e) => handleInputChange('vatNumber', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                     placeholder="FR12345678901"
                   />
                 </div>
 
                 {/* RCS */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">
                     RCS (Registre du Commerce et des Sociétés)
                   </label>
                   <input
                     type="text"
                     value={formData.rcs}
                     onChange={(e) => handleInputChange('rcs', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                     placeholder="RCS Paris B 123 456 789"
                   />
                 </div>
@@ -683,13 +608,13 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
           )}
 
           {/* Paramètres commerciaux */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">Paramètres commerciaux</h2>
+          <div className="bg-card rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-card-foreground mb-6">Paramètres commerciaux</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Délai de paiement */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Délai de paiement (jours)
                 </label>
                 <input
@@ -697,13 +622,13 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
                   min="0"
                   value={formData.paymentTerms}
                   onChange={(e) => handleInputChange('paymentTerms', parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                 />
               </div>
 
               {/* Remise négociée */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Remise négociée (%)
                 </label>
                 <input
@@ -713,19 +638,19 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
                   step="0.1"
                   value={formData.discount}
                   onChange={(e) => handleInputChange('discount', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                 />
               </div>
 
               {/* Devise */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Devise
                 </label>
                 <select
                   value={formData.currency}
                   onChange={(e) => handleInputChange('currency', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                 >
                   <option value="DA">DA (Dinar Algérien)</option>
                   <option value="EUR">EUR (Euro)</option>
@@ -738,7 +663,7 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
 
               {/* Note du fournisseur */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Note du fournisseur (0-5)
                 </label>
                 <div className="flex items-center space-x-2">
@@ -748,7 +673,7 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
                     max="5"
                     value={formData.rating}
                     onChange={(e) => handleInputChange('rating', parseInt(e.target.value) || 0)}
-                    className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-20 px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   />
                   <div className="flex">
                     {[...Array(5)].map((_, i) => (
@@ -757,7 +682,7 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
                         className={`h-5 w-5 cursor-pointer ${
                           i < formData.rating
                             ? 'text-yellow-400 fill-current'
-                            : 'text-gray-300'
+                            : 'text-muted-foreground'
                         }`}
                         onClick={() => handleInputChange('rating', i + 1)}
                       />
@@ -771,8 +696,8 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
           </div>
 
           {/* Statut et préférences */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">Statut et préférences</h2>
+          <div className="bg-card rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-card-foreground mb-6">Statut et préférences</h2>
 
             <div className="space-y-4">
               {/* Statut actif */}
@@ -782,9 +707,9 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
                   id="isActive"
                   checked={formData.isActive}
                   onChange={(e) => handleInputChange('isActive', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-primary focus:ring-primary border-border rounded"
                 />
-                <label htmlFor="isActive" className="ml-2 block text-sm text-gray-900">
+                <label htmlFor="isActive" className="ml-2 block text-sm text-card-foreground">
                   Fournisseur actif
                 </label>
               </div>
@@ -796,9 +721,9 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
                   id="isPreferred"
                   checked={formData.isPreferred}
                   onChange={(e) => handleInputChange('isPreferred', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-primary focus:ring-primary border-border rounded"
                 />
-                <label htmlFor="isPreferred" className="ml-2 block text-sm text-gray-900 flex items-center">
+                <label htmlFor="isPreferred" className="ml-2 block text-sm text-card-foreground flex items-center">
                   <Star className="h-4 w-4 mr-1 text-yellow-500" />
                   Fournisseur préféré
                 </label>
@@ -807,20 +732,20 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
           </div>
 
           {/* Tags et notes */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">Tags et notes</h2>
+          <div className="bg-card rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-card-foreground mb-6">Tags et notes</h2>
 
             <div className="space-y-6">
               {/* Tags */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Tags (séparés par des virgules)
                 </label>
                 <input
                   type="text"
                   value={tagsInput}
                   onChange={(e) => handleTagsChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="informatique, matériel, préféré"
                 />
                 {formData.tags.length > 0 && (
@@ -828,7 +753,7 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
                     {formData.tags.map((tag, index) => (
                       <span
                         key={index}
-                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary"
                       >
                         {tag}
                       </span>
@@ -839,18 +764,28 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
 
               {/* Notes */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
                   Notes
                 </label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => handleInputChange('notes', e.target.value)}
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                   placeholder="Notes internes sur le fournisseur..."
                 />
               </div>
             </div>
+          </div>
+
+          <div className="flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={handleCancel} disabled={saving}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={saving} className="bg-primary hover:bg-primary/90">
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Sauvegarde...' : mode === 'create' ? 'Créer le fournisseur' : 'Enregistrer les modifications'}
+            </Button>
           </div>
         </form>
       </div>

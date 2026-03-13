@@ -2,19 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Variables CSS personnalisées */
+/* Variables CSS pour les thèmes */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 249, 250, 251;
-  --background-end-rgb: 255, 255, 255;
+  /* Thème clair premium : fond respirant, bleu ardoise et accent or discret. */
+  --color-background: 247 248 252;
+  --color-foreground: 19 33 54;
+  --color-card: 255 255 255;
+  --color-card-foreground: 19 33 54;
+  --color-popover: 255 255 255;
+  --color-popover-foreground: 19 33 54;
+  --color-primary: 41 83 138;
+  --color-primary-foreground: 255 255 255;
+  --color-secondary: 239 243 250;
+  --color-secondary-foreground: 83 97 122;
+  --color-muted: 232 237 246;
+  --color-muted-foreground: 112 125 151;
+  --color-accent: 241 244 250;
+  --color-accent-foreground: 30 46 71;
+  --color-destructive: 239 68 68; /* red-500 */
+  --color-destructive-foreground: 255 255 255;
+  --color-border: 224 229 239;
+  --color-input: 223 229 240;
+  --color-ring: 41 83 138;
+  --color-sidebar: 7 24 47;
+  --color-sidebar-foreground: 233 239 250;
+  --color-sidebar-border: 20 43 78;
+  --color-nav-item: 148 166 196;
+  --color-nav-item-hover: 255 255 255;
+  --color-nav-item-active: 255 255 255;
+  --color-gold: 198 168 106;
+  --color-gold-soft: 247 241 225;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 17, 24, 39;
-    --background-end-rgb: 3, 7, 18;
-  }
+.dark {
+  /* Variante sombre cohérente avec la même identité visuelle. */
+  --color-background: 9 18 34;
+  --color-foreground: 235 240 248;
+  --color-card: 14 28 49;
+  --color-card-foreground: 235 240 248;
+  --color-popover: 16 30 52;
+  --color-popover-foreground: 235 240 248;
+  --color-primary: 91 128 190;
+  --color-primary-foreground: 255 255 255;
+  --color-secondary: 18 35 59;
+  --color-secondary-foreground: 212 221 236;
+  --color-muted: 22 40 67;
+  --color-muted-foreground: 145 162 190;
+  --color-accent: 19 37 61;
+  --color-accent-foreground: 235 240 248;
+  --color-destructive: 239 68 68; /* red-500 */
+  --color-destructive-foreground: 255 255 255;
+  --color-border: 30 51 82;
+  --color-input: 35 57 91;
+  --color-ring: 91 128 190;
+  --color-sidebar: 5 15 29;
+  --color-sidebar-foreground: 235 240 248;
+  --color-sidebar-border: 18 34 57;
+  --color-nav-item: 148 166 196;
+  --color-nav-item-hover: 255 255 255;
+  --color-nav-item-active: 255 255 255;
+  --color-gold: 212 184 118;
+  --color-gold-soft: 61 50 21;
 }
 
 /* Styles de base */
@@ -28,17 +76,32 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: rgb(var(--color-foreground));
+  background: rgb(var(--color-background));
+  min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-image: radial-gradient(circle at top, rgba(41, 83, 138, 0.05), transparent 30%);
+}
+
+::selection {
+  background: rgba(var(--color-primary), 0.18);
+  color: rgb(var(--color-foreground));
 }
 
 /* Styles pour les liens */
@@ -49,46 +112,149 @@ a {
 
 /* Styles pour les boutons */
 .btn-primary {
-  @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center;
+  background-color: rgb(var(--color-primary));
+  color: rgb(var(--color-primary-foreground));
+  @apply flex items-center justify-center rounded-2xl px-4 py-2.5 font-medium shadow-sm transition-all duration-200;
+}
+
+.btn-primary:hover {
+  background-color: rgb(var(--color-primary) / 0.9);
 }
 
 .btn-secondary {
-  @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  background-color: rgb(var(--color-secondary));
+  color: rgb(var(--color-secondary-foreground));
+  @apply rounded-2xl px-4 py-2.5 font-medium transition-all duration-200;
+}
+
+.btn-secondary:hover {
+  background-color: rgb(var(--color-secondary) / 0.8);
 }
 
 .btn-danger {
-  @apply bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  background-color: rgb(var(--color-destructive));
+  color: rgb(var(--color-destructive-foreground));
+  @apply rounded-2xl px-4 py-2.5 font-medium transition-all duration-200;
+}
+
+.btn-danger:hover {
+  background-color: rgb(var(--color-destructive) / 0.9);
 }
 
 /* Styles pour les champs de saisie */
 .input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200;
+  background-color: rgb(var(--color-card));
+  color: rgb(var(--color-card-foreground));
+  border-color: rgb(var(--color-border));
+  @apply w-full rounded-2xl border px-4 py-2.5 shadow-sm focus:outline-none focus:ring-4 focus:border-transparent transition-all duration-200;
+}
+
+.input-field:focus {
+  ring-color: rgb(var(--color-ring));
 }
 
 /* Styles pour les cartes */
 .card {
-  @apply bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden;
+  background-color: rgb(var(--color-card));
+  color: rgb(var(--color-card-foreground));
+  border-color: rgb(var(--color-border));
+  @apply overflow-hidden rounded-[28px] border shadow-sm transition-all duration-200;
 }
 
 .card-hover {
-  @apply transition-all duration-200 hover:shadow-md hover:-translate-y-1;
+  @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg;
 }
 
 /* Styles pour la navigation */
 .nav-item {
-  @apply flex items-center px-4 py-3 text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors duration-200 rounded-lg;
+  color: rgb(var(--color-nav-item));
+  @apply flex items-center rounded-2xl px-3.5 py-3 text-sm transition-all duration-200;
+}
+
+.nav-item:hover {
+  background-color: rgb(var(--color-secondary));
+  color: rgb(var(--color-nav-item-hover));
 }
 
 .nav-item.active {
-  @apply bg-primary-100 text-primary-700 font-medium;
+  background-color: rgb(var(--color-card));
+  color: rgb(var(--color-nav-item-active));
+  @apply font-medium shadow-sm ring-1;
+  --tw-ring-color: rgb(var(--color-border));
 }
 
 .nav-item svg {
-  @apply mr-3 h-5 w-5;
+  @apply mr-3 h-4 w-4 flex-shrink-0;
+}
+
+.premium-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.premium-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(112, 125, 151, 0.35);
+  border-radius: 9999px;
+}
+
+.premium-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes premium-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes premium-glow {
+  0%,
+  100% {
+    box-shadow: 0 18px 35px rgba(41, 83, 138, 0.14);
+  }
+  50% {
+    box-shadow: 0 20px 42px rgba(41, 83, 138, 0.2);
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  .shadow-soft {
+    box-shadow: 0 14px 32px rgba(19, 33, 54, 0.08);
+  }
+
+  .shadow-soft-lg {
+    box-shadow: 0 20px 44px rgba(19, 33, 54, 0.12);
+  }
+
+  .animate-premium-in {
+    animation: premium-fade-up 0.55s ease both;
+  }
+
+  .animate-premium-glow {
+    animation: premium-glow 2.8s ease-in-out infinite;
+  }
+
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.10s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.20s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.30s; }
+
+  .text-gold {
+    color: rgb(var(--color-gold));
+  }
+
+  .bg-gold-soft {
+    background-color: rgb(var(--color-gold-soft));
   }
 }

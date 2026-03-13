@@ -1,233 +1,80 @@
 /**
- * Configuration de sécurité pour l'application de gestion commerciale
+ * Configuration sécurité centralisée.
+ *
+ * Objectif : éviter que plusieurs morceaux du backend appliquent des règles
+ * différentes pour la résolution du secret JWT.
  */
 
-import { FastifyInstance } from 'fastify';
+export const MINIMUM_JWT_SECRET_LENGTH = 32
+export const DEFAULT_DEVELOPMENT_JWT_SECRET = 'change-this-development-jwt-secret-min-32-chars'
 
-export interface SecurityConfig {
-  https: {
-    enabled: boolean;
-    port: number;
-    certificatePath?: string | undefined;
-    keyPath?: string | undefined;
-    redirectHTTP: boolean;
-  };
-  headers: {
-    hsts: boolean;
-    contentSecurityPolicy: boolean;
-    xFrameOptions: boolean;
-    xContentTypeOptions: boolean;
-  };
-  rateLimit: {
-    enabled: boolean;
-    max: number;
-    timeWindow: string;
-  };
-  validation: {
-    strictMode: boolean;
-    sanitizeInput: boolean;
-  };
+const KNOWN_INSECURE_JWT_SECRETS = new Set([
+  'your-secret-key-change-in-production',
+  'your_jwt_secret_key_here_2024',
+  'your_jwt_refresh_secret_key_here_2024',
+  'your-super-secret-jwt-key-change-in-production-min-32-chars',
+  'your-super-secret-refresh-key-change-in-production-min-32-chars',
+  DEFAULT_DEVELOPMENT_JWT_SECRET,
+])
+
+export interface JwtSecretResolution {
+  secret: string
+  source: 'environment' | 'development-fallback'
+  warning?: string
 }
 
-export const securityConfig: SecurityConfig = {
-  https: {
-    enabled: process.env.NODE_ENV === 'production',
-    port: parseInt(process.env.HTTPS_PORT || '443', 10),
-    certificatePath: process.env.SSL_CERT_PATH as string | undefined,
-    keyPath: process.env.SSL_KEY_PATH as string | undefined,
-    redirectHTTP: true,
-  },
-  
-  headers: {
-    hsts: true,
-    contentSecurityPolicy: true,
-    xFrameOptions: true,
-    xContentTypeOptions: true,
-  },
-  
-  rateLimit: {
-    enabled: true,
-    max: 100, // 100 requêtes par fenêtre
-    timeWindow: '15 minutes',
-  },
-  
-  validation: {
-    strictMode: true,
-    sanitizeInput: true,
-  },
-};
-
-/**
- * Configuration des headers de sécurité
- */
-export function configureSecurityHeaders(server: FastifyInstance): void {
-  // HSTS (HTTP Strict Transport Security)
-  if (securityConfig.headers.hsts) {
-    server.addHook('onSend', async (request, reply) => {
-      if (request.protocol === 'https') {
-        reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-      }
-    });
-  }
-
-  // Content Security Policy
-  if (securityConfig.headers.contentSecurityPolicy) {
-    server.addHook('onSend', async (request, reply) => {
-      const csp = [
-        "default-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
-        "script-src 'self'",
-        "img-src 'self' data: https:",
-        "base-uri 'self'",
-        "font-src 'self' https: data:",
-        "form-action 'self'",
-        "frame-ancestors 'self'",
-        "object-src 'none'",
-        "script-src-attr 'none'",
-        "upgrade-insecure-requests"
-      ].join('; ');
-      
-      reply.header('Content-Security-Policy', csp);
-    });
-  }
-
-  // X-Frame-Options
-  if (securityConfig.headers.xFrameOptions) {
-    server.addHook('onSend', async (request, reply) => {
-      reply.header('X-Frame-Options', 'DENY');
-    });
-  }
-
-  // X-Content-Type-Options
-  if (securityConfig.headers.xContentTypeOptions) {
-    server.addHook('onSend', async (request, reply) => {
-      reply.header('X-Content-Type-Options', 'nosniff');
-    });
-  }
-
-  // Autres headers de sécurité
-  server.addHook('onSend', async (request, reply) => {
-    reply.header('X-XSS-Protection', '1; mode=block');
-    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-    reply.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-  });
+function isProductionEnvironment(runtimeEnv: NodeJS.ProcessEnv): boolean {
+  return (runtimeEnv.NODE_ENV || '').trim().toLowerCase() === 'production'
 }
 
 /**
- * Configuration du rate limiting
+ * Résout le secret JWT à utiliser.
+ *
+ * - en production : secret obligatoire, non trivial et suffisamment long
+ * - hors production : fallback dev autorisé pour ne pas casser le local
  */
-export async function configureRateLimit(server: FastifyInstance): Promise<void> {
-  if (!securityConfig.rateLimit.enabled) return;
+export function resolveJwtSecret(runtimeEnv: NodeJS.ProcessEnv = process.env): JwtSecretResolution {
+  const configuredSecret = runtimeEnv.JWT_SECRET?.trim()
+  const isProduction = isProductionEnvironment(runtimeEnv)
 
-  await server.register(require('@fastify/rate-limit'), {
-    max: securityConfig.rateLimit.max,
-    timeWindow: securityConfig.rateLimit.timeWindow,
-    errorResponseBuilder: (request: any, context: any) => {
-      return {
-        success: false,
-        message: 'Trop de requêtes. Veuillez réessayer plus tard.',
-        retryAfter: context.ttl,
-      };
-    },
-  });
-}
+  if (!configuredSecret) {
+    if (isProduction) {
+      throw new Error('JWT_SECRET est obligatoire en production')
+    }
 
-/**
- * Configuration HTTPS
- */
-export function getHTTPSOptions(): any {
-  if (!securityConfig.https.enabled) return null;
-
-  const fs = require('fs');
-  
-  if (!securityConfig.https.certificatePath || !securityConfig.https.keyPath) {
-    throw new Error('Certificat SSL et clé privée requis pour HTTPS');
-  }
-
-  try {
     return {
-      key: fs.readFileSync(securityConfig.https.keyPath),
-      cert: fs.readFileSync(securityConfig.https.certificatePath),
-    };
-  } catch (error) {
-    throw new Error(`Erreur lors du chargement des certificats SSL: ${(error as Error).message}`);
-  }
-}
-
-/**
- * Middleware de redirection HTTP vers HTTPS
- */
-export function httpsRedirectMiddleware(server: FastifyInstance): void {
-  if (!securityConfig.https.enabled || !securityConfig.https.redirectHTTP) return;
-
-  server.addHook('onRequest', async (request, reply) => {
-    if (request.protocol === 'http') {
-      const httpsUrl = `https://${request.hostname}${request.url}`;
-      reply.redirect(301, httpsUrl);
-    }
-  });
-}
-
-/**
- * Validation et sanitisation des entrées
- */
-export function configureSanitization(server: FastifyInstance): void {
-  if (!securityConfig.validation.sanitizeInput) return;
-
-  server.addHook('preValidation', async (request) => {
-    // Sanitiser les paramètres de requête
-    if (request.query) {
-      request.query = sanitizeObject(request.query);
-    }
-
-    // Sanitiser le body
-    if (request.body && typeof request.body === 'object') {
-      request.body = sanitizeObject(request.body);
-    }
-  });
-}
-
-/**
- * Fonction utilitaire pour sanitiser un objet
- */
-function sanitizeObject(obj: any): any {
-  if (typeof obj !== 'object' || obj === null) return obj;
-
-  const sanitized: any = Array.isArray(obj) ? [] : {};
-
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      const value = obj[key];
-      
-      if (typeof value === 'string') {
-        // Supprimer les caractères potentiellement dangereux
-        sanitized[key] = value
-          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-          .replace(/javascript:/gi, '')
-          .replace(/on\w+\s*=/gi, '');
-      } else if (typeof value === 'object') {
-        sanitized[key] = sanitizeObject(value);
-      } else {
-        sanitized[key] = value;
-      }
+      secret: DEFAULT_DEVELOPMENT_JWT_SECRET,
+      source: 'development-fallback',
+      warning: 'JWT_SECRET absent : utilisation d’un secret de développement temporaire. Configurez un secret dédié avant tout usage partagé.',
     }
   }
 
-  return sanitized;
-}
+  if (configuredSecret.length < MINIMUM_JWT_SECRET_LENGTH) {
+    if (isProduction) {
+      throw new Error(`JWT_SECRET doit contenir au moins ${MINIMUM_JWT_SECRET_LENGTH} caractères en production`)
+    }
 
-/**
- * Log de la configuration de sécurité
- */
-export function logSecurityConfig(): void {
-  console.log('🔒 Configuration de sécurité :');
-  console.log(`   HTTPS: ${securityConfig.https.enabled ? '✅ Activé' : '❌ Désactivé'}`);
-  console.log(`   Rate Limiting: ${securityConfig.rateLimit.enabled ? '✅ Activé' : '❌ Désactivé'}`);
-  console.log(`   Headers de sécurité: ${securityConfig.headers.hsts ? '✅ Activés' : '❌ Désactivés'}`);
-  console.log(`   Sanitisation: ${securityConfig.validation.sanitizeInput ? '✅ Activée' : '❌ Désactivée'}`);
-  
-  if (securityConfig.https.enabled) {
-    console.log(`   Port HTTPS: ${securityConfig.https.port}`);
-    console.log(`   Redirection HTTP: ${securityConfig.https.redirectHTTP ? '✅ Activée' : '❌ Désactivée'}`);
+    return {
+      secret: configuredSecret,
+      source: 'environment',
+      warning: `JWT_SECRET est plus court que ${MINIMUM_JWT_SECRET_LENGTH} caractères : acceptable en développement, déconseillé autrement.`,
+    }
+  }
+
+  if (KNOWN_INSECURE_JWT_SECRETS.has(configuredSecret)) {
+    if (isProduction) {
+      throw new Error('JWT_SECRET utilise encore une valeur d’exemple/dev interdite en production')
+    }
+
+    return {
+      secret: configuredSecret,
+      source: 'environment',
+      warning: 'JWT_SECRET correspond à une valeur d’exemple/dev. Remplacez-le avant un déploiement partagé.',
+    }
+  }
+
+  return {
+    secret: configuredSecret,
+    source: 'environment',
   }
 }

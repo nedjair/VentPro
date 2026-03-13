@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client'
+import { Product } from '@gestion/database'
+import { PrismaClient } from '../../prisma/generated/client'
 import { logger } from '../utils/logger'
 
 const prisma = new PrismaClient()
@@ -25,7 +26,7 @@ class StockDiagnosticService {
         include: {
           stock: true,
           stockAlerts: {
-            where: { resolved: false }
+            where: { resolvedAt: null }
           }
         }
       })
@@ -38,14 +39,14 @@ class StockDiagnosticService {
       
       for (const product of products) {
         if (product.stock) {
-          if (product.stock.quantity === 0) {
+          if (product.stock.quantiteActuelle === 0) {
             outOfStockCount++
-          } else if (product.stock.quantity <= product.stock.minThreshold) {
+          } else if (product.stock.quantiteActuelle <= product.stock.quantiteMinimale) {
             lowStockCount++
           }
           
           // Vérifier les incohérences
-          const shouldHaveAlert = product.stock.quantity <= product.stock.minThreshold
+          const shouldHaveAlert = product.stock.quantiteActuelle <= product.stock.quantiteMinimale
           const hasAlert = product.stockAlerts.length > 0
           
           if (shouldHaveAlert && !hasAlert) {
@@ -53,18 +54,18 @@ class StockDiagnosticService {
               type: 'MISSING_ALERT',
               productId: product.id,
               productName: product.name,
-              currentStock: product.stock.quantity,
-              threshold: product.stock.minThreshold,
-              message: `Alerte manquante pour ${product.name} (stock: ${product.stock.quantity}, seuil: ${product.stock.minThreshold})`
+              currentStock: product.stock.quantiteActuelle,
+              // threshold: product.stock.quantiteMinimale,
+              message: `Alerte manquante pour ${product.name} (stock: ${product.stock.quantiteActuelle}, seuil: ${product.stock.quantiteMinimale})`
             })
           } else if (!shouldHaveAlert && hasAlert) {
             inconsistencies.push({
               type: 'UNNECESSARY_ALERT',
               productId: product.id,
               productName: product.name,
-              currentStock: product.stock.quantity,
-              threshold: product.stock.minThreshold,
-              message: `Alerte inutile pour ${product.name} (stock: ${product.stock.quantity}, seuil: ${product.stock.minThreshold})`
+              currentStock: product.stock.quantiteActuelle,
+              // threshold: product.stock.quantiteMinimale,
+              message: `Alerte inutile pour ${product.name} (stock: ${product.stock.quantiteActuelle}, seuil: ${product.stock.quantiteMinimale})`
             })
           }
         } else {
@@ -79,7 +80,7 @@ class StockDiagnosticService {
       
       // Compter les alertes actives
       const alertsCount = await prisma.stockAlert.count({
-        where: { resolved: false }
+        where: { resolvedAt: null }
       })
       
       const result: StockDiagnosticResult = {
@@ -114,7 +115,7 @@ class StockDiagnosticService {
         include: {
           stock: true,
           stockAlerts: {
-            where: { resolved: false }
+            where: { resolvedAt: null }
           }
         }
       })
@@ -123,7 +124,7 @@ class StockDiagnosticService {
       
       for (const product of products) {
         if (product.stock) {
-          const shouldHaveAlert = product.stock.quantity <= product.stock.minThreshold
+          const shouldHaveAlert = product.stock.quantiteActuelle <= product.stock.quantiteMinimale
           const hasAlert = product.stockAlerts.length > 0
           
           if (shouldHaveAlert && !hasAlert) {
@@ -178,7 +179,7 @@ class StockDiagnosticService {
           where: {
             stock: {
               quantity: {
-                lte: prisma.stock.fields.minThreshold
+                lte: prisma.stock.fields.quantiteMinimale
               }
             }
           }
@@ -191,7 +192,7 @@ class StockDiagnosticService {
           }
         }),
         prisma.stockAlert.count({
-          where: { resolved: false }
+          where: { resolvedAt: null }
         })
       ])
       

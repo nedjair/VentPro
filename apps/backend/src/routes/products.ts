@@ -1,10 +1,11 @@
+import { ImportService } from '../services/import.service'
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { ProductService } from '../services/product.service'
 import { ExportService } from '../services/export.service'
 import { PaginationSchema, AuthenticatedRequest } from '@gestion/shared'
 import { logger } from '../utils/logger'
-import { prisma } from '@gestion/database'
+import { prisma, Product } from '@gestion/database'
 
 // Schémas de validation
 const CreateProductSchema = z.object({
@@ -36,6 +37,11 @@ const ProductFiltersSchema = z.object({
   priceMax: z.number().optional(),
   inStock: z.boolean().optional(),
 })
+
+function getOwnerScopeId(request: FastifyRequest): string | undefined {
+  const user = (request as any).user
+  return user?.companyId || user?.id || user?.userId
+}
 
 // Schémas pour les images
 const ProductImageSchema = z.object({
@@ -120,9 +126,16 @@ export default async function productRoutes(server: FastifyInstance) {
   }, async (request, reply) => {
     try {
       const data = CreateProductSchema.parse(request.body)
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const product = await ProductService.createProduct(data, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const product = await ProductService.createProduct(data, ownerScopeId)
 
       return reply.status(201).send({
         success: true,
@@ -164,9 +177,19 @@ export default async function productRoutes(server: FastifyInstance) {
     try {
       const pagination = PaginationSchema.parse(request.query)
       const filters = ProductFiltersSchema.parse(request.query)
-      const { companyId } = request.user
+      // Compatibilité double schéma :
+      // - ancien backend => périmètre par `companyId`
+      // - base PostgreSQL locale actuelle => périmètre par `userId`
+      const ownerScopeId = request.user.companyId || request.user.id || request.user.userId
 
-      const result = await ProductService.getProducts(companyId, filters, pagination)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const result = await ProductService.getProducts(ownerScopeId, filters, pagination)
 
       return reply.send({
         success: true,
@@ -200,9 +223,16 @@ export default async function productRoutes(server: FastifyInstance) {
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const product = await ProductService.getProductById(id, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const product = await ProductService.getProductById(id, ownerScopeId)
 
       if (!product) {
         return reply.status(404).send({
@@ -262,9 +292,16 @@ export default async function productRoutes(server: FastifyInstance) {
     try {
       const { id } = request.params as { id: string }
       const data = UpdateProductSchema.parse(request.body)
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      const product = await ProductService.updateProduct(id, data, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const product = await ProductService.updateProduct(id, data, ownerScopeId)
 
       return reply.send({
         success: true,
@@ -297,9 +334,16 @@ export default async function productRoutes(server: FastifyInstance) {
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string }
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
 
-      await ProductService.deleteProduct(id, companyId)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      await ProductService.deleteProduct(id, ownerScopeId)
 
       return reply.send({
         success: true,
@@ -544,8 +588,7 @@ export default async function productRoutes(server: FastifyInstance) {
       const result = await ProductService.getProducts(companyId, {}, { page: 1, limit: 10000 })
       const products = result.data
 
-      // Utiliser le service d'export (à implémenter)
-      const ExportService = require('../../../export-service.js')
+      // Réutiliser le service d'export TypeScript centralisé du backend.
       const exportService = new ExportService()
 
       const filename = `produits_${Date.now()}.xlsx`
@@ -690,8 +733,7 @@ export default async function productRoutes(server: FastifyInstance) {
       const result = await ProductService.getProducts(companyId, {}, { page: 1, limit: 10000 })
       const products = result.data
 
-      // Utiliser le service d'export
-      const ExportService = require('../services/export-service.js')
+      // Réutiliser le service d'export TypeScript centralisé du backend.
       const exportService = new ExportService()
 
       const filename = `produits_${Date.now()}.pdf`
@@ -913,12 +955,19 @@ export default async function productRoutes(server: FastifyInstance) {
   // Exporter les produits
   server.get('/export', {
     preHandler: [/* @ts-ignore */ server.authenticate],
-  }, async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { companyId } = request.user
+      const ownerScopeId = getOwnerScopeId(request)
       const { format, ...productFilters } = request.query as any
 
-      const { data: products } = await ProductService.getProducts(companyId, productFilters)
+      if (!ownerScopeId) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Contexte d’authentification incomplet',
+        })
+      }
+
+      const { data: products } = await ProductService.getProducts(ownerScopeId, productFilters)
 
       let fileBuffer: Buffer;
       let contentType: string;
@@ -930,11 +979,15 @@ export default async function productRoutes(server: FastifyInstance) {
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         filename = `produits_${timestamp}.xlsx`;
       } else { // pdf
-        const company = await prisma.company.findUnique({ where: { id: companyId } });
-        if (!company) {
-          return reply.status(404).send({ success: false, message: "Informations de l'entreprise non trouvées." });
-        }
-        fileBuffer = await ExportService.generateProductsPdf(products, company);
+        const companyId = (request.user as any)?.companyId
+        const company = companyId
+          ? await prisma.company.findUnique({ where: { id: companyId } })
+          : null
+
+        fileBuffer = await ExportService.generateProductsPdf(
+          products,
+          (company || { name: 'Gestion Commerciale' }) as any
+        );
         contentType = 'application/pdf';
         filename = `produits_${timestamp}.pdf`;
       }

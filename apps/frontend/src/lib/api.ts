@@ -1,8 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import { API_BASE_URL, buildApiUrl } from './api-config'
 import { withRetry } from './defensive-utils'
 
-// Configuration de l'API - Connexion directe au backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3003'
 const API_TIMEOUT = 15000 // 15 secondes - Augmenté pour la robustesse
 
 // Types de base
@@ -33,6 +32,7 @@ export interface HealthResponse {
 export interface Client {
   id: string
   type: 'INDIVIDUAL' | 'COMPANY'
+  name?: string
   firstName?: string
   lastName?: string
   companyName?: string
@@ -47,22 +47,76 @@ export interface Client {
   updatedAt: string
 }
 
+// Interface pour les catégories
+export interface Category {
+  id: string
+  name: string
+  description?: string
+  parentId?: string
+  parent?: Category
+  children?: Category[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CategoryWriteInput {
+  name: string
+  description?: string
+  parentId?: string
+}
+
 export interface Product {
   id: string
   name: string
-  reference?: string
+  sku?: string          // Référence produit (identifiant interne)
+  barcode?: string      // Code-barres (code numérique standardisé)
+  reference?: string    // Compatibilité avec l'ancien système
   description?: string
-  category?: string
+  categoryId?: string   // ID de la catégorie
+  category?: Category   // Objet catégorie complet (quand inclus par l'API)
   price: number
   costPrice?: number
   stock?: number
+  stockQuantity?: number
   minStock?: number
+  maxStock?: number | null
   unit: string
   isActive: boolean
+  isService?: boolean
   trackStock: boolean
   allowBackorder: boolean
+  vatRate?: number
   createdAt: string
   updatedAt: string
+}
+
+export interface ProductWriteInput {
+  name: string
+  sku?: string
+  barcode?: string
+  description?: string
+  categoryId?: string
+  price: number
+  costPrice?: number
+  stock?: number
+  stockQuantity?: number
+  minStock?: number
+  maxStock?: number | null
+  unit?: string
+  isActive?: boolean
+  isService?: boolean
+  trackStock?: boolean
+  allowBackorder?: boolean
+  vatRate?: number
+}
+
+export interface SupplierProductSummary {
+  id: string
+  name: string
+  sku?: string
+  price?: number
+  stockQuantity?: number
+  isActive?: boolean
 }
 
 export interface Supplier {
@@ -89,10 +143,236 @@ export interface Supplier {
   isActive: boolean
   isPreferred: boolean
   notes?: string
+  deliveryTerms?: string
   tags?: string[]
   productsCount?: number
+  purchasesCount?: number
+  products?: SupplierProductSummary[]
   createdAt: string
   updatedAt: string
+}
+
+// Types pour les commandes fournisseurs
+export type PurchaseOrderStatus = 'DRAFT' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED'
+
+export interface PurchaseOrderItem {
+  id: string
+  quantity: number
+  receivedQty: number
+  unitPrice: number
+  total: number
+  productId: string
+  purchaseOrderId: string
+  product: {
+    id: string
+    name: string
+    sku: string
+    description?: string
+    unit?: string
+    category?: {
+      id: string
+      name: string
+    }
+  }
+  receptionItems?: GoodsReceptionItem[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GoodsReception {
+  id: string
+  number: string
+  receptionDate: string
+  notes?: string
+  isComplete: boolean
+  purchaseOrderId: string
+  companyId: string
+  receivedById: string
+  receivedBy: {
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+  }
+  items: GoodsReceptionItem[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GoodsReceptionItem {
+  id: string
+  quantityReceived: number
+  quantityExpected: number
+  unitCost?: number
+  notes?: string
+  purchaseOrderItemId: string
+  productId: string
+  goodsReceptionId: string
+  product: {
+    id: string
+    name: string
+    sku: string
+  }
+  purchaseOrderItem: {
+    id: string
+    quantity: number
+    unitPrice: number
+  }
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PurchaseOrder {
+  id: string
+  number: string
+  status: PurchaseOrderStatus
+  orderDate: string
+  expectedDate?: string
+  notes?: string
+  subtotal: number
+  taxAmount: number
+  total: number
+  supplierId: string
+  companyId: string
+  createdById: string
+  supplier: {
+    id: string
+    name: string
+    email?: string
+    phone?: string
+    contactName?: string
+    address?: string
+    city?: string
+    country?: string
+    paymentTerms?: number
+    currency?: string
+  }
+  createdBy: {
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+  }
+  items: PurchaseOrderItem[]
+  receptions: GoodsReception[]
+  createdAt: string
+  updatedAt: string
+}
+
+// Types pour les formulaires
+export interface CreatePurchaseOrderItem {
+  productId: string
+  quantity: number
+  unitPrice: number
+}
+
+export interface CreatePurchaseOrderData {
+  supplierId: string
+  orderDate?: string
+  expectedDate?: string
+  notes?: string
+  status?: PurchaseOrderStatus
+  items: CreatePurchaseOrderItem[]
+}
+
+export interface UpdatePurchaseOrderData {
+  supplierId?: string
+  orderDate?: string
+  expectedDate?: string
+  notes?: string
+  status?: PurchaseOrderStatus
+  items?: CreatePurchaseOrderItem[]
+}
+
+// Types pour les filtres et recherche
+export interface PurchaseOrderFilters {
+  search?: string
+  supplierId?: string
+  status?: PurchaseOrderStatus
+  dateFrom?: string
+  dateTo?: string
+  page?: number
+  limit?: number
+}
+
+// Types pour la réception de marchandises
+export interface ReceiveGoodsItem {
+  purchaseOrderItemId: string
+  productId: string
+  quantityReceived: number
+  quantityExpected: number
+  unitCost?: number
+  notes?: string
+}
+
+export interface CreateGoodsReceptionData {
+  purchaseOrderId: string
+  receptionDate?: string
+  notes?: string
+  items: ReceiveGoodsItem[]
+}
+
+// Types pour les statistiques et rapports
+export interface PurchaseOrderStats {
+  totalOrders: number
+  totalAmount: number
+  pendingOrders: number
+  receivedOrders: number
+  averageOrderValue: number
+  topSuppliers: Array<{
+    supplier: Supplier
+    orderCount: number
+    totalAmount: number
+  }>
+  monthlyTrends: Array<{
+    month: string
+    orderCount: number
+    totalAmount: number
+  }>
+}
+
+// Types pour l'audit et l'historique
+export interface PurchaseOrderAuditLog {
+  id: string
+  action: string
+  entityType: 'PURCHASE_ORDER' | 'PURCHASE_ORDER_ITEM' | 'GOODS_RECEPTION'
+  entityId: string
+  entityData?: string
+  previousData?: string
+  changes?: string
+  userId?: string
+  user?: {
+    firstName: string
+    lastName: string
+    email: string
+  }
+  companyId: string
+  timestamp: string
+}
+
+// Types pour les réponses API
+export interface PurchaseOrderResponse {
+  success: boolean
+  data: PurchaseOrder
+  message?: string
+}
+
+export interface PurchaseOrderListResponse {
+  success: boolean
+  data: PurchaseOrder[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+  message?: string
+}
+
+export interface PurchaseOrderStatsResponse {
+  success: boolean
+  data: PurchaseOrderStats
+  message?: string
 }
 
 export interface OrderItem {
@@ -143,6 +423,11 @@ export interface Invoice {
   status: 'DRAFT' | 'SENT' | 'PAID' | 'PARTIAL' | 'OVERDUE' | 'CANCELLED'
   clientId: string
   client?: Client
+  salesperson?: {
+    id: string
+    name: string
+    email?: string
+  }
   orderId?: string
   order?: Order
   invoiceDate: string
@@ -200,29 +485,88 @@ export interface DashboardStats {
   lastUpdated: string
 }
 
+export interface DashboardActivityItem {
+  id: string
+  type: string
+  title: string
+  description: string
+  timestamp: string
+  user?: string
+}
+
+export interface DashboardAlert {
+  id: string
+  type: 'critical' | 'warning' | 'info'
+  title: string
+  message: string
+  count?: number
+  priority?: string
+}
+
 // Types pour Analytics Phase 5
+export interface KpiTargetSettings {
+  revenueTarget: number | null
+  ordersTarget: number | null
+  clientsTarget: number | null
+  conversionRateTarget: number | null
+  updatedAt: string | null
+  hasConfiguredTargets: boolean
+}
+
+export interface UpdateKpiTargetSettingsPayload {
+  revenueTarget: number | null
+  ordersTarget: number | null
+  clientsTarget: number | null
+  conversionRateTarget: number | null
+}
+
 export interface KPIMetrics {
   revenue: {
     current: number
-    target: number
-    growth: number
+    target: number | null
+    growth: number | null
+    targetConfigured: boolean
     currency: string
   }
   orders: {
     current: number
-    target: number
-    growth: number
+    target: number | null
+    growth: number | null
+    targetConfigured: boolean
+    pending: number
   }
   clients: {
     current: number
-    target: number
-    growth: number
+    target: number | null
+    growth: number | null
+    targetConfigured: boolean
+    newThisMonth: number
   }
   conversion: {
     rate: number
-    target: number
-    growth: number
+    target: number | null
+    growth: number | null
+    targetConfigured: boolean
+    quotes: number
+    convertedQuotes: number
   }
+  products: {
+    total: number
+    lowStock: number
+    outOfStock: number
+    soldThisMonth: number
+  }
+  invoices: {
+    total: number
+    overdue: number
+    paid: number
+  }
+  alerts: {
+    lowStock: number
+    overdueInvoices: number
+    pendingOrders: number
+  }
+  lastUpdated: string
 }
 
 export interface SalesAnalytics {
@@ -300,6 +644,69 @@ export interface EvolutionData {
   }>
 }
 
+/**
+ * Lit une réponse HTTP sans supposer que le backend renvoie toujours du JSON.
+ * Cela évite d'exposer une erreur technique de parsing dans l'UI de connexion.
+ */
+async function parseJsonResponse<T>(response: Response): Promise<T | null> {
+  const rawBody = await response.text()
+
+  if (!rawBody) {
+    return null
+  }
+
+  try {
+    return JSON.parse(rawBody) as T
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Convertit les erreurs techniques du navigateur/API en message exploitable
+ * pour l'utilisateur final sur l'écran de connexion.
+ */
+function normalizeLoginErrorMessage(error: unknown): string {
+  const fallbackMessage = 'Erreur de connexion. Veuillez réessayer.'
+  const rawMessage = error instanceof Error ? error.message.trim() : ''
+
+  if (!rawMessage) {
+    return fallbackMessage
+  }
+
+  const httpErrorMatch = rawMessage.match(/^HTTP\s+(\d{3}):\s*(.+)$/i)
+  if (httpErrorMatch) {
+    const [, statusCode, backendMessage] = httpErrorMatch
+    const cleanedBackendMessage = backendMessage.trim()
+
+    if (cleanedBackendMessage) {
+      return cleanedBackendMessage
+    }
+
+    if (statusCode === '401') {
+      return 'Email ou mot de passe incorrect.'
+    }
+
+    if (statusCode.startsWith('5')) {
+      return 'Erreur serveur lors de la connexion. Veuillez réessayer plus tard.'
+    }
+
+    return fallbackMessage
+  }
+
+  const normalizedMessage = rawMessage.toLowerCase()
+  if (
+    normalizedMessage === 'failed to fetch' ||
+    normalizedMessage.includes('networkerror') ||
+    normalizedMessage.includes('load failed') ||
+    normalizedMessage.includes('fetch failed')
+  ) {
+    return 'Impossible de joindre le serveur de connexion. Vérifiez que le backend est démarré et que la configuration réseau/CORS est correcte.'
+  }
+
+  return rawMessage
+}
+
 // Configuration d'Axios
 class ApiClient {
   private client: AxiosInstance
@@ -307,7 +714,9 @@ class ApiClient {
 
   constructor() {
     this.client = axios.create({
-      baseURL: API_BASE_URL,
+      // Laisser axios utiliser des URLs relatives si aucune base publique n'est
+      // fournie. Les méthodes existantes utilisent déjà /api/v1/... comme chemin.
+      baseURL: API_BASE_URL || undefined,
       timeout: API_TIMEOUT,
       headers: {
         'Content-Type': 'application/json',
@@ -418,6 +827,114 @@ class ApiClient {
     return response.data
   }
 
+  private normalizeSupplier(supplier: any): Supplier {
+    const tags = Array.isArray(supplier?.tags)
+      ? supplier.tags
+      : typeof supplier?.tags === 'string' && supplier.tags.length > 0
+        ? supplier.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
+        : []
+
+    const purchasesCount = Number(supplier?.purchasesCount ?? 0)
+    const productsCount = Number(supplier?.productsCount ?? purchasesCount)
+    const products = Array.isArray(supplier?.products)
+      ? supplier.products
+          .filter((product: unknown) => product && typeof product === 'object')
+          .map((product: any) => ({
+            id: String(product?.id ?? ''),
+            name: String(product?.name ?? ''),
+            sku: product?.sku ? String(product.sku) : '',
+            price: product?.price !== undefined ? Number(product.price) : undefined,
+            stockQuantity: product?.stockQuantity !== undefined ? Number(product.stockQuantity) : undefined,
+            isActive: product?.isActive !== undefined ? Boolean(product.isActive) : undefined,
+          }))
+      : []
+
+    return {
+      id: String(supplier?.id ?? ''),
+      type: supplier?.type === 'INDIVIDUAL' ? 'INDIVIDUAL' : 'COMPANY',
+      name: supplier?.name ?? '',
+      contactName: supplier?.contactName ?? '',
+      email: supplier?.email ?? '',
+      phone: supplier?.phone ?? '',
+      mobile: supplier?.mobile ?? '',
+      website: supplier?.website ?? '',
+      fax: supplier?.fax ?? '',
+      address: supplier?.address ?? '',
+      postalCode: supplier?.postalCode ?? '',
+      city: supplier?.city ?? '',
+      country: supplier?.country ?? 'Algérie',
+      siret: supplier?.siret ?? '',
+      vatNumber: supplier?.vatNumber ?? '',
+      rcs: supplier?.rcs ?? '',
+      paymentTerms: Number(supplier?.paymentTerms ?? 30),
+      discount: Number(supplier?.discount ?? 0),
+      currency: supplier?.currency ?? 'DZD',
+      rating: Number(supplier?.rating ?? 0),
+      isActive: supplier?.isActive ?? true,
+      isPreferred: supplier?.isPreferred ?? false,
+      notes: supplier?.notes ?? '',
+      deliveryTerms: supplier?.deliveryTerms ?? '',
+      tags,
+      productsCount,
+      purchasesCount,
+      products,
+      createdAt: supplier?.createdAt ?? new Date().toISOString(),
+      updatedAt: supplier?.updatedAt ?? new Date().toISOString(),
+    }
+  }
+
+  /**
+   * Déplie de manière défensive les enveloppes API imbriquées du type
+   * `{ success, data }`.
+   *
+   * Pourquoi : certaines routes ou couches proxy peuvent renvoyer un objet déjà
+   * enveloppé dans `data`. Sans ce dépliage, `normalizeSupplier(...)` reçoit le
+   * mauvais niveau d'objet et remplit la fiche avec des valeurs par défaut
+   * (`Sans nom`, `Algérie`, `30 jours`, `DZD`, etc.).
+   */
+  private unwrapApiEnvelope<T>(value: unknown): T {
+    let current = value
+
+    while (
+      current &&
+      typeof current === 'object' &&
+      'success' in current &&
+      'data' in current
+    ) {
+      current = (current as { data?: unknown }).data
+    }
+
+    return current as T
+  }
+
+  private normalizeSuppliersResponse(
+    response: ApiResponse<PaginatedResponse<any>>
+  ): ApiResponse<PaginatedResponse<Supplier>> {
+    const payload = this.unwrapApiEnvelope<PaginatedResponse<any> | any[]>(response.data)
+    const normalizedPayload = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload
+      : { data: Array.isArray(payload) ? payload : [] }
+
+    return {
+      ...response,
+      data: {
+        ...normalizedPayload,
+        data: Array.isArray(normalizedPayload.data)
+          ? normalizedPayload.data.map((supplier) => this.normalizeSupplier(supplier))
+          : [],
+      },
+    }
+  }
+
+  private normalizeSupplierResponse(response: ApiResponse<any>): ApiResponse<Supplier> {
+    const payload = this.unwrapApiEnvelope(response.data)
+
+    return {
+      ...response,
+      data: this.normalizeSupplier(payload),
+    }
+  }
+
   // Méthodes HTTP standard pour compatibilité avec les composants existants
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
     return this.client.get<T>(url, config)
@@ -463,11 +980,41 @@ class ApiClient {
     })
   }
 
+  async getDashboardActivity(limit = 8): Promise<ApiResponse<DashboardActivityItem[]>> {
+    return this.request<ApiResponse<DashboardActivityItem[]>>({
+      method: 'GET',
+      url: '/api/v1/dashboard/activity',
+      params: { limit },
+    })
+  }
+
+  async getDashboardAlerts(): Promise<ApiResponse<DashboardAlert[]>> {
+    return this.request<ApiResponse<DashboardAlert[]>>({
+      method: 'GET',
+      url: '/api/v1/dashboard/alerts',
+    })
+  }
+
   // Analytics Phase 5
   async getKPIMetrics(): Promise<ApiResponse<KPIMetrics>> {
     return this.request<ApiResponse<KPIMetrics>>({
       method: 'GET',
       url: '/api/v1/analytics/kpi',
+    })
+  }
+
+  async getKpiTargetSettings(): Promise<ApiResponse<KpiTargetSettings>> {
+    return this.request<ApiResponse<KpiTargetSettings>>({
+      method: 'GET',
+      url: '/api/v1/settings/kpi-targets',
+    })
+  }
+
+  async updateKpiTargetSettings(data: UpdateKpiTargetSettingsPayload): Promise<ApiResponse<KpiTargetSettings>> {
+    return this.request<ApiResponse<KpiTargetSettings>>({
+      method: 'PUT',
+      url: '/api/v1/settings/kpi-targets',
+      data,
     })
   }
 
@@ -588,6 +1135,25 @@ class ApiClient {
   }
 
   // Produits
+  async getCategories(): Promise<ApiResponse<Category[]>> {
+    return this.request<ApiResponse<Category[]>>({
+      method: 'GET',
+      url: '/api/v1/categories',
+    })
+  }
+
+  async createCategory(data: CategoryWriteInput): Promise<ApiResponse<Category>> {
+    return this.requestWithoutRetry<ApiResponse<Category>>({
+      method: 'POST',
+      url: '/api/v1/categories',
+      data: {
+        name: data.name.trim(),
+        description: data.description?.trim() || undefined,
+        parentId: data.parentId || undefined,
+      },
+    })
+  }
+
   async getProducts(params?: {
     page?: number
     limit?: number
@@ -610,46 +1176,42 @@ class ApiClient {
     })
   }
 
-  async createProduct(data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<Product>> {
-    // Transformer les données pour correspondre au format backend
-    const backendData = {
+  private normalizeProductWritePayload(data: ProductWriteInput) {
+    return {
       name: data.name,
-      reference: data.reference,
-      description: data.description,
-      category: data.category,
-      price: data.price,
-      cost_price: data.costPrice,
-      stock: data.stock,
-      min_stock: data.minStock,
-      unit: data.unit,
-      is_active: data.isActive,
-      track_stock: data.trackStock,
-      allow_backorder: data.allowBackorder
+      sku: data.sku?.trim() || undefined,
+      barcode: data.barcode?.trim() || undefined,
+      description: data.description?.trim() || undefined,
+      categoryId: data.categoryId || undefined,
+      price: Number(data.price ?? 0),
+      cost: data.costPrice,
+      vatRate: data.vatRate ?? 20,
+      stockQuantity: data.stockQuantity ?? data.stock ?? 0,
+      minStock: data.minStock ?? 0,
+      maxStock: data.maxStock ?? undefined,
+      unit: data.unit || 'pièce',
+      isActive: data.isActive ?? true,
+      isService: data.isService ?? false,
+      // Le backend local ne persiste pas encore ces deux indicateurs,
+      // on ne les envoie donc pas pour éviter les écarts de contrat API.
     }
+  }
 
-    return this.request<ApiResponse<Product>>({
+  async createProduct(data: ProductWriteInput): Promise<ApiResponse<Product>> {
+    const backendData = this.normalizeProductWritePayload(data)
+
+    // Sécurité importante : une création produit est une opération non idempotente.
+    // On évite donc tout retry automatique pour ne pas risquer une double création
+    // suivie d'une erreur de contrainte unique côté backend.
+    return this.requestWithoutRetry<ApiResponse<Product>>({
       method: 'POST',
       url: '/api/v1/products',
       data: backendData,
     })
   }
 
-  async updateProduct(id: string, data: Partial<Product>): Promise<ApiResponse<Product>> {
-    // Transformer les données pour correspondre au format backend
-    const backendData = {
-      name: data.name,
-      reference: data.reference,
-      description: data.description,
-      category: data.category,
-      price: data.price,
-      cost_price: data.costPrice,
-      stock: data.stock,
-      min_stock: data.minStock,
-      unit: data.unit,
-      is_active: data.isActive,
-      track_stock: data.trackStock,
-      allow_backorder: data.allowBackorder
-    }
+  async updateProduct(id: string, data: Partial<ProductWriteInput>): Promise<ApiResponse<Product>> {
+    const backendData = this.normalizeProductWritePayload(data as ProductWriteInput)
 
     return this.request<ApiResponse<Product>>({
       method: 'PUT',
@@ -674,18 +1236,22 @@ class ApiClient {
     city?: string
     isActive?: boolean
   }): Promise<ApiResponse<PaginatedResponse<Supplier>>> {
-    return this.request<ApiResponse<PaginatedResponse<Supplier>>>({
+    const response = await this.request<ApiResponse<PaginatedResponse<Supplier>>>({
       method: 'GET',
       url: '/api/v1/suppliers',
       params,
     })
+
+    return this.normalizeSuppliersResponse(response)
   }
 
   async getSupplier(id: string): Promise<ApiResponse<Supplier>> {
-    return this.request<ApiResponse<Supplier>>({
+    const response = await this.request<ApiResponse<Supplier>>({
       method: 'GET',
       url: `/api/v1/suppliers/${id}`,
     })
+
+    return this.normalizeSupplierResponse(response)
   }
 
   async createSupplier(data: {
@@ -713,73 +1279,77 @@ class ApiClient {
     notes?: string
     tags?: string[]
   }): Promise<ApiResponse<Supplier>> {
-    // Transformer les données pour correspondre au format backend
+    // Le backend attend les données en camelCase, pas de transformation nécessaire
     const backendData = {
       type: data.type,
       name: data.name,
-      contact_name: data.contactName,
+      contactName: data.contactName,
       email: data.email,
       phone: data.phone,
       mobile: data.mobile,
       website: data.website,
       fax: data.fax,
       address: data.address,
-      postal_code: data.postalCode,
+      postalCode: data.postalCode,
       city: data.city,
       country: data.country,
       siret: data.siret,
-      vat_number: data.vatNumber,
+      vatNumber: data.vatNumber,
       rcs: data.rcs,
-      payment_terms: data.paymentTerms,
+      paymentTerms: data.paymentTerms,
       discount: data.discount,
       currency: data.currency,
       rating: data.rating,
-      is_active: data.isActive !== false,
-      is_preferred: data.isPreferred || false,
+      isActive: data.isActive !== false,
+      isPreferred: data.isPreferred || false,
       notes: data.notes,
       tags: data.tags
     }
 
-    return this.request<ApiResponse<Supplier>>({
+    const response = await this.request<ApiResponse<Supplier>>({
       method: 'POST',
       url: '/api/v1/suppliers',
       data: backendData,
     })
+
+    return this.normalizeSupplierResponse(response)
   }
 
   async updateSupplier(id: string, data: Partial<Supplier>): Promise<ApiResponse<Supplier>> {
-    // Transformer les données pour correspondre au format backend
+    // Le backend attend les données en camelCase, pas de transformation nécessaire
     const backendData = {
       type: data.type,
       name: data.name,
-      contact_name: data.contactName,
+      contactName: data.contactName,
       email: data.email,
       phone: data.phone,
       mobile: data.mobile,
       website: data.website,
       fax: data.fax,
       address: data.address,
-      postal_code: data.postalCode,
+      postalCode: data.postalCode,
       city: data.city,
       country: data.country,
       siret: data.siret,
-      vat_number: data.vatNumber,
+      vatNumber: data.vatNumber,
       rcs: data.rcs,
-      payment_terms: data.paymentTerms,
+      paymentTerms: data.paymentTerms,
       discount: data.discount,
       currency: data.currency,
       rating: data.rating,
-      is_active: data.isActive,
-      is_preferred: data.isPreferred,
+      isActive: data.isActive,
+      isPreferred: data.isPreferred,
       notes: data.notes,
       tags: data.tags
     }
 
-    return this.request<ApiResponse<Supplier>>({
+    const response = await this.request<ApiResponse<Supplier>>({
       method: 'PUT',
       url: `/api/v1/suppliers/${id}`,
       data: backendData,
     })
+
+    return this.normalizeSupplierResponse(response)
   }
 
   async deleteSupplier(id: string): Promise<ApiResponse<void>> {
@@ -883,6 +1453,13 @@ class ApiClient {
     return this.request<ApiResponse<void>>({
       method: 'DELETE',
       url: `/api/v1/orders/${id}`,
+    })
+  }
+
+  async deleteQuote(id: string): Promise<ApiResponse<void>> {
+    return this.request<ApiResponse<void>>({
+      method: 'DELETE',
+      url: `/api/v1/quotes/${id}`,
     })
   }
 
@@ -1032,10 +1609,11 @@ class ApiClient {
   async login(credentials: { email: string; password: string }): Promise<ApiResponse<any>> {
     try {
       console.log('🔍 Login attempt with:', { email: credentials.email, password: '***' })
-      console.log('🔍 API Base URL:', API_BASE_URL)
+      console.log('🔍 API Base URL:', API_BASE_URL || '[same-origin via Next.js rewrite]')
 
-      // Utiliser fetch directement avec les bonnes options CORS
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      // Utiliser une URL relative par défaut évite les erreurs CORS côté
+      // navigateur et laisse Next.js proxyfier la requête vers le backend.
+      const response = await fetch(buildApiUrl('/api/v1/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1048,17 +1626,27 @@ class ApiClient {
       console.log('🔍 Response status:', response.status)
       console.log('🔍 Response ok:', response.ok)
 
-      const data = await response.json()
+      // Parser de façon tolérante pour éviter qu'une réponse vide/HTML masque
+      // l'erreur métier de connexion côté utilisateur.
+      const data = await parseJsonResponse<ApiResponse<any>>(response)
       console.log('🔍 Response data:', data)
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${data.message || 'Erreur de connexion'}`)
+        const errorMessage = data?.message || data?.error || 'Erreur de connexion'
+        throw new Error(`HTTP ${response.status}: ${errorMessage}`)
+      }
+
+      if (!data) {
+        throw new Error('Réponse invalide du serveur de connexion.')
       }
 
       return data
     } catch (error) {
       console.error('❌ Login error:', error)
-      throw error
+
+      // Normaliser avant de propager au store pour éviter l'affichage de
+      // messages techniques comme "Failed to fetch".
+      throw new Error(normalizeLoginErrorMessage(error))
     }
   }
 
@@ -1074,8 +1662,8 @@ class ApiClient {
     try {
       console.log('🔍 Register attempt with:', { ...userData, password: '***' })
 
-      // Utiliser fetch directement avec les bonnes options CORS
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+      // Même stratégie que le login : passer par le proxy Next.js par défaut.
+      const response = await fetch(buildApiUrl('/api/v1/auth/register'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

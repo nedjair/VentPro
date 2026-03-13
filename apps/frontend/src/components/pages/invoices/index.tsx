@@ -7,11 +7,31 @@ import { Button } from '@/components/ui/button'
 import { ImportExportButtons, ImportExportMessage } from '@/components/ui/import-export-buttons'
 import { Plus, Search, Filter, FileText, CreditCard, AlertCircle } from 'lucide-react'
 import { api, Invoice } from '@/lib/api'
+import { ensureApiAuthentication } from '@/lib/auth-utils'
 import { ExportService } from '@/lib/export'
+import { InvoiceStatusBadge } from './invoice-status-badge'
 import Link from 'next/link'
 import {
+  extractCollection,
   safeFilter
 } from '@/lib/defensive-utils'
+
+type InvoiceClient = Invoice['client']
+
+export function getInvoiceClientDisplayName(client?: InvoiceClient): string {
+  if (!client) return 'Client inconnu'
+
+  const companyName = client.companyName?.trim()
+  if (companyName) return companyName
+
+  const fullName = `${client.firstName || ''} ${client.lastName || ''}`.trim()
+  if (fullName) return fullName
+
+  const legacyName = client.name?.trim()
+  if (legacyName) return legacyName
+
+  return 'Client inconnu'
+}
 
 export function InvoicesPage() {
   const router = useRouter()
@@ -28,46 +48,7 @@ export function InvoicesPage() {
 
   // Charger les factures au montage et quand on revient sur la page
   useEffect(() => {
-    // Temporaire : utiliser des données de test si le backend n'est pas disponible
-    const testInvoices = [
-      {
-        id: 'test-1',
-        number: 'FAC-202412-0001',
-        type: 'INVOICE',
-        status: 'SENT',
-        invoiceDate: '2024-12-21',
-        dueDate: '2025-01-21',
-        total: 1500.00,
-        client: {
-          id: 'client-1',
-          type: 'COMPANY',
-          companyName: 'Test Company',
-          email: 'test@company.com'
-        }
-      },
-      {
-        id: 'test-2',
-        number: 'FAC-202412-0002',
-        type: 'INVOICE',
-        status: 'PAID',
-        invoiceDate: '2024-12-20',
-        dueDate: '2025-01-20',
-        total: 2500.00,
-        client: {
-          id: 'client-2',
-          type: 'INDIVIDUAL',
-          firstName: 'Ahmed',
-          lastName: 'Benali',
-          email: 'ahmed@email.com'
-        }
-      }
-    ]
-
-    console.log('🧪 Utilisation de données de test')
-    setInvoices(testInvoices)
-    setLoading(false)
-
-    // Essayer de charger les vraies données en arrière-plan
+    // Charger les vraies données depuis l'API
     loadInvoices()
   }, [])
 
@@ -108,44 +89,12 @@ export function InvoicesPage() {
     }
   }, [])
 
-  // Fonction d'authentification automatique
-  const ensureAuthentication = async () => {
-    const authToken = api.getAuthToken()
-    if (authToken) {
-      return true
-    }
-
-    try {
-      console.log('🔐 Tentative de connexion automatique...')
-      const loginResponse = await api.login({
-        email: 'admin@gctpe.dz',
-        password: 'admin123'
-      })
-
-      if (loginResponse.success && loginResponse.data?.token) {
-        api.setAuthToken(loginResponse.data.token)
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth-tokens', JSON.stringify({
-            accessToken: loginResponse.data.token,
-            refreshToken: loginResponse.data.refreshToken || null
-          }))
-          localStorage.setItem('auth-user', JSON.stringify(loginResponse.data.user))
-        }
-
-        console.log('✅ Connexion automatique réussie')
-        return true
-      }
-    } catch (error) {
-      console.error('❌ Échec de la connexion automatique:', error)
-    }
-
-    return false
-  }
+  const ensureAuthentication = () => ensureApiAuthentication()
 
   const loadInvoices = async () => {
     try {
       setLoading(true)
+      setError(null)
       console.log('🔍 Chargement des factures...')
 
       // S'assurer que l'utilisateur est authentifié
@@ -162,20 +111,11 @@ export function InvoicesPage() {
         status: statusFilter || undefined,
         type: typeFilter || undefined,
       })
-      console.log('🧾 Réponse complète:', JSON.stringify(response, null, 2))
-      console.log('🧾 response.success:', response.success)
-      console.log('🧾 response.data:', response.data)
-      console.log('🧾 Type de response.data:', typeof response.data)
-      console.log('🧾 Array.isArray(response.data):', Array.isArray(response.data))
-      console.log('🧾 response.data?.length:', response.data?.length)
-
       if (response.success && response.data) {
-        // Le backend retourne directement un tableau dans response.data
-        console.log('✅ Factures chargées avec succès:', response.data?.length || 0, 'factures')
-        console.log('✅ Première facture:', response.data[0])
-        setInvoices(response.data || [])
+        const safeInvoices = extractCollection<Invoice>(response.data)
+        console.log('✅ Factures chargées avec succès:', safeInvoices.length, 'factures')
+        setInvoices(safeInvoices)
         setError(null)
-        console.log('✅ État invoices mis à jour')
       } else {
         console.error('❌ Format de données invalide:', response)
         throw new Error('Format de données invalide')
@@ -201,11 +141,15 @@ export function InvoicesPage() {
   // Utilisation du filtrage simple pour éviter les erreurs
   const filteredInvoices = (Array.isArray(invoices) ? invoices : []).filter((invoice) => {
     const searchLower = searchTerm.toLowerCase()
+    const clientDisplayName = getInvoiceClientDisplayName(invoice.client).toLowerCase()
+    const legacyName = (invoice.client?.name || '').toLowerCase()
     const matchesSearch = !searchTerm || (
       (invoice.number || '').toLowerCase().includes(searchLower) ||
       invoice.client?.firstName?.toLowerCase().includes(searchLower) ||
       invoice.client?.lastName?.toLowerCase().includes(searchLower) ||
-      invoice.client?.companyName?.toLowerCase().includes(searchLower)
+      invoice.client?.companyName?.toLowerCase().includes(searchLower) ||
+      clientDisplayName.includes(searchLower) ||
+      legacyName.includes(searchLower)
     )
     const matchesStatus = !statusFilter || invoice.status === statusFilter
     const matchesType = !typeFilter || invoice.type === typeFilter
@@ -219,34 +163,16 @@ export function InvoicesPage() {
   console.log('📊 loading:', loading)
   console.log('📊 error:', error)
 
-  const getStatusBadge = (status: Invoice['status']) => {
-    const statusConfig = {
-      DRAFT: { label: 'Brouillon', className: 'bg-gray-100 text-gray-800' },
-      SENT: { label: 'Envoyée', className: 'bg-blue-100 text-blue-800' },
-      PAID: { label: 'Payée', className: 'bg-green-100 text-green-800' },
-      PARTIAL: { label: 'Partiellement payée', className: 'bg-yellow-100 text-yellow-800' },
-      OVERDUE: { label: 'En retard', className: 'bg-red-100 text-red-800' },
-      CANCELLED: { label: 'Annulée', className: 'bg-gray-100 text-gray-800' },
-    }
-    
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.DRAFT
-    return (
-      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${config.className}`}>
-        {config.label}
-      </span>
-    )
-  }
-
   const getTypeIcon = (type: string | undefined) => {
     switch (type) {
       case 'INVOICE':
-        return <FileText className="h-4 w-4 text-blue-600" />
+        return <FileText className="h-4 w-4 text-primary" />
       case 'CREDIT_NOTE':
         return <CreditCard className="h-4 w-4 text-red-600" />
       case 'QUOTE':
         return <AlertCircle className="h-4 w-4 text-orange-600" />
       default:
-        return <FileText className="h-4 w-4 text-gray-600" />
+        return <FileText className="h-4 w-4 text-muted-foreground" />
     }
   }
 
@@ -287,8 +213,11 @@ export function InvoicesPage() {
   }
 
   const handleFilters = () => {
-    console.log('Ouverture des filtres...')
-    // TODO: Implémenter les filtres
+    document.getElementById('invoice-filters')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    window.setTimeout(() => {
+      const searchInput = document.getElementById('invoice-search') as HTMLInputElement | null
+      searchInput?.focus()
+    }, 150)
   }
 
   const handleDeleteInvoice = async (invoiceId: string) => {
@@ -326,29 +255,53 @@ export function InvoicesPage() {
     }
   }
 
-  const handleViewInvoice = (invoiceId: string) => {
-    window.location.href = `/invoices/${invoiceId}`
+  const handleViewInvoice = (invoiceId?: string) => {
+    if (!invoiceId) {
+      setError('Impossible d’ouvrir la facture: identifiant manquant')
+      return
+    }
+    router.push(`/invoices/${invoiceId}`)
   }
 
-  const handleDownloadPDF = async (invoiceId: string) => {
+  const handleDownloadPDF = async (invoiceId?: string) => {
+    if (!invoiceId) {
+      setError('Impossible de télécharger le PDF: identifiant de facture manquant')
+      return
+    }
+
     try {
       console.log(`📄 Téléchargement PDF facture ${invoiceId}...`)
+      const isAuthenticated = await ensureAuthentication()
+      if (!isAuthenticated) {
+        setError('Erreur d’authentification. Veuillez vous reconnecter.')
+        return
+      }
       await ExportService.downloadInvoicePDF(invoiceId)
       console.log('✅ PDF téléchargé avec succès')
     } catch (error) {
       console.error('❌ Erreur téléchargement PDF:', error)
-      setError('Erreur lors du téléchargement du PDF')
+      const errorMessage = error instanceof Error
+        ? /failed to fetch/i.test(error.message)
+          ? 'Impossible de joindre le service PDF. Vérifiez votre connexion réseau puis réessayez.'
+          : error.message
+        : 'Erreur lors du téléchargement du PDF'
+      setError(errorMessage)
     }
   }
 
-  const actions = (
-    <div className="flex space-x-2">
+  const invoiceTableActions = (
+    <div className="flex flex-wrap items-center justify-end gap-2">
       <Button variant="outline" size="sm" onClick={handleFilters}>
         <Filter className="h-4 w-4 mr-2" />
         Filtres
       </Button>
       <ImportExportButtons
         type="invoices"
+        filters={{
+          search: searchTerm || undefined,
+          status: statusFilter || undefined,
+          type: typeFilter || undefined,
+        }}
         onImportSuccess={handleImportSuccess}
         onImportError={handleImportError}
         onExportError={handleExportError}
@@ -368,46 +321,54 @@ export function InvoicesPage() {
     <MainLayout 
       title="Factures" 
       subtitle={`${filteredInvoices.length} facture${filteredInvoices.length > 1 ? 's' : ''} trouvée${filteredInvoices.length > 1 ? 's' : ''}`}
-      actions={actions}
     >
       <div className="space-y-6">
-        {/* Filtres */}
-        <div className="flex items-center space-x-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Rechercher une facture..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+        <div id="invoice-filters" className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center lg:flex-1">
+            <div className="relative w-full md:min-w-[20rem]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <input
+                id="invoice-search"
+                type="text"
+                aria-label="Rechercher une facture"
+                placeholder="Rechercher une facture..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-card pl-10 pr-4 text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+            </div>
+          
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              aria-label="Filtrer par type"
+              className="h-9 rounded-lg border border-border bg-card px-3 text-card-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Tous les types</option>
+              <option value="INVOICE">Factures</option>
+              <option value="CREDIT_NOTE">Avoirs</option>
+              <option value="PROFORMA">Proforma</option>
+            </select>
+          
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Filtrer par statut"
+              className="h-9 rounded-lg border border-border bg-card px-3 text-card-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Tous les statuts</option>
+              <option value="DRAFT">Brouillon</option>
+              <option value="SENT">Envoyée</option>
+              <option value="PAID">Payée</option>
+              <option value="PARTIAL">Partiellement payée</option>
+              <option value="OVERDUE">En retard</option>
+              <option value="CANCELLED">Annulée</option>
+            </select>
           </div>
-          
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Tous les types</option>
-            <option value="INVOICE">Factures</option>
-            <option value="CREDIT_NOTE">Avoirs</option>
-            <option value="PROFORMA">Proforma</option>
-          </select>
-          
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Tous les statuts</option>
-            <option value="DRAFT">Brouillon</option>
-            <option value="SENT">Envoyée</option>
-            <option value="PAID">Payée</option>
-            <option value="PARTIAL">Partiellement payée</option>
-            <option value="OVERDUE">En retard</option>
-            <option value="CANCELLED">Annulée</option>
-          </select>
+
+          <div className="flex justify-end lg:shrink-0">
+            {invoiceTableActions}
+          </div>
         </div>
 
         {/* Message d'export */}
@@ -421,24 +382,24 @@ export function InvoicesPage() {
 
         {/* Message d'erreur */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <svg className="h-5 w-5 text-destructive" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">
+                <h3 className="text-sm font-medium text-destructive">
                   Erreur de chargement
                 </h3>
-                <div className="mt-2 text-sm text-red-700">
+                <div className="mt-2 text-sm text-destructive">
                   <p>{error}</p>
                 </div>
                 <div className="mt-4">
                   <button
                     onClick={loadInvoices}
-                    className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
+                    className="bg-destructive/10 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/20"
                   >
                     Réessayer
                   </button>
@@ -451,28 +412,28 @@ export function InvoicesPage() {
         {/* Liste des factures */}
         <div className="card">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-secondary">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Numéro
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Type
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Client
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Statut
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Total
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Échéance
                   </th>
                   <th className="relative px-6 py-3">
@@ -480,10 +441,10 @@ export function InvoicesPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={8} className="px-6 py-4 text-center text-muted-foreground">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                         <span className="ml-2">Chargement...</span>
@@ -492,18 +453,18 @@ export function InvoicesPage() {
                   </tr>
                 ) : filteredInvoices.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={8} className="px-6 py-4 text-center text-muted-foreground">
                       {searchTerm || statusFilter || typeFilter ? 'Aucune facture trouvée pour ces critères' : 'Aucune facture enregistrée'}
                     </td>
                   </tr>
                 ) : (
                   filteredInvoices.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-gray-50">
+                    <tr key={invoice.id} className="hover:bg-secondary">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           {getTypeIcon(invoice.type)}
                           <div className="ml-2">
-                            <Link href={`/invoices/${invoice.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-900">
+                            <Link href={`/invoices/${invoice.id}`} className="text-sm font-medium text-primary hover:text-card-foreground">
                               {invoice.number}
                             </Link>
                           </div>
@@ -512,27 +473,24 @@ export function InvoicesPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           invoice.type === 'INVOICE' 
-                            ? 'bg-blue-100 text-blue-800' 
+                            ? 'bg-secondary text-card-foreground'
                             : invoice.type === 'CREDIT_NOTE'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-orange-100 text-orange-800'
+                            ? 'bg-destructive/10 text-destructive'
+                            : 'bg-accent text-accent-foreground'
                         }`}>
                           {getTypeLabel(invoice.type)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {invoice.client?.type === 'COMPANY' 
-                            ? invoice.client.companyName 
-                            : `${invoice.client?.firstName} ${invoice.client?.lastName}`
-                          }
+                        <div className="text-sm font-medium text-card-foreground">
+                          {getInvoiceClientDisplayName(invoice.client)}
                         </div>
-                        <div className="text-sm text-gray-500">{invoice.client?.email}</div>
+                        <div className="text-sm text-muted-foreground">{invoice.client?.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(invoice.status)}
+                        <InvoiceStatusBadge status={invoice.status} />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-card-foreground">
                         {new Intl.NumberFormat('fr-DZ', {
                           style: 'currency',
                           currency: 'DZD',
@@ -544,31 +502,37 @@ export function InvoicesPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <span className={
-                          invoice.status === 'OVERDUE' ? 'text-red-600 font-medium' : ''
+                          invoice.status === 'OVERDUE' ? 'text-destructive font-medium' : ''
                         }>
                           {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('fr-FR') : '-'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
+                          type="button"
                           onClick={() => handleDownloadPDF(invoice.id)}
-                          className="text-purple-600 hover:text-purple-900 mr-3"
+                          className="text-primary hover:text-card-foreground mr-3"
+                          disabled={!invoice.id}
                           title="Télécharger PDF"
                         >
                           PDF
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleViewInvoice(invoice.id)}
-                          className="text-green-600 hover:text-green-900 mr-3"
+                          className="text-primary hover:text-card-foreground mr-3"
+                          disabled={!invoice.id}
                         >
                           Voir
                         </button>
-                        <Link href={`/invoices/${invoice.id}/edit`} className="text-blue-600 hover:text-blue-900 mr-3">
+                        <Link href={`/invoices/${invoice.id}/edit`} className="text-primary hover:text-card-foreground mr-3">
                           Modifier
                         </Link>
                         <button
+                          type="button"
                           onClick={() => handleDeleteInvoice(invoice.id)}
-                          className="text-red-600 hover:text-red-900"
+                          className="text-destructive hover:text-card-foreground"
+                          disabled={!invoice.id}
                         >
                           Supprimer
                         </button>

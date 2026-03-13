@@ -6,10 +6,18 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  darkMode: ["class"],
   theme: {
     extend: {
       colors: {
+        border: "rgb(var(--color-border))",
+        input: "rgb(var(--color-input))",
+        ring: "rgb(var(--color-ring))",
+        background: "rgb(var(--color-background))",
+        foreground: "rgb(var(--color-foreground))",
         primary: {
+          DEFAULT: "rgb(var(--color-primary))",
+          foreground: "rgb(var(--color-primary-foreground))",
           50: '#eff6ff',
           100: '#dbeafe',
           200: '#bfdbfe',
@@ -21,6 +29,30 @@ const config: Config = {
           800: '#1e40af',
           900: '#1e3a8a',
           950: '#172554',
+        },
+        secondary: {
+          DEFAULT: "rgb(var(--color-secondary))",
+          foreground: "rgb(var(--color-secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "rgb(var(--color-destructive))",
+          foreground: "rgb(var(--color-destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "rgb(var(--color-muted))",
+          foreground: "rgb(var(--color-muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "rgb(var(--color-accent))",
+          foreground: "rgb(var(--color-accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "rgb(var(--color-popover))",
+          foreground: "rgb(var(--color-popover-foreground))",
+        },
+        card: {
+          DEFAULT: "rgb(var(--color-card))",
+          foreground: "rgb(var(--color-card-foreground))",
         },
       },
       fontFamily: {

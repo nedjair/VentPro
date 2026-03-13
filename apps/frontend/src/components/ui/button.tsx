@@ -20,20 +20,20 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     children,
     ...props 
   }, ref) => {
-    const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed'
+    const baseStyles = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl border border-transparent font-medium tracking-[-0.01em] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/15 focus:ring-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50'
     
     const variants = {
-      primary: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500',
-      secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800 focus:ring-gray-500',
-      danger: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500',
-      ghost: 'hover:bg-gray-100 text-gray-700 focus:ring-gray-500',
-      outline: 'border border-gray-300 hover:bg-gray-50 text-gray-700 focus:ring-gray-500',
+      primary: 'bg-primary text-primary-foreground shadow-[0_16px_36px_rgba(41,83,138,0.24)] hover:bg-primary/92 hover:shadow-[0_20px_44px_rgba(41,83,138,0.3)] focus:ring-primary/20',
+      secondary: 'bg-secondary text-secondary-foreground shadow-none hover:bg-muted focus:ring-muted/60',
+      danger: 'bg-destructive text-destructive-foreground shadow-[0_12px_24px_rgba(239,68,68,0.16)] hover:bg-destructive/92 hover:shadow-[0_16px_30px_rgba(239,68,68,0.22)] focus:ring-destructive/20',
+      ghost: 'bg-transparent text-muted-foreground shadow-none hover:bg-accent hover:text-accent-foreground focus:ring-accent/60',
+      outline: 'border-border bg-card text-secondary-foreground shadow-[0_10px_26px_rgba(19,33,54,0.06)] hover:border-[rgba(198,168,106,0.32)] hover:bg-[rgba(198,168,106,0.08)] hover:text-foreground focus:ring-accent/60',
     }
     
     const sizes = {
-      sm: 'px-3 py-1.5 text-sm',
-      md: 'px-4 py-2 text-sm',
-      lg: 'px-6 py-3 text-base',
+      sm: 'h-10 px-4 text-sm',
+      md: 'h-11 px-5 text-sm',
+      lg: 'h-12 px-6 text-base',
     }
     
     const widthClass = fullWidth ? 'w-full' : ''

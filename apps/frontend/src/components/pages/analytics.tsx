@@ -90,8 +90,8 @@ export function AnalyticsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
-              <Calendar className="h-5 w-5 text-gray-400" />
-              <span className="text-sm text-gray-600">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
                 Dernière mise à jour: {new Date().toLocaleString('fr-FR')}
               </span>
             </div>
@@ -101,13 +101,13 @@ export function AnalyticsPage() {
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="inline-flex items-center px-3 py-2 border border-border shadow-sm text-sm leading-4 font-medium rounded-md text-card-foreground bg-card hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
               {refreshing ? 'Actualisation...' : 'Actualiser'}
             </button>
             
-            <button className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+            <button className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
               <Download className="h-4 w-4 mr-2" />
               Exporter
             </button>
@@ -115,7 +115,7 @@ export function AnalyticsPage() {
         </div>
 
         {/* Navigation par onglets */}
-        <div className="border-b border-gray-200">
+        <div className="border-b border-border">
           <nav className="-mb-px flex space-x-8" aria-label="Tabs">
             {tabs.map((tab) => {
               const Icon = tab.icon
@@ -125,20 +125,20 @@ export function AnalyticsPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm ${
                     activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-card-foreground hover:border-border'
                   }`}
                 >
                   <Icon
                     className={`mr-2 h-5 w-5 ${
                       activeTab === tab.id
-                        ? 'text-blue-500'
-                        : 'text-gray-400 group-hover:text-gray-500'
+                        ? 'text-primary'
+                        : 'text-muted-foreground group-hover:text-card-foreground'
                     }`}
                   />
                   <div className="text-left">
                     <div>{tab.name}</div>
-                    <div className="text-xs text-gray-400 font-normal">
+                    <div className="text-xs text-muted-foreground font-normal">
                       {tab.description}
                     </div>
                   </div>
@@ -154,16 +154,16 @@ export function AnalyticsPage() {
         </div>
 
         {/* Informations supplémentaires */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-accent border border-border rounded-lg p-4">
           <div className="flex">
             <div className="flex-shrink-0">
-              <BarChart3 className="h-5 w-5 text-blue-400" />
+              <BarChart3 className="h-5 w-5 text-primary" />
             </div>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">
+              <h3 className="text-sm font-medium text-card-foreground">
                 Analytics Phase 5 - Fonctionnalités Avancées
               </h3>
-              <div className="mt-2 text-sm text-blue-700">
+              <div className="mt-2 text-sm text-card-foreground">
                 <ul className="list-disc list-inside space-y-1">
                   <li>KPI temps réel avec actualisation automatique</li>
                   <li>Analyses de ventes avec comparaisons temporelles</li>
