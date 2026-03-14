@@ -1,9 +1,7 @@
 import { Product } from '@gestion/database'
 import { FastifyRequest, FastifyReply } from 'fastify'
-import { PrismaClient } from '../../prisma/generated/client'
+import { prisma } from '../lib/prisma'
 import { stockDiagnosticService } from '../services/stockDiagnosticService'
-
-const prisma = new PrismaClient()
 
 interface CorrectionAction {
   id: string

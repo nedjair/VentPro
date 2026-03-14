@@ -1,8 +1,6 @@
 import { StockMovement, Product } from '@gestion/database'
-import { PrismaClient } from '../../prisma/generated/client'
+import { prisma } from '../lib/prisma'
 import { logger } from '../utils/logger'
-
-const prisma = new PrismaClient()
 
 export interface StockAuditEntry {
   id: string

@@ -6,7 +6,7 @@ import { ExportService } from '../services/export.service'
 // AuthenticatedRequest type removed - using FastifyRequest with type assertion
 import { logger } from '../utils/logger'
 import { prisma } from '../lib/prisma'
-import { ClientType } from '../../prisma/generated/client'
+import { ClientType } from '@gestion/database'
 import path from 'path'
 import fs from 'fs'
 import { promisify } from 'util'

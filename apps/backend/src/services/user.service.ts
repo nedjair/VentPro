@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { logger } from '../lib/logger'
 import bcrypt from 'bcryptjs'
-import { UserRole } from '../../prisma/generated/client'
+import { UserRole } from '@gestion/database'
 
 export interface User {
   id: string

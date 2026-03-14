@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma'
-import { Prisma, Client, ClientType } from '../../prisma/generated/client'
+import { Prisma, Client, ClientType } from '@gestion/database'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
 
