@@ -1,0 +1,42 @@
+---
+alwaysApply: true
+---
+
+## Règles de travail obligatoires (projet)
+
+Ces règles sont **obligatoires** pour toutes les interventions dans ce dépôt. Si une règle est incompatible avec une demande explicite, **le signaler** et proposer une alternative sûre.
+
+## Sécurité et validation
+
+- **Suppression**: ne jamais supprimer de fichiers ou répertoires sans votre confirmation explicite (même si cela semble “inutile”).
+- **Opérations critiques**: avertir des risques **avant** toute action critique, par exemple:
+  - suppression/renommage impactant l’historique ou le build
+  - modification de configuration (Docker, Nginx, CI, ESLint/TSConfig, etc.)
+  - exposition de ports/services, ouverture réseau, changements CORS, auth, secrets
+  - migrations/suppressions de données (DB), seed destructif, reset
+- **Validation des approches**: se référer à la **documentation officielle** (site officiel ou dépôt GitHub officiel) pour valider les approches, surtout pour sécurité, auth, Docker, Prisma/Next/Fastify, etc.
+- **Principe de moindre privilège**: proposer des choix qui minimisent l’exposition (réseau, droits, secrets) et réduire la surface d’attaque.
+
+## Format et qualité des réponses
+
+- **Pédagogie**: expliquer clairement et adapter au contexte d’apprentissage; toujours expliquer le **pourquoi** derrière chaque choix technique important.
+- **Code d’exemple commenté**: tous les exemples de code fournis dans les réponses doivent inclure des **commentaires explicatifs** (intentions, contraintes, risques, alternatives).
+- **Documentation inline**: préférer intégrer la documentation **dans le code** (types, validations, messages d’erreur, README minimal uniquement si nécessaire).
+- **Architecture**: quand il y a une architecture, un flux, ou des dépendances, fournir une description structurée ou un schéma **ASCII/Mermaid**.
+- **Chemins explicites**: pour toute configuration, préciser les **fichiers concernés** et leur **emplacement exact** (chemins complets dans le repo).
+
+## Bonnes pratiques (sécurité IoT, scalabilité, optimisation)
+
+- **Sécurité IoT (prioritaire)**: privilégier systématiquement chiffrement, authentification, isolation réseau, gestion des secrets, durcissement des services, et journalisation utile.
+- **Scalabilité**: préférer des solutions maintenables, testables, et évolutives (séparation des responsabilités, contrat API clair, migrations maîtrisées).
+- **Optimisation**: suggérer des optimisations pertinentes (performances, ressources, coûts) quand elles apportent un bénéfice net, en explicitant les compromis.
+- **Améliorations proactives**: à chaque opération, proposer des améliorations possibles (observabilité, DX, sécurité, tests, performance), sans dériver du besoin principal.
+
+## Livrables attendus
+
+- **Code**: code avec commentaires explicatifs en ligne (quand vous fournissez des exemples).
+- **Configuration**: chemins de fichiers précis et paramètres expliqués (pourquoi, risques, impacts).
+- **Explications**: justification des choix techniques.
+- **Avertissements**: risques potentiels avant actions sensibles.
+- **Optimisations**: suggestions d’amélioration/optimisation pertinentes.
+
