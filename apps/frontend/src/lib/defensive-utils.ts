@@ -25,7 +25,6 @@ export const validators = {
   isOrderArray: (data: unknown): data is any[] => {
     // Accepter tout tableau, même vide
     if (Array.isArray(data)) {
-      console.log('✅ Validator Orders: tableau détecté avec', data.length, 'éléments')
       return true
     }
     console.warn('⚠️ Validator Orders: données non-tableau détectées')
@@ -35,7 +34,6 @@ export const validators = {
   isClientArray: (data: unknown): data is any[] => {
     // Accepter tout tableau, même vide
     if (Array.isArray(data)) {
-      console.log('✅ Validator Clients: tableau détecté avec', data.length, 'éléments')
       return true
     }
     console.warn('⚠️ Validator Clients: données non-tableau détectées')
@@ -45,7 +43,6 @@ export const validators = {
   isProductArray: (data: unknown): data is any[] => {
     // Accepter tout tableau, même vide
     if (Array.isArray(data)) {
-      console.log('✅ Validator Products: tableau détecté avec', data.length, 'éléments')
       return true
     }
     console.warn('⚠️ Validator Products: données non-tableau détectées')
@@ -290,8 +287,6 @@ export function validateApiResponse(response: unknown): boolean {
       console.warn('⚠️ Réponse API avec success=true mais sans données')
       return false
     }
-
-    console.log('✅ Réponse API valide')
     return true
   } catch (error) {
     console.error('❌ Erreur lors de la validation de la réponse API:', error)

@@ -106,7 +106,7 @@ const PurchaseOrdersPage: React.FC = () => {
       case 'form':
         return (
           <PurchaseOrderForm
-            existingOrder={state.isEditing ? state.selectedOrder : undefined}
+            existingOrder={state.isEditing ? state.selectedOrder ?? undefined : undefined}
             onSuccess={handleFormSuccess}
             onCancel={handleBack}
           />
@@ -154,7 +154,6 @@ const PurchaseOrdersPage: React.FC = () => {
 }
 
 export default PurchaseOrdersPage
-
 
 
 

@@ -74,7 +74,6 @@ export function DashboardPage() {
   useEffect(() => {
     // Attendre que l'authentification soit hydratée et que l'utilisateur soit connecté
     if (isHydrated && isAuthenticated) {
-      console.log('🔍 Dashboard: Authentification confirmée, chargement des données...')
       loadDashboardData()
 
       // Actualiser les données toutes les 30 secondes
@@ -82,18 +81,15 @@ export function DashboardPage() {
 
       return () => clearInterval(interval)
     } else if (isHydrated && !isAuthenticated) {
-      console.log('⚠️ Dashboard: Utilisateur non authentifié')
       setLoading(false)
     }
   }, [isHydrated, isAuthenticated])
 
   const loadDashboardData = async () => {
     try {
-      console.log('🔍 Dashboard: Début du chargement des données...')
       const response = await api.getDashboardStats()
 
       if (response.success && response.data) {
-        console.log('✅ Dashboard: Données chargées avec succès')
         setStats(response.data)
         setError(null)
       } else {

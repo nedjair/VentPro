@@ -36,33 +36,15 @@ export function ProtectedRouteDirect({
   useEffect(() => {
     if (!authState.isMounted) return
 
-    console.log('🔄 ProtectedRouteDirect: Vérification auth après hydratation', {
-      pathname,
-      timestamp: new Date().toISOString()
-    })
-
     try {
       // Vérifier localStorage
       const userStr = localStorage.getItem('auth-user')
       const tokensStr = localStorage.getItem('auth-tokens')
-
-      console.log('📊 ProtectedRouteDirect: Données localStorage', {
-        hasUser: !!userStr,
-        hasTokens: !!tokensStr,
-        userStr: userStr?.substring(0, 100) + '...',
-        tokensStr: tokensStr?.substring(0, 100) + '...'
-      })
       
       if (userStr && tokensStr) {
         try {
           const user = JSON.parse(userStr)
           const tokens = JSON.parse(tokensStr)
-          
-          console.log('✅ ProtectedRouteDirect: Données d\'authentification trouvées', {
-            userEmail: user?.email,
-            userRole: user?.role,
-            hasAccessToken: !!tokens?.accessToken
-          })
           
           // Vérifier si le token n'est pas expiré
           if (tokens.accessToken) {
@@ -72,7 +54,6 @@ export function ProtectedRouteDirect({
               const now = Math.floor(Date.now() / 1000)
               
               if (payload.exp && payload.exp > now) {
-                console.log('✅ ProtectedRouteDirect: Token valide')
                 setAuthState(prev => ({
                   ...prev,
                   isChecked: true,
@@ -80,7 +61,6 @@ export function ProtectedRouteDirect({
                   user: user
                 }))
               } else {
-                console.log('⚠️ ProtectedRouteDirect: Token expiré')
                 setAuthState(prev => ({
                   ...prev,
                   isChecked: true,
@@ -90,7 +70,6 @@ export function ProtectedRouteDirect({
                 }))
               }
             } catch (e) {
-              console.log('⚠️ ProtectedRouteDirect: Erreur décodage token', e)
               // Si on ne peut pas décoder le token, on considère l'utilisateur comme authentifié
               // car les données sont présentes
               setAuthState(prev => ({
@@ -101,7 +80,6 @@ export function ProtectedRouteDirect({
               }))
             }
           } else {
-            console.log('❌ ProtectedRouteDirect: Pas de token d\'accès')
             setAuthState(prev => ({
               ...prev,
               isChecked: true,
@@ -111,7 +89,6 @@ export function ProtectedRouteDirect({
             }))
           }
         } catch (e) {
-          console.log('❌ ProtectedRouteDirect: Erreur parsing JSON', e)
           setAuthState(prev => ({
             ...prev,
             isChecked: true,
@@ -121,7 +98,6 @@ export function ProtectedRouteDirect({
           }))
         }
       } else {
-        console.log('❌ ProtectedRouteDirect: Pas de données d\'authentification')
         setAuthState(prev => ({
           ...prev,
           isChecked: true,
@@ -131,7 +107,6 @@ export function ProtectedRouteDirect({
         }))
       }
     } catch (e) {
-      console.log('❌ ProtectedRouteDirect: Erreur vérification auth', e)
       setAuthState(prev => ({
         ...prev,
         isChecked: true,
@@ -156,9 +131,6 @@ export function ProtectedRouteDirect({
 
   // Si l'utilisateur n'est pas authentifié, rediriger vers la page de connexion
   if (!authState.isAuthenticated) {
-    console.log('🚫 ProtectedRouteDirect: Non authentifié - Redirection vers /login', {
-      error: authState.error
-    })
 
     // Redirection immédiate
     router.push('/login')
@@ -175,10 +147,6 @@ export function ProtectedRouteDirect({
 
   // Vérification des rôles si requis
   if (requiredRole && authState.user?.role !== requiredRole) {
-    console.log('🚫 ProtectedRouteDirect: Rôle insuffisant', { 
-      required: requiredRole, 
-      actual: authState.user?.role 
-    })
     
     return fallback || (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -191,12 +159,6 @@ export function ProtectedRouteDirect({
       </div>
     )
   }
-
-  // Tout est OK, afficher le contenu
-  console.log('✅ ProtectedRouteDirect: Authentification réussie - Affichage du contenu', {
-    user: authState.user?.email,
-    role: authState.user?.role
-  })
   
   return <>{children}</>
 }

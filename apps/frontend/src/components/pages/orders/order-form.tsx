@@ -88,8 +88,8 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
       }
 
       const [clientsResponse, productsResponse] = await Promise.all([
-        api.getClients({ limit: 100 }),
-        api.getProducts({ limit: 100 })
+        api.getClients({ limit: 20 }),
+        api.getProducts({ limit: 20 })
       ])
 
       if (clientsResponse.success && clientsResponse.data) {
@@ -257,8 +257,6 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
         }))
       }
 
-      console.log(`[orders] ${isEditing ? 'Modification' : 'Creation'} de la commande...`)
-
       if (isEditing && orderId) {
         // @ts-ignore - Nous utilisons un type partiel pour la mise a jour
         const response = await api.updateOrder(orderId, orderData)
@@ -266,7 +264,6 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
           setError(response.message || 'Erreur lors de la mise a jour de la commande')
           return
         }
-        console.log('[orders] Commande modifiee avec succes:', response)
       } else {
         // @ts-ignore - Nous utilisons un type partiel pour la creation
         const response = await api.createOrder(orderData)
@@ -274,7 +271,6 @@ export function OrderFormPage({ orderId }: OrderFormPageProps) {
           setError(response.message || `Erreur lors de la creation du ${isQuoteMode ? 'devis' : 'commande'}`)
           return
         }
-        console.log(`[orders] ${isQuoteMode ? 'Devis' : 'Commande'} cree(e) avec succes:`, response)
       }
 
       router.push(isQuoteMode ? '/orders?tab=quotes' : '/orders')

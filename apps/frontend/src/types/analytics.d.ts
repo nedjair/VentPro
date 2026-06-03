@@ -69,41 +69,50 @@ declare module '@/lib/api' {
   export interface KPIMetrics {
     revenue: {
       current: number;
-      previous: number;
-      trend: 'up' | 'down' | 'stable';
-      percentage: number;
-      growth: number;
-      target: number;
+      target: number | null;
+      growth: number | null;
+      targetConfigured: boolean;
       currency: string;
-      currentMonth: number;
     };
     orders: {
       current: number;
-      previous: number;
-      trend: 'up' | 'down' | 'stable';
-      percentage: number;
-      growth: number;
-      target: number;
+      target: number | null;
+      growth: number | null;
+      targetConfigured: boolean;
+      pending: number;
     };
     clients: {
       current: number;
-      previous: number;
-      trend: 'up' | 'down' | 'stable';
-      percentage: number;
-      growth: number;
-      target: number;
-    };
-    aov: {
-      current: number;
-      previous: number;
-      trend: 'up' | 'down' | 'stable';
-      percentage: number;
+      target: number | null;
+      growth: number | null;
+      targetConfigured: boolean;
+      newThisMonth: number;
     };
     conversion: {
       rate: number;
-      target: number;
-      growth: number;
+      target: number | null;
+      growth: number | null;
+      targetConfigured: boolean;
+      quotes: number;
+      convertedQuotes: number;
     };
+    products: {
+      total: number;
+      lowStock: number;
+      outOfStock: number;
+      soldThisMonth: number;
+    };
+    invoices: {
+      total: number;
+      overdue: number;
+      paid: number;
+    };
+    alerts: {
+      lowStock: number;
+      overdueInvoices: number;
+      pendingOrders: number;
+    };
+    lastUpdated: string;
   }
 
   export interface ProductAnalytics {
@@ -120,10 +129,11 @@ declare module '@/lib/api' {
       invoiceCount?: number;
     }>;
     categoryDistribution: Array<{
-      category: string;
+      category: string | { name: string };
       count: number;
       percentage: number;
       revenue?: number;
+      totalRevenue?: number;
       quantity?: number;
       productCount?: number;
     }>;

@@ -48,9 +48,8 @@ export function SuppliersPage() {
 
   // Détecter le paramètre de rafraîchissement après création/modification
   useEffect(() => {
-    const refreshParam = searchParams.get('refresh')
+    const refreshParam = searchParams?.get('refresh')
     if (refreshParam) {
-      console.log('🔄 Rafraîchissement détecté après création/modification de fournisseur')
       loadSuppliers()
 
       // Nettoyer l'URL en supprimant le paramètre refresh
@@ -74,13 +73,13 @@ export function SuppliersPage() {
       }
 
       // CORRECTION : Gestion de la structure paginée data.data.data
-      const suppliersData = ensureArray(response.data?.data?.data || response.data?.data || response.data)
+      const payload = response as any
+      const suppliersData = ensureArray(payload?.data?.data?.data || payload?.data?.data || payload?.data || [])
 
       setSuppliers(suppliersData)
       
       // Si aucun fournisseur n'est trouvé, afficher un message informatif
       if (suppliersData.length === 0) {
-        console.log('Aucun fournisseur trouvé dans la base de données')
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des fournisseurs:', err)
@@ -169,7 +168,6 @@ export function SuppliersPage() {
     }
 
     try {
-      console.log('Suppression du fournisseur:', supplierId)
 
       await api.deleteSupplier(supplierId)
       await loadSuppliers() // Recharger la liste
@@ -177,7 +175,6 @@ export function SuppliersPage() {
         type: 'success',
         message: 'Fournisseur supprimé avec succès'
       })
-      console.log('✅ Fournisseur supprimé avec succès')
     } catch (err: any) {
       console.error('❌ Erreur lors de la suppression:', err)
 

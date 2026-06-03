@@ -80,7 +80,10 @@ export function useUsers(options: UseUsersOptions = {}): UseUsersReturn {
         limit: pagination.limit
       }
 
-      const result = await userService.getUsers(filters, paginationOptions, searchTerm)
+      const result = await userService.getUsers(
+        { ...filters, search: searchTerm || undefined },
+        paginationOptions
+      )
 
       setUsers(result.users || [])
       setPagination(prev => ({

@@ -51,16 +51,12 @@ export default function TestStockStatusPage() {
     setError(null)
 
     try {
-      console.log('🔄 Chargement des données de test...')
 
       // Charger les produits et les alertes en parallèle
       const [productsResponse, alertsResponse] = await Promise.all([
         api.get('/api/v1/products'),
         api.get('/api/v1/stock/alerts')
       ])
-
-      console.log('📦 Produits:', productsResponse.data)
-      console.log('🚨 Alertes:', alertsResponse.data)
 
       if (productsResponse.data.success) {
         const productsData = productsResponse.data.data?.data || productsResponse.data.data || []

@@ -70,7 +70,6 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
   const [categoriesError, setCategoriesError] = useState<string | null>(null)
 
   useEffect(() => {
-    console.log('🚀 [ProductForm] Initialisation du composant...')
     loadSuppliers()
     loadCategories()
     if (mode === 'edit' && productId) {
@@ -82,54 +81,41 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
     try {
       setLoadingSuppliers(true)
       setSuppliersError(null)
-      console.log('🔍 [ProductForm] Début du chargement des fournisseurs...')
-
-      // Vérifier l'authentification d'abord
-      console.log('🔐 [ProductForm] Vérification de l\'authentification...')
       const isAuthenticated = await ensureAuthentication()
       if (!isAuthenticated) {
         console.warn('⚠️ [ProductForm] Authentification échouée')
         setSuppliersError('Erreur d\'authentification. Veuillez vous reconnecter.')
         return
       }
-
-      // Appel API avec authentification
-      console.log('📡 [ProductForm] Appel API getSuppliers avec authentification...')
       const response = await api.getSuppliers({
         isActive: true,
         limit: 100
       })
 
-      console.log('📥 [ProductForm] Réponse API reçue:', response)
+      const payload = response.data as any
 
-      if (response.success && response.data) {
+      if (payload?.success && payload?.data) {
         // Gérer les différents formats de réponse possibles
-        let suppliersData
+        let suppliersData: any[] = []
 
-        if (Array.isArray(response.data)) {
+        if (Array.isArray(payload.data)) {
           // Format direct: { success: true, data: [...] }
-          suppliersData = response.data
-          console.log('📋 [ProductForm] Format de réponse: tableau direct')
-        } else if (response.data.data?.data && Array.isArray(response.data.data.data)) {
+          suppliersData = payload.data
+        } else if (payload.data?.data?.data && Array.isArray(payload.data.data.data)) {
           // Format paginé avec double data: { success: true, data: { data: { data: [...] } } }
-          suppliersData = response.data.data.data
-          console.log('📋 [ProductForm] Format de réponse: paginé avec data.data.data')
-        } else if (response.data.data && Array.isArray(response.data.data)) {
+          suppliersData = payload.data.data.data
+        } else if (payload.data?.data && Array.isArray(payload.data.data)) {
           // Format paginé: { success: true, data: { data: [...], total: X } }
-          suppliersData = response.data.data
-          console.log('📋 [ProductForm] Format de réponse: paginé avec data.data')
-        } else if (response.data.suppliers && Array.isArray(response.data.suppliers)) {
+          suppliersData = payload.data.data
+        } else if (payload.data?.suppliers && Array.isArray(payload.data.suppliers)) {
           // Format alternatif: { success: true, data: { suppliers: [...] } }
-          suppliersData = response.data.suppliers
-          console.log('📋 [ProductForm] Format de réponse: avec propriété suppliers')
+          suppliersData = payload.data.suppliers
         } else {
-          console.warn('⚠️ [ProductForm] Format de réponse inattendu:', response.data)
+          console.warn('⚠️ [ProductForm] Format de réponse inattendu:', payload)
           suppliersData = []
         }
 
         const safeSuppliers = Array.isArray(suppliersData) ? suppliersData : []
-
-        console.log(`✅ [ProductForm] ${safeSuppliers.length} fournisseurs chargés avec authentification`)
         setSuppliers(safeSuppliers)
         setSuppliersError(null)
 
@@ -230,7 +216,6 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
 
     try {
       setLoading(true)
-      console.log('🔍 Chargement du produit:', productId)
       
       // S'assurer que l'utilisateur est authentifié
       const isAuthenticated = await ensureAuthentication()
@@ -317,23 +302,23 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
       return 'Le prix doit être positif'
     }
 
-    if (formData.costPrice < 0) {
+    if (Number(formData.costPrice || 0) < 0) {
       return 'Le prix d\'achat doit être positif'
     }
 
-    if (formData.stock < 0) {
+    if (Number(formData.stock || 0) < 0) {
       return 'Le stock doit être positif'
     }
 
-    if (formData.minStock < 0) {
+    if (Number(formData.minStock || 0) < 0) {
       return 'Le stock minimum doit être positif'
     }
 
-    if (formData.maxStock !== null && formData.maxStock < 0) {
+    if (formData.maxStock !== null && Number(formData.maxStock || 0) < 0) {
       return 'Le stock maximum doit être positif'
     }
 
-    if (formData.maxStock !== null && formData.maxStock < formData.minStock) {
+    if (formData.maxStock !== null && Number(formData.maxStock || 0) < Number(formData.minStock || 0)) {
       return 'Le stock maximum doit être supérieur ou égal au stock minimum'
     }
 
@@ -359,8 +344,6 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
         setError('Erreur d\'authentification. Veuillez vous connecter.')
         return
       }
-      
-      console.log(`💾 ${mode === 'create' ? 'Création' : 'Modification'} du produit...`)
       const payload: ProductWriteInput = {
         ...formData,
         categoryId: formData.categoryId || undefined,
@@ -369,10 +352,8 @@ export function ProductFormPage({ mode, productId }: ProductFormProps) {
       
       if (mode === 'create') {
         const response = await api.createProduct(payload)
-        console.log('✅ Produit créé avec succès:', response)
       } else if (productId) {
         const response = await api.updateProduct(productId, payload)
-        console.log('✅ Produit modifié avec succès:', response)
       }
       
       // Redirection vers la liste des produits

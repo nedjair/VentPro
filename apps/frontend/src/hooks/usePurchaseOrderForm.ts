@@ -227,7 +227,6 @@ export function usePurchaseOrderForm(
     setState(prev => {
       if (prev.validation.isValid !== isValid ||
           JSON.stringify(prev.validation.errors) !== JSON.stringify(errors)) {
-        console.log('🔧 Validation automatique mise à jour:', { isValid, errors })
         return {
           ...prev,
           validation: {
@@ -329,43 +328,13 @@ export function usePurchaseOrderForm(
   }, [state.formData.items])
 
   const fetchSuppliers = useCallback(async () => {
-    console.log('🔍 fetchSuppliers: === DÉBUT DU DIAGNOSTIC ===')
-    console.log('🔍 fetchSuppliers: user:', user)
-    console.log('🔍 fetchSuppliers: isAuthenticated:', isAuthenticated)
-    console.log('🔍 fetchSuppliers: tokens:', tokens)
-
-    // SOLUTION: Forcer l'exécution car les API fonctionnent selon les logs
-    console.log('🔍 fetchSuppliers: 🚀 FORÇAGE - Les API marchent, on continue sans vérification')
 
     try {
-      console.log('🔍 fetchSuppliers: ✅ Début du chargement des fournisseurs')
       if (user) {
-        console.log('🔍 fetchSuppliers: 👤 Utilisateur:', {
-          id: user.id,
-          email: user.email,
-          companyId: user.companyId,
-          role: user.role
-        })
-        console.log('🔍 fetchSuppliers: 🏢 CompanyId pour filtrage:', user.companyId)
       } else {
-        console.log('🔍 fetchSuppliers: ⚠️ Pas d\'utilisateur, mais on continue avec les tokens')
       }
       setState(prev => ({ ...prev, loadingSuppliers: true }))
-
-      // Test avec api.get directement - l'API filtre automatiquement par companyId
-      console.log('🔍 fetchSuppliers: Tentative avec api.get...')
-      console.log('🔍 fetchSuppliers: URL:', '/api/v1/suppliers?isActive=true&limit=100')
-      console.log('🔍 fetchSuppliers: L\'API va filtrer par companyId:', user?.companyId)
       const response = await api.get('/api/v1/suppliers?isActive=true&limit=100')
-      console.log('🔍 fetchSuppliers: ✅ Réponse API reçue')
-      console.log('🔍 fetchSuppliers: 📊 Status:', response.status)
-      console.log('🔍 fetchSuppliers: 📋 Headers:', response.headers)
-      console.log('🔍 fetchSuppliers: 📦 response.data:', response.data)
-      console.log('🔍 fetchSuppliers: 🎯 response.data.success:', response.data.success)
-      console.log('🔍 fetchSuppliers: 🎯 response.data.data:', response.data.data)
-      console.log('🔍 fetchSuppliers: 🎯 Type de response.data.data:', typeof response.data.data)
-      console.log('🔍 fetchSuppliers: 🎯 response.data.data?.data:', response.data.data?.data)
-      console.log('🔍 fetchSuppliers: 🎯 Type de response.data.data?.data:', typeof response.data.data?.data)
 
       // Gestion robuste de la réponse - CORRECTION DU BUG !
       let suppliers = []
@@ -381,31 +350,18 @@ export function usePurchaseOrderForm(
         suppliers = response.data.suppliers
       }
 
-      console.log('🔍 fetchSuppliers: 🎯 Fournisseurs extraits:', suppliers)
-      console.log('🔍 fetchSuppliers: 📊 Nombre de fournisseurs:', suppliers.length)
-      console.log('🔍 fetchSuppliers: 🏪 Premier fournisseur:', suppliers[0])
-      console.log('🔍 fetchSuppliers: 🏪 Tous les fournisseurs:', suppliers.map(s => ({ id: s.id, name: s.name })))
-
       setState(prev => {
-        console.log('🔍 fetchSuppliers: 🔄 Mise à jour de l\'état...')
-        console.log('🔍 fetchSuppliers: 📊 État précédent suppliers:', prev.suppliers.length)
-        console.log('🔍 fetchSuppliers: 📊 Nouveaux suppliers:', suppliers.length)
 
         const newState = {
           ...prev,
           suppliers: suppliers,
           loadingSuppliers: false
         }
-
-        console.log('🔍 fetchSuppliers: 📊 Nouvel état suppliers:', newState.suppliers.length)
         return newState
       })
 
-      console.log('🔍 fetchSuppliers: ✅ État mis à jour avec', suppliers.length, 'fournisseurs')
-
       // Vérification après un délai pour s'assurer que l'état est bien mis à jour
       setTimeout(() => {
-        console.log('🔍 fetchSuppliers: 🕐 Vérification après 100ms - état actuel:', state.suppliers.length)
       }, 100)
 
       if (suppliers.length === 0) {
@@ -432,13 +388,6 @@ export function usePurchaseOrderForm(
   }, [user, tokens, isAuthenticated])
 
   const fetchProducts = useCallback(async () => {
-    console.log('🔍 fetchProducts: === DÉBUT DU DIAGNOSTIC ===')
-    console.log('🔍 fetchProducts: user:', user)
-    console.log('🔍 fetchProducts: isAuthenticated:', isAuthenticated)
-    console.log('🔍 fetchProducts: tokens:', tokens)
-
-    // SOLUTION: Forcer l'exécution car les API fonctionnent selon les logs
-    console.log('🔍 fetchProducts: 🚀 FORÇAGE - Les API marchent, on continue sans vérification')
 
     try {
       setState(prev => ({ ...prev, loadingProducts: true }))
@@ -448,7 +397,6 @@ export function usePurchaseOrderForm(
       if (response.data.success) {
         // CORRECTION : Même problème que pour les fournisseurs - structure paginée
         const products = response.data.data?.data || response.data.data || []
-        console.log('🔍 fetchProducts: Produits extraits:', products.length)
         setState(prev => ({
           ...prev,
           products: products,
@@ -463,14 +411,6 @@ export function usePurchaseOrderForm(
 
   // Charger les données initiales
   useEffect(() => {
-    console.log('🔍 useEffect: Vérification des conditions de chargement...')
-    console.log('🔍 useEffect: user:', !!user)
-    console.log('🔍 useEffect: isAuthenticated:', isAuthenticated)
-    console.log('🔍 useEffect: tokens:', !!tokens?.accessToken)
-
-    // SOLUTION: Forcer le chargement même si le contexte n'est pas encore synchronisé
-    // Puisque les API fonctionnent (on voit les succès dans les logs), on force le chargement
-    console.log('🔍 useEffect: 🚀 FORÇAGE DU CHARGEMENT - Les API fonctionnent selon les logs')
     fetchSuppliers()
     fetchProducts()
 

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { BarChart3, TrendingUp, TrendingDown } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { BarChart3, Package2 } from 'lucide-react'
 import { api } from '@/lib/api'
 
 interface ChartData {
@@ -29,38 +29,12 @@ export function SalesChart() {
   const [error, setError] = useState<string | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState('6m')
 
-  useEffect(() => {
-    loadChartData()
-  }, [selectedPeriod])
-
-  const loadChartData = async () => {
+  const loadChartData = useCallback(async () => {
     try {
-      console.log('🔍 Chargement des données de graphique...')
-      // Pour l'instant, utilisons l'API dashboard qui contient getChartData
-      const response = await api.getDashboardStats()
+      const response = await api.getDashboardCharts()
 
       if (response.success && response.data) {
-        // Créer des données de graphique basées sur les stats du dashboard
-        const mockChartData: ChartData = {
-          salesTrend: [
-            { month: 'Jan', sales: response.data.sales.previousMonth * 0.8, orders: response.data.orders.total * 0.7 },
-            { month: 'Fév', sales: response.data.sales.previousMonth * 0.9, orders: response.data.orders.total * 0.8 },
-            { month: 'Mar', sales: response.data.sales.previousMonth, orders: response.data.orders.total * 0.9 },
-            { month: 'Avr', sales: response.data.sales.previousMonth * 1.1, orders: response.data.orders.total * 0.95 },
-            { month: 'Mai', sales: response.data.sales.previousMonth * 1.2, orders: response.data.orders.total },
-            { month: 'Juin', sales: response.data.sales.currentMonth, orders: response.data.orders.total * 1.1 },
-          ],
-          topProducts: [
-            { id: '1', name: 'Produit A', sales: 25, revenue: response.data.sales.currentMonth * 0.3 },
-            { id: '2', name: 'Produit B', sales: 18, revenue: response.data.sales.currentMonth * 0.25 },
-            { id: '3', name: 'Produit C', sales: 15, revenue: response.data.sales.currentMonth * 0.2 },
-          ],
-          clientDistribution: [
-            { type: 'Entreprises', count: response.data.clients.companies, percentage: (response.data.clients.companies / response.data.clients.total) * 100 },
-            { type: 'Particuliers', count: response.data.clients.individuals, percentage: (response.data.clients.individuals / response.data.clients.total) * 100 }
-          ]
-        }
-        setChartData(mockChartData)
+        setChartData(response.data)
         setError(null)
       } else {
         throw new Error('Données de graphique non disponibles')
@@ -71,7 +45,11 @@ export function SalesChart() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void loadChartData()
+  }, [loadChartData])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('fr-DZ', {
@@ -83,6 +61,12 @@ export function SalesChart() {
   // Programmation défensive : s'assurer que les données sont des tableaux
   const safeSalesTrend = Array.isArray(chartData?.salesTrend) ? chartData.salesTrend : []
   const safeTopProducts = Array.isArray(chartData?.topProducts) ? chartData.topProducts : []
+  const safeClientDistribution = Array.isArray(chartData?.clientDistribution) ? chartData.clientDistribution : []
+  const visibleSalesTrend = selectedPeriod === '7d'
+    ? safeSalesTrend.slice(-1)
+    : selectedPeriod === '30d'
+      ? safeSalesTrend.slice(-2)
+      : safeSalesTrend
 
   return (
     <div className="card">
@@ -139,13 +123,13 @@ export function SalesChart() {
               <div>
                 <h4 className="text-sm font-medium text-card-foreground mb-3">Tendance mensuelle</h4>
                 <div className="grid grid-cols-6 gap-2">
-                  {safeSalesTrend.map((item, index) => (
-                    <div key={item.month} className="text-center">
+                  {visibleSalesTrend.map((item, index) => (
+                    <div key={`${item.month}-${index}`} className="text-center">
                       <div className="text-xs text-muted-foreground mb-1">{item.month}</div>
                       <div
                         className="bg-primary rounded-t"
                         style={{
-                          height: `${Math.max(20, (item.sales / Math.max(...safeSalesTrend.map(s => s.sales))) * 80)}px`
+                          height: `${Math.max(20, (item.sales / Math.max(...visibleSalesTrend.map(s => s.sales), 1)) * 80)}px`
                         }}
                       ></div>
                       <div className="text-xs text-muted-foreground mt-1">
@@ -162,7 +146,7 @@ export function SalesChart() {
               <div>
                 <h4 className="text-sm font-medium text-card-foreground mb-3">Top produits</h4>
                 <div className="space-y-2">
-                  {safeTopProducts.slice(0, 3).map((product, index) => (
+                  {safeTopProducts.slice(0, 5).map((product, index) => (
                     <div key={product.id} className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <div className={`w-2 h-2 rounded-full ${index === 0 ? 'bg-primary' : index === 1 ? 'bg-accent' : 'bg-secondary'}`}></div>
@@ -177,9 +161,30 @@ export function SalesChart() {
                 </div>
               </div>
             )}
+
+            {safeClientDistribution.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-card-foreground mb-3">Répartition des clients</h4>
+                <div className="space-y-2">
+                  {safeClientDistribution.map((item) => (
+                    <div key={item.type} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Package2 className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-card-foreground">{item.type}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-card-foreground">{item.count}</div>
+                        <div className="text-xs text-muted-foreground">{item.percentage.toFixed(1)}%</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   )
 }
+

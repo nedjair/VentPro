@@ -39,7 +39,6 @@ export function ProductDetailsPage({ productId }: ProductDetailsProps) {
   const loadProduct = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement du produit:', productId)
       
       // S'assurer que l'utilisateur est authentifié
       const isAuthenticated = await ensureAuthentication()
@@ -73,7 +72,6 @@ export function ProductDetailsPage({ productId }: ProductDetailsProps) {
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer le produit "${product.name}" ?\n\nCette action est irréversible.`)) {
       try {
-        console.log('Suppression du produit:', productId)
         
         // S'assurer que l'utilisateur est authentifié
         const isAuthenticated = await ensureAuthentication()
@@ -83,7 +81,6 @@ export function ProductDetailsPage({ productId }: ProductDetailsProps) {
         }
 
         await api.deleteProduct(productId)
-        console.log('✅ Produit supprimé avec succès')
         
         // Redirection vers la liste des produits
         router.push('/products')

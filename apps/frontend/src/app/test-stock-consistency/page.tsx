@@ -75,16 +75,12 @@ export default function TestStockConsistencyPage() {
     setError(null)
 
     try {
-      console.log('🔄 Chargement des données pour comparaison...')
 
       // Charger les produits et les stocks en parallèle
       const [productsResponse, stocksResponse] = await Promise.all([
         api.get('/api/v1/products'),
         api.get('/api/v1/stock')
       ])
-
-      console.log('📦 Produits:', productsResponse.data)
-      console.log('📋 Stocks:', stocksResponse.data)
 
       let productsData: Product[] = []
       let stocksData: Stock[] = []

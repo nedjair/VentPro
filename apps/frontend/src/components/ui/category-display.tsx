@@ -4,7 +4,7 @@ import { Category } from '@/lib/api'
 import { Tag, Folder } from 'lucide-react'
 
 interface CategoryDisplayProps {
-  category?: Category | string | null
+  category?: Category | string | { id: string; name: string; description?: string } | null
   variant?: 'badge' | 'text' | 'full'
   showIcon?: boolean
   className?: string

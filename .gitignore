@@ -186,3 +186,4 @@ quick-start.js
 # Fichiers de diagnostic
 *-diagnostic-*.json
 *-report-*.json
+.opencode/

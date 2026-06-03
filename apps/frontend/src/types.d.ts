@@ -31,6 +31,7 @@ declare module '@/lib/api' {
   export interface Client {
     id: string;
     type: 'COMPANY' | 'INDIVIDUAL';
+    name?: string;
     firstName?: string;
     lastName?: string;
     companyName?: string;
@@ -68,7 +69,7 @@ declare module '@/lib/api' {
     isService: boolean;
     unit: string;
     categoryId?: string;
-    category?: string | Category;
+    category?: Category;
     supplierId?: string;
     supplier?: Supplier;
     images?: ProductImage[];
@@ -76,6 +77,26 @@ declare module '@/lib/api' {
     allowBackorder?: boolean;
     createdAt: string;
     updatedAt: string;
+  }
+
+  export interface ProductWriteInput {
+    name: string;
+    sku?: string;
+    barcode?: string;
+    description?: string;
+    categoryId?: string;
+    price: number;
+    costPrice?: number;
+    stock?: number;
+    stockQuantity?: number;
+    minStock?: number;
+    maxStock?: number | null;
+    unit?: string;
+    isActive?: boolean;
+    isService?: boolean;
+    trackStock?: boolean;
+    allowBackorder?: boolean;
+    vatRate?: number;
   }
 
   export interface Category {
@@ -88,6 +109,12 @@ declare module '@/lib/api' {
     products?: Product[];
     createdAt: string;
     updatedAt: string;
+  }
+
+  export interface CategoryWriteInput {
+    name: string;
+    description?: string;
+    parentId?: string;
   }
 
   export interface Supplier {
@@ -116,9 +143,218 @@ declare module '@/lib/api' {
     notes?: string;
     tags?: string[];
     productsCount?: number;
+    purchasesCount?: number;
+    products?: SupplierProductSummary[];
     deliveryTerms?: string;
     createdAt?: string;
     updatedAt?: string;
+  }
+
+  export interface SupplierProductSummary {
+    id: string;
+    name: string;
+    sku?: string;
+    price?: number;
+    stockQuantity?: number;
+    isActive?: boolean;
+  }
+
+  export type PurchaseOrderStatus = 'DRAFT' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
+
+  export interface PurchaseOrderItem {
+    id: string;
+    quantity: number;
+    receivedQty: number;
+    unitPrice: number;
+    total: number;
+    productId: string;
+    purchaseOrderId: string;
+    product: {
+      id: string;
+      name: string;
+      sku: string;
+      description?: string;
+      unit?: string;
+      category?: { id: string; name: string };
+    };
+    receptionItems?: GoodsReceptionItem[];
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  export interface GoodsReceptionItem {
+    id: string;
+    quantityReceived: number;
+    quantityExpected: number;
+    unitCost?: number;
+    notes?: string;
+    purchaseOrderItemId: string;
+    productId: string;
+    goodsReceptionId: string;
+    product: { id: string; name: string; sku: string };
+    purchaseOrderItem: { id: string; quantity: number; unitPrice: number };
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  export interface GoodsReception {
+    id: string;
+    number: string;
+    receptionDate: string;
+    notes?: string;
+    isComplete: boolean;
+    purchaseOrderId: string;
+    companyId: string;
+    receivedById: string;
+    receivedBy: { id: string; firstName: string; lastName: string; email: string };
+    items: GoodsReceptionItem[];
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  export interface PurchaseOrder {
+    id: string;
+    number: string;
+    status: PurchaseOrderStatus;
+    orderDate: string;
+    expectedDate?: string;
+    notes?: string;
+    subtotal: number;
+    taxAmount: number;
+    total: number;
+    supplierId: string;
+    companyId: string;
+    createdById: string;
+    supplier: {
+      id: string;
+      name: string;
+      email?: string;
+      phone?: string;
+      contactName?: string;
+      address?: string;
+      city?: string;
+      country?: string;
+      paymentTerms?: number;
+      currency?: string;
+    };
+    createdBy: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+    };
+    items: PurchaseOrderItem[];
+    receptions: GoodsReception[];
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  export interface CreatePurchaseOrderItem {
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+  }
+
+  export interface CreatePurchaseOrderData {
+    supplierId: string;
+    orderDate?: string;
+    expectedDate?: string;
+    notes?: string;
+    status?: PurchaseOrderStatus;
+    items: CreatePurchaseOrderItem[];
+  }
+
+  export interface UpdatePurchaseOrderData {
+    supplierId?: string;
+    orderDate?: string;
+    expectedDate?: string;
+    notes?: string;
+    status?: PurchaseOrderStatus;
+    items?: CreatePurchaseOrderItem[];
+  }
+
+  export interface ReceiveGoodsItem {
+    purchaseOrderItemId: string;
+    productId: string;
+    quantityReceived: number;
+    quantityExpected: number;
+    unitCost?: number;
+    notes?: string;
+  }
+
+  export interface CreateGoodsReceptionData {
+    purchaseOrderId: string;
+    receptionDate?: string;
+    notes?: string;
+    items: ReceiveGoodsItem[];
+  }
+
+  export interface PurchaseOrderFilters {
+    search?: string;
+    supplierId?: string;
+    status?: PurchaseOrderStatus;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }
+
+  export interface PurchaseOrderStats {
+    totalOrders: number;
+    totalAmount: number;
+    pendingOrders: number;
+    receivedOrders: number;
+    averageOrderValue: number;
+    topSuppliers: Array<{
+      supplier: { id: string; name: string };
+      orderCount: number;
+      totalAmount: number;
+    }>;
+    monthlyTrends: Array<{
+      month: string;
+      orderCount: number;
+      totalAmount: number;
+    }>;
+  }
+
+  export interface PurchaseOrderResponse {
+    success: boolean;
+    data: PurchaseOrder;
+    message?: string;
+  }
+
+  export interface PurchaseOrderListResponse {
+    success: boolean;
+    data: PurchaseOrder[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    message?: string;
+  }
+
+  export interface PurchaseOrderStatsResponse {
+    success: boolean;
+    data: PurchaseOrderStats;
+    message?: string;
+  }
+
+  export interface KpiTargetSettings {
+    revenueTarget: number | null;
+    ordersTarget: number | null;
+    clientsTarget: number | null;
+    conversionRateTarget: number | null;
+    updatedAt: string | null;
+    hasConfiguredTargets: boolean;
+  }
+
+  export interface UpdateKpiTargetSettingsPayload {
+    revenueTarget: number | null;
+    ordersTarget: number | null;
+    clientsTarget: number | null;
+    conversionRateTarget: number | null;
   }
 
   export interface ProductImage {
@@ -132,12 +368,17 @@ declare module '@/lib/api' {
   export interface Order {
     id: string;
     reference: string;
+    number?: string;
     clientId: string;
     client?: Client;
     status: string;
+    type?: 'QUOTE' | 'ORDER' | string;
     totalHT: number;
     totalTTC: number;
     totalVAT: number;
+    subtotal?: number;
+    vatAmount?: number;
+    total?: number;
     items: OrderItem[];
     notes?: string;
     createdAt: string;
@@ -169,10 +410,20 @@ declare module '@/lib/api' {
     order?: Order;
     status: string;
     type?: 'INVOICE' | 'CREDIT_NOTE' | 'QUOTE';
+    salesperson?: {
+      id?: string;
+      name?: string;
+      email?: string;
+    };
     totalHT: number;
     totalTTC: number;
     totalVAT: number;
     total?: number;
+    subtotal?: number;
+    vatAmount?: number;
+    paidAmount?: number;
+    paidDate?: string;
+    invoiceDate?: string;
     items: InvoiceItem[];
     notes?: string;
     createdAt: string;
@@ -200,6 +451,9 @@ declare module '@/lib/api' {
     getAuthToken(): string | null;
     setAuthToken(token: string): void;
     clearAuthToken(): void;
+    logout(): Promise<ApiResponse<void>>;
+    refreshToken(refreshToken: string): Promise<ApiResponse<any>>;
+    getProfile(): Promise<ApiResponse<any>>;
     login(credentials: { email: string; password: string; rememberMe?: boolean }): Promise<ApiResponse<any>>;
     
     // Méthodes pour les fournisseurs
@@ -219,8 +473,8 @@ declare module '@/lib/api' {
     // Méthodes pour les produits
     getProduct(id: string): Promise<ApiResponse<Product>>;
     getProducts(params?: any): Promise<ApiResponse<PaginatedResponse<Product>>>;
-    createProduct(data: Partial<Product>): Promise<ApiResponse<Product>>;
-    updateProduct(id: string, data: Partial<Product>): Promise<ApiResponse<Product>>;
+    createProduct(data: ProductWriteInput): Promise<ApiResponse<Product>>;
+    updateProduct(id: string, data: Partial<ProductWriteInput>): Promise<ApiResponse<Product>>;
     deleteProduct(id: string): Promise<ApiResponse<void>>;
     
     // Méthodes pour les commandes
@@ -229,6 +483,7 @@ declare module '@/lib/api' {
     createOrder(data: Partial<Order>): Promise<ApiResponse<Order>>;
     updateOrder(id: string, data: Partial<Order>): Promise<ApiResponse<Order>>;
     deleteOrder(id: string): Promise<ApiResponse<void>>;
+    deleteQuote(id: string): Promise<ApiResponse<void>>;
     
     // Méthodes pour les factures
     getInvoice(id: string): Promise<ApiResponse<Invoice>>;
@@ -246,6 +501,9 @@ declare module '@/lib/api' {
     
     // Méthodes pour le tableau de bord
     getDashboardStats(): Promise<ApiResponse<any>>;
+    getDashboardActivity(limit?: number): Promise<ApiResponse<any[]>>;
+    getDashboardCharts(): Promise<ApiResponse<any>>;
+    getDashboardAlerts(): Promise<ApiResponse<any[]>>;
     getSalesStats(period?: string): Promise<ApiResponse<any>>;
     getClientStats(period?: string): Promise<ApiResponse<any>>;
     getProductStats(period?: string): Promise<ApiResponse<any>>;
@@ -255,23 +513,33 @@ declare module '@/lib/api' {
     getEvolutionData(params: { metric: string; period?: string }): Promise<ApiResponse<EvolutionData>>;
     getClientAnalytics(params?: { period?: string }): Promise<ApiResponse<ClientAnalytics>>;
     getKPIMetrics(params?: { period?: string }): Promise<ApiResponse<KPIMetrics>>;
+    getKpiTargetSettings(): Promise<ApiResponse<KpiTargetSettings>>;
+    updateKpiTargetSettings(data: UpdateKpiTargetSettingsPayload): Promise<ApiResponse<KpiTargetSettings>>;
     getProductAnalytics(params?: { period?: string }): Promise<ApiResponse<ProductAnalytics>>;
+    
+    // Méthodes HTTP standard
+    get<T = any>(url: string, config?: any): Promise<{ data: T; status: number }>;
+    post<T = any>(url: string, data?: any, config?: any): Promise<{ data: T; status: number }>;
+    put<T = any>(url: string, data?: any, config?: any): Promise<{ data: T; status: number }>;
+    delete<T = any>(url: string, config?: any): Promise<{ data: T; status: number }>;
+    patch<T = any>(url: string, data?: any, config?: any): Promise<{ data: T; status: number }>;
   };
 }
 
 declare module '@/lib/export' {
   export class ExportService {
     static downloadInvoicePDF(invoiceId: string): Promise<void>;
-    static downloadClientsExcel(): Promise<void>;
-    static downloadProductsExcel(): Promise<void>;
-    static downloadOrdersExcel(): Promise<void>;
-    static downloadInvoicesExcel(): Promise<void>;
-    static downloadClientsPDF(): Promise<void>;
-    static downloadProductsPDF(): Promise<void>;
-    static downloadOrdersPDF(): Promise<void>;
-    static downloadInvoicesPDF(): Promise<void>;
-    static downloadSuppliersExcel(): Promise<void>;
-    static downloadSuppliersPDF(): Promise<void>;
+    static downloadClientsExcel(params?: Record<string, any>): Promise<void>;
+    static downloadProductsExcel(params?: Record<string, any>): Promise<void>;
+    static downloadOrdersExcel(params?: Record<string, any>): Promise<void>;
+    static downloadInvoicesExcel(params?: Record<string, any>): Promise<void>;
+    static downloadClientsPDF(params?: Record<string, any>): Promise<void>;
+    static downloadProductsPDF(params?: Record<string, any>): Promise<void>;
+    static downloadOrdersPDF(params?: Record<string, any>): Promise<void>;
+    static downloadOrderPDF(orderId: string): Promise<void>;
+    static downloadInvoicesPDF(params?: Record<string, any>): Promise<void>;
+    static downloadSuppliersExcel(params?: Record<string, any>): Promise<void>;
+    static downloadSuppliersPDF(params?: Record<string, any>): Promise<void>;
     static downloadTemplateExcel(type: string): Promise<void>;
     static downloadSalesReportPDF(period: string): Promise<void>;
     static downloadSalesReportExcel(period: string): Promise<void>;
@@ -282,6 +550,8 @@ declare module '@/lib/export' {
     static importClientsFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }>;
     static importProductsFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }>;
     static importSuppliersFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }>;
+    static importOrdersFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }>;
+    static importInvoicesFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }>;
     static downloadImportTemplate(type: 'clients' | 'products' | 'suppliers'): Promise<void>;
   }
 }
@@ -300,7 +570,10 @@ declare module '@/lib/defensive-utils' {
   
   // Fonctions utilitaires supplémentaires
   export function ensureArray<T>(value: T | T[] | null | undefined): T[];
+  export function extractCollection<T>(value: unknown): T[];
   export function safeFilter<T>(array: T[] | null | undefined, predicate: (item: T) => boolean): T[];
+  export function safeFind<T>(array: T[] | null | undefined, predicate: (item: T) => boolean): T | undefined;
+  export function safeMap<T, U>(array: T[] | null | undefined, mapper: (item: T, index: number) => U): U[];
   export function safeFormatCurrency(amount: number | string | null | undefined, fallback?: string): string;
   export function safeFormatDate(date: string | Date | null | undefined, fallback?: string): string;
   export function safeParseInt(value: string | number | null | undefined, fallback?: number): number;

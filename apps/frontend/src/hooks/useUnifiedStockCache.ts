@@ -119,8 +119,6 @@ export function useUnifiedStockCache(): UnifiedStockCache {
       globalCache.loading = true
       setLoading(true)
       setError(null)
-
-      console.log('🔄 Chargement des données de stock unifiées...')
       
       const response = await api.get('/api/v1/stock/unified/products')
       
@@ -134,8 +132,6 @@ export function useUnifiedStockCache(): UnifiedStockCache {
         
         // Notifier tous les abonnés
         globalCache.subscribers.forEach(callback => callback(products))
-        
-        console.log(`✅ ${products.length} produits chargés dans le cache unifié`)
       } else {
         throw new Error('Format de réponse invalide')
       }
@@ -168,7 +164,6 @@ export function useUnifiedStockCache(): UnifiedStockCache {
 
   const updateProduct = useCallback(async (productId: string, updateData: Partial<UnifiedProduct>) => {
     try {
-      console.log('🔄 Mise à jour du produit:', productId, updateData)
       
       const response = await api.put(`/api/v1/stock/unified/products/${productId}`, updateData)
       
@@ -185,8 +180,6 @@ export function useUnifiedStockCache(): UnifiedStockCache {
         
         // Notifier tous les abonnés
         globalCache.subscribers.forEach(callback => callback(updatedProducts))
-        
-        console.log('✅ Produit mis à jour dans le cache')
       } else {
         throw new Error('Erreur lors de la mise à jour')
       }
@@ -199,12 +192,10 @@ export function useUnifiedStockCache(): UnifiedStockCache {
 
   const syncData = useCallback(async () => {
     try {
-      console.log('🔄 Synchronisation des données de stock...')
       
       const response = await api.post('/api/v1/stock/unified/sync')
       
       if (response.data?.success) {
-        console.log('✅ Synchronisation réussie')
         // Recharger les données après synchronisation
         await forceRefresh()
       } else {

@@ -24,7 +24,6 @@ export function ClientDetailPage({ clientId }: ClientDetailPageProps) {
   const loadClient = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement du client:', clientId)
       
       const response = await api.getClient(clientId)
       
@@ -55,9 +54,7 @@ export function ClientDetailPage({ clientId }: ClientDetailPageProps) {
     
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer le client "${clientName}" ?\n\nCette action est irréversible.`)) {
       try {
-        console.log('Suppression du client:', clientId)
         await api.deleteClient(clientId)
-        console.log('✅ Client supprimé avec succès')
         router.push('/clients')
       } catch (error) {
         console.error('❌ Erreur lors de la suppression:', error)

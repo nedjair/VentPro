@@ -17,7 +17,9 @@ const protectedRoutes = [
   '/reports',
   '/analytics',
   '/settings',
-  '/profile'
+  '/profile',
+  '/diagnostic',
+  '/diagnostic-stock'
 ]
 
 // Pages publiques (pas besoin d'authentification)
@@ -65,12 +67,9 @@ function isTokenExpired(payload: any): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  
-  console.log('🔒 Middleware: Vérification de', pathname)
 
   // Permettre l'accès aux pages de test
   if (testRoutes.some(route => pathname.startsWith(route))) {
-    console.log('🧪 Middleware: Page de test - Accès autorisé')
     return NextResponse.next()
   }
 
@@ -95,16 +94,10 @@ export function middleware(request: NextRequest) {
 
   // Récupérer le token depuis le cookie
   const authToken = request.cookies.get('auth-token')?.value
-  
-  console.log('🔍 Middleware: Token cookie', {
-    present: !!authToken,
-    value: authToken ? authToken.substring(0, 20) + '...' : 'N/A'
-  })
 
   // Si c'est une route protégée
   if (isProtectedRoute) {
     if (!authToken) {
-      console.log('🚫 Middleware: Pas de token - Redirection vers /login')
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
@@ -114,21 +107,12 @@ export function middleware(request: NextRequest) {
 
       // Vérifier si le token est expiré
       if (isTokenExpired(decoded)) {
-        console.log('❌ Middleware: Token expiré')
         throw new Error('Token expiré')
       }
-
-      console.log('✅ Middleware: Token valide', {
-        userId: decoded.userId,
-        email: decoded.email,
-        role: decoded.role,
-        exp: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'Pas d\'expiration'
-      })
 
       // Token valide, permettre l'accès
       return NextResponse.next()
     } catch (error) {
-      console.log('❌ Middleware: Token invalide', error)
 
       // Token invalide, supprimer le cookie et rediriger
       const response = NextResponse.redirect(new URL('/login', request.url))
@@ -147,16 +131,12 @@ export function middleware(request: NextRequest) {
 
       // Vérifier si le token est expiré
       if (!isTokenExpired(decoded)) {
-        console.log('✅ Middleware: Utilisateur authentifié sur route publique - Redirection vers /dashboard')
         return NextResponse.redirect(new URL('/dashboard', request.url))
       }
     } catch (error) {
-      console.log('⚠️ Middleware: Token invalide sur route publique - Continuer')
       // Token invalide, permettre l'accès à la route publique
     }
   }
-
-  console.log('✅ Middleware: Accès autorisé à', pathname)
   return NextResponse.next()
 }
 

@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { 
   Package, 
   Search, 
@@ -50,6 +51,7 @@ export function UnifiedProductsList({
     priceRange: ''
   })
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
+  const scrollParentRef = useRef<HTMLDivElement | null>(null)
 
   // Filtrage des produits
   const filteredProducts = useMemo(() => {
@@ -70,6 +72,15 @@ export function UnifiedProductsList({
 
     return filtered
   }, [products, searchTerm, filters])
+
+  const rowVirtualizer = useVirtualizer({
+    count: filteredProducts.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => (showActions ? 132 : 112),
+    overscan: 8,
+  })
+
+  const virtualRows = rowVirtualizer.getVirtualItems()
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -219,7 +230,11 @@ export function UnifiedProductsList({
       )}
 
       {/* Liste des produits */}
-      <div style={{ maxHeight }} className="overflow-y-auto">
+      <div
+        ref={scrollParentRef}
+        style={{ height: maxHeight }}
+        className="overflow-y-auto"
+      >
         {filteredProducts.length === 0 ? (
           <div className="p-6 text-center text-gray-500">
             <Package className="h-8 w-8 mx-auto mb-2 text-gray-400" />
@@ -229,70 +244,81 @@ export function UnifiedProductsList({
             )}
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id}
-                className="p-4 hover:bg-gray-50 cursor-pointer"
-                onClick={() => handleProductClick(product.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center flex-1 min-w-0">
-                    <div className="flex-shrink-0 mr-3">
-                      {getStatusIcon(product.status)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-medium text-gray-900 truncate">
-                          {product.name}
-                        </h4>
-                        <Badge variant={getStatusBadgeVariant(product.status)}>
-                          {product.statusLabel}
-                        </Badge>
+          <div
+            className="relative w-full"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {virtualRows.map((virtualRow) => {
+              const product = filteredProducts[virtualRow.index]
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  className="absolute left-0 top-0 w-full border-b border-gray-200 p-4 hover:bg-gray-50 cursor-pointer"
+                  style={{
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  onClick={() => handleProductClick(product.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center flex-1 min-w-0">
+                      <div className="flex-shrink-0 mr-3">
+                        {getStatusIcon(product.status)}
                       </div>
-                      {product.sku && (
-                        <p className="text-xs text-gray-500 mt-1">SKU: {product.sku}</p>
-                      )}
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                        <span>
-                          <strong>{product.stockQuantity}</strong> {product.unit}
-                        </span>
-                        <span>Min: {product.minStock}</span>
-                        {product.maxStock && <span>Max: {product.maxStock}</span>}
-                        <span className="text-green-600 font-medium">
-                          {formatCurrency(product.value)}
-                        </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-medium text-gray-900 truncate">
+                            {product.name}
+                          </h4>
+                          <Badge variant={getStatusBadgeVariant(product.status)}>
+                            {product.statusLabel}
+                          </Badge>
+                        </div>
+                        {product.sku && (
+                          <p className="text-xs text-gray-500 mt-1">SKU: {product.sku}</p>
+                        )}
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                          <span>
+                            <strong>{product.stockQuantity}</strong> {product.unit}
+                          </span>
+                          <span>Min: {product.minStock}</span>
+                          {product.maxStock && <span>Max: {product.maxStock}</span>}
+                          <span className="text-green-600 font-medium">
+                            {formatCurrency(product.value)}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    
+                    {showActions && (
+                      <div className="flex items-center gap-2 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleProductClick(product.id)
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEditProduct(product.id)
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  
-                  {showActions && (
-                    <div className="flex items-center gap-2 ml-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleProductClick(product.id)
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleEditProduct(product.id)
-                        }}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

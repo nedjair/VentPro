@@ -18,7 +18,7 @@ export default function TestDarkModePage() {
 
   if (!mounted) {
     return (
-      <MainLayout>
+      <MainLayout title="Test du Dark Mode" subtitle="Validation du système de thèmes">
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
@@ -27,7 +27,7 @@ export default function TestDarkModePage() {
   }
 
   return (
-    <MainLayout>
+    <MainLayout title="Test du Dark Mode" subtitle="Validation du système de thèmes">
       <div className="p-8 space-y-6">
         <div className="flex justify-between items-center">
           <div>
@@ -39,7 +39,7 @@ export default function TestDarkModePage() {
           <div className="flex gap-2">
             <Button
               onClick={() => setTheme('light')}
-              variant={theme === 'light' ? 'default' : 'outline'}
+              variant={theme === 'light' ? 'primary' : 'outline'}
               size="sm"
             >
               <Sun className="h-4 w-4 mr-2" />
@@ -47,7 +47,7 @@ export default function TestDarkModePage() {
             </Button>
             <Button
               onClick={() => setTheme('dark')}
-              variant={theme === 'dark' ? 'default' : 'outline'}
+              variant={theme === 'dark' ? 'primary' : 'outline'}
               size="sm"
             >
               <Moon className="h-4 w-4 mr-2" />
@@ -55,7 +55,7 @@ export default function TestDarkModePage() {
             </Button>
             <Button
               onClick={() => setTheme('auto')}
-              variant={theme === 'auto' ? 'default' : 'outline'}
+              variant={theme === 'auto' ? 'primary' : 'outline'}
               size="sm"
             >
               <Laptop className="h-4 w-4 mr-2" />
@@ -160,9 +160,9 @@ export default function TestDarkModePage() {
             </div>
             
             <div className="flex gap-2">
-              <Button variant="default">Bouton Principal</Button>
+              <Button variant="primary">Bouton Principal</Button>
               <Button variant="outline">Bouton Secondaire</Button>
-              <Button variant="destructive">Bouton Destructeur</Button>
+              <Button variant="danger">Bouton Destructeur</Button>
             </div>
           </CardContent>
         </Card>

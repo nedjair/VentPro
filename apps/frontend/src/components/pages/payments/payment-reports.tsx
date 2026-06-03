@@ -66,10 +66,10 @@ export function PaymentReports({ onClose }: PaymentReportsProps) {
 
       const response = await api.get(`/api/v1/payments/reports?${queryParams}`)
       
-      if (response.success) {
-        setReport(response.data)
+      if (response.data?.success) {
+        setReport(response.data.data)
       } else {
-        throw new Error(response.message || 'Erreur lors du chargement du rapport')
+        throw new Error(response.data?.message || 'Erreur lors du chargement du rapport')
       }
     } catch (err) {
       console.error('❌ Erreur lors du chargement du rapport:', err)
@@ -92,7 +92,7 @@ export function PaymentReports({ onClose }: PaymentReportsProps) {
         responseType: 'blob'
       })
       
-      if (response.success) {
+      if (response.status >= 200 && response.status < 300) {
         // Créer un lien de téléchargement
         const blob = new Blob([response.data])
         const url = window.URL.createObjectURL(blob)
@@ -186,7 +186,7 @@ export function PaymentReports({ onClose }: PaymentReportsProps) {
               </label>
               <Select
                 value={reportType}
-                onValueChange={(value: 'summary' | 'detailed') => setReportType(value)}
+                onValueChange={(value) => setReportType(value as 'summary' | 'detailed')}
               >
                 <SelectTrigger>
                   <SelectValue />

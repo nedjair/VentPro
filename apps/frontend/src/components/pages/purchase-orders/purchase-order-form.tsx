@@ -60,11 +60,6 @@ export function PurchaseOrderForm({ existingOrder, onSuccess, onCancel }: Purcha
 
   const getSelectedSupplier = () => {
     const selected = suppliers.find(s => s.id === formData.supplierId)
-    console.log('🔍 getSelectedSupplier:', {
-      supplierId: formData.supplierId,
-      suppliersCount: suppliers.length,
-      selected: selected?.name
-    })
     return selected
   }
 
@@ -74,11 +69,6 @@ export function PurchaseOrderForm({ existingOrder, onSuccess, onCancel }: Purcha
 
   // Debug: Logger l'état des fournisseurs
   React.useEffect(() => {
-    console.log('🔍 PurchaseOrderForm: État des fournisseurs mis à jour:', {
-      loadingSuppliers,
-      suppliersCount: suppliers.length,
-      suppliers: suppliers.map(s => ({ id: s.id, name: s.name }))
-    })
   }, [suppliers, loadingSuppliers])
 
   return (
@@ -226,7 +216,7 @@ export function PurchaseOrderForm({ existingOrder, onSuccess, onCancel }: Purcha
                   </Label>
                   <Select
                     value={formData.status}
-                    onValueChange={(value: PurchaseOrderStatus) => updateField('status', value)}
+                    onValueChange={(value) => updateField('status', value as PurchaseOrderStatus)}
                   >
                     <SelectTrigger className={validation.errors.status ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Sélectionner un statut">

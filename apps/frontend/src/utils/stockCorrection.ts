@@ -55,7 +55,6 @@ class StockCorrectionService {
     const startTime = Date.now()
     
     try {
-      console.log(`🔧 Exécution de l'action: ${action.name}`)
 
       let result: any = null
 
@@ -117,7 +116,6 @@ class StockCorrectionService {
    * Exécute toutes les actions de correction
    */
   async executeAllActions(): Promise<CorrectionResult[]> {
-    console.log('🚀 Démarrage de la correction automatique complète...')
 
     const results: CorrectionResult[] = []
 
@@ -163,8 +161,6 @@ class StockCorrectionService {
     const successCount = results.filter(r => r.success).length
     const totalCount = results.length
 
-    console.log(`✅ Correction automatique terminée: ${successCount}/${totalCount} actions réussies`)
-
     return results
   }
 
@@ -172,7 +168,6 @@ class StockCorrectionService {
    * Exécute les actions critiques seulement
    */
   async executeHighPriorityActions(): Promise<CorrectionResult[]> {
-    console.log('⚡ Exécution des actions critiques...')
 
     const results: CorrectionResult[] = []
 
@@ -296,6 +291,3 @@ class StockCorrectionService {
 
 // Instance singleton
 export const stockCorrection = new StockCorrectionService()
-
-// Export des types pour utilisation externe
-export type { CorrectionAction, CorrectionResult }

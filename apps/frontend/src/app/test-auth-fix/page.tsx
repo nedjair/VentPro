@@ -24,10 +24,6 @@ export default function TestAuthFixPage() {
     setTestResult('')
 
     try {
-      // Test 1: Vérifier l'utilisateur
-      console.log('🧪 Test 1: Vérification de l\'utilisateur')
-      console.log('User:', user)
-      console.log('isAuthenticated:', isAuthenticated)
 
       if (!user) {
         setTestResult('❌ ÉCHEC: Utilisateur non trouvé')
@@ -38,9 +34,6 @@ export default function TestAuthFixPage() {
         setTestResult('❌ ÉCHEC: Utilisateur non authentifié')
         return
       }
-
-      // Test 2: Préparer un formulaire valide
-      console.log('🧪 Test 2: Préparation du formulaire')
       
       // Remplir les champs requis
       updateField('supplierId', 'test-supplier-123')
@@ -57,19 +50,13 @@ export default function TestAuthFixPage() {
       // Attendre un peu pour que la validation se mette à jour
       await new Promise(resolve => setTimeout(resolve, 100))
 
-      console.log('🧪 Validation:', validation)
-
       if (!validation.isValid) {
         setTestResult(`❌ ÉCHEC: Formulaire invalide - ${Object.keys(validation.errors).join(', ')}`)
         return
       }
-
-      // Test 3: Tenter la soumission
-      console.log('🧪 Test 3: Tentative de soumission')
       
       try {
         const result = await submitForm()
-        console.log('✅ Soumission réussie:', result)
         setTestResult('✅ SUCCÈS: Formulaire soumis avec succès ! L\'erreur d\'authentification est corrigée.')
       } catch (submitError: any) {
         console.error('❌ Erreur de soumission:', submitError)

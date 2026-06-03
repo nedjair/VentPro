@@ -521,65 +521,262 @@ export class ExportService {
   }
 
   private static async generateBusinessDocumentPdfBuffer(options: {
-    title: string;
-    reference: string;
-    status?: string;
-    clientName?: string;
-    issueDate?: unknown;
-    dueDate?: unknown;
-    notes?: string;
-    total?: unknown;
-    subtotal?: unknown;
-    taxAmount?: unknown;
-    items?: ExportLineItem[];
-  }): Promise<Buffer> {
-    return new Promise((resolve) => {
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const buffers: Buffer[] = [];
-      const font = createPdfFontHelpers(doc);
+     title: string;
+     reference: string;
+     status?: string;
+     clientName?: string;
+     clientAddress?: string;
+     clientPhone?: string;
+     issueDate?: unknown;
+     dueDate?: unknown;
+     notes?: string;
+     total?: unknown;
+     subtotal?: unknown;
+     taxAmount?: unknown;
+     items?: ExportLineItem[];
+   }): Promise<Buffer> {
+     return new Promise((resolve, reject) => {
+       let timeoutId: NodeJS.Timeout | undefined;
+       let settled = false;
 
-      doc.on('data', (chunk) => buffers.push(Buffer.from(chunk)));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
+       const cleanup = () => {
+         if (timeoutId) {
+           clearTimeout(timeoutId);
+           timeoutId = undefined;
+         }
+         settled = true;
+       };
 
-      font.bold().fontSize(22).text(sanitizePdfText(options.title), { align: 'center' });
-      doc.moveDown();
+       const resolveOnce = (value: Buffer) => {
+         if (!settled) {
+           cleanup();
+           resolve(value);
+         }
+       };
 
-      font.bold().fontSize(11).text(`Référence : ${sanitizePdfText(options.reference)}`);
-      font.regular().text(`Statut : ${sanitizePdfText(options.status || 'N/A')}`);
-      font.regular().text(`Client : ${sanitizePdfText(options.clientName || 'N/A')}`);
-      font.regular().text(`Date : ${sanitizePdfText(toDisplayDate(options.issueDate))}`);
+       const rejectOnce = (error: Error) => {
+         if (!settled) {
+           cleanup();
+           reject(error);
+         }
+       };
 
-      if (options.dueDate) {
-        font.regular().text(`Échéance / validité : ${sanitizePdfText(toDisplayDate(options.dueDate))}`);
-      }
+       timeoutId = setTimeout(() => {
+         rejectOnce(new Error('PDF generation timed out'));
+       }, 30000);
 
-      doc.moveDown();
-      font.bold().text('Lignes');
-      doc.moveDown(0.5);
+       try {
+         const doc = new PDFDocument({ margin: A4_MARGIN_PT, size: 'A4', bufferPages: true });
+         const buffers: Buffer[] = [];
 
-      (options.items || []).forEach((item, index) => {
-        font.bold().text(`${index + 1}. ${sanitizePdfText(item.description)}`);
-        font.regular().text(
-          `Qté: ${sanitizePdfText(item.quantity ?? '-')} | PU: ${sanitizePdfText(toNumericValue(item.unitPrice).toFixed(2))} | Total: ${sanitizePdfText(toNumericValue(item.total).toFixed(2))}`
-        );
-        doc.moveDown(0.4);
-      });
+         doc.on('data', (chunk) => buffers.push(Buffer.from(chunk)));
+         doc.on('end', () => {
+           if (buffers.length === 0 || Buffer.concat(buffers).length === 0) {
+             rejectOnce(new Error('PDF buffer is empty - generation may have failed silently'));
+           } else {
+             resolveOnce(Buffer.concat(buffers));
+           }
+         });
+         doc.on('error', (err) => rejectOnce(err));
 
-      doc.moveDown();
-      font.bold().text('Totaux');
-      font.regular().text(`Sous-total : ${sanitizePdfText(toNumericValue(options.subtotal).toFixed(2))} DZD`);
-      font.regular().text(`TVA : ${sanitizePdfText(toNumericValue(options.taxAmount).toFixed(2))} DZD`);
-      font.regular().text(`Total : ${sanitizePdfText(toNumericValue(options.total).toFixed(2))} DZD`);
+          const font = createPdfFontHelpers(doc);
+          const pageWidth = doc.page.width;
+          const pageHeight = doc.page.height;
+          const contentLeft = doc.page.margins.left;
+          const contentRight = pageWidth - doc.page.margins.right;
+          const contentWidth = contentRight - contentLeft;
+          const contentTop = doc.page.margins.top;
+          const contentBottom = pageHeight - doc.page.margins.bottom - 50;
 
-      if (options.notes) {
-        doc.moveDown();
-        font.bold().text('Notes');
-        font.regular().text(sanitizePdfText(options.notes));
-      }
+         // === Header ===
+         const leftX = contentLeft;
+         const rightX = contentLeft + contentWidth * 0.55;
+         const y = contentTop;
+         const leftWidth = contentWidth * 0.52;
 
-      doc.end();
-    });
-  }
+         font.bold().fontSize(20).fillColor('#111827').text(sanitizePdfText(options.title).toUpperCase(), rightX, y + 6, { width: contentRight - rightX, align: 'right' });
+         font.regular().fontSize(10).fillColor('#111827');
+         let infoY = y + 38;
+         const metaLines = [
+           `Référence : ${sanitizePdfText(options.reference)}`,
+           `Date : ${sanitizePdfText(toDisplayDate(options.issueDate))}`,
+           `Statut : ${sanitizePdfText(options.status || 'N/A')}`,
+         ];
+         if (options.dueDate) {
+           metaLines.push(`Échéance : ${sanitizePdfText(toDisplayDate(options.dueDate))}`);
+         }
+         for (const line of metaLines) {
+           doc.text(line, rightX, infoY, { width: contentRight - rightX, align: 'right', lineGap: 4 });
+           infoY = doc.y + 4;
+         }
+
+         // Company info (left)
+         font.bold().fontSize(14).fillColor('#111827').text('VentesPro', leftX, y + 4, { width: leftWidth, lineGap: 4 });
+         let companyY = doc.y + 4;
+         const companyLines = [
+           'Société de gestion commerciale',
+           'Alger, Algérie',
+           'Email: contact@ventespro.com',
+         ];
+         font.regular().fontSize(10).fillColor('#374151');
+         for (const line of companyLines) {
+           doc.text(line, leftX, companyY, { width: leftWidth, lineGap: 3 });
+           companyY = doc.y + 3;
+         }
+
+           const separatorY = Math.max(companyY, infoY) + 12;
+           doc.moveTo(contentLeft, separatorY).lineTo(contentRight, separatorY).strokeColor('#D1D5DB').stroke();
+           doc.y = separatorY + 16;
+
+         // === Client block ===
+         const colGap = 16;
+         const colWidth = (contentWidth - colGap) / 2;
+           const blockY = doc.y;
+           const blockHeight = 80;
+           doc.rect(contentLeft, blockY, colWidth, blockHeight).strokeColor('#D1D5DB').stroke();
+           doc.rect(contentLeft, blockY, colWidth, 18).fill('#F3F4F6');
+         font.bold().fontSize(10).fillColor('#111827').text('Client', contentLeft + 6, blockY + 3, { width: colWidth - 12 });
+
+         font.regular().fontSize(9).fillColor('#111827');
+         const clientLines = [
+           options.clientName || '-',
+           options.clientAddress || '-',
+           options.clientPhone ? `Tél: ${options.clientPhone}` : '',
+         ].filter(Boolean);
+         let clientY = blockY + 24;
+         for (const line of clientLines) {
+           doc.text(line, contentLeft + 6, clientY, { width: colWidth - 12, lineGap: 3 });
+           clientY = doc.y + 3;
+         }
+         doc.y = blockY + blockHeight + 18;
+
+         // === Items table ===
+         font.bold().fontSize(11).fillColor('#111827').text('Lignes', contentLeft, doc.y);
+         doc.y += 18;
+
+         const columns = [
+           { label: 'N°', width: 26, align: 'center' as const },
+           { label: 'Désignation', width: 200, align: 'left' as const },
+           { label: 'Quantité', width: 60, align: 'right' as const },
+           { label: 'P.U. HT', width: 90, align: 'right' as const },
+           { label: 'Total HT', width: 90, align: 'right' as const },
+         ];
+         const tableWidth = columns.reduce((sum, c) => sum + c.width, 0);
+         const rowHeight = 22;
+
+            const drawTableHeader = (y: number) => {
+              doc.rect(contentLeft, y, tableWidth, 22).fill('#2563EB');
+              let x = contentLeft;
+              font.bold().fontSize(9).fillColor('#FFFFFF');
+              for (const column of columns) {
+                doc.text(column.label, x + 3, y + 6, { width: column.width - 6, align: column.align });
+                x += column.width;
+              }
+              font.regular().fontSize(9).fillColor('#111827');
+            };
+
+         const tableYStart = doc.y;
+         drawTableHeader(tableYStart);
+         let tableY = tableYStart + 22;
+         font.regular().fontSize(9).fillColor('#111827');
+         (options.items || []).forEach((item, index) => {
+           if (tableY + rowHeight > contentBottom) {
+             doc.addPage();
+             tableY = contentTop;
+             drawTableHeader(tableY);
+             tableY += 22;
+           }
+              if (index % 2 === 1) {
+                const savedY2 = doc.y;
+                doc.save();
+                doc.rect(contentLeft, tableY, tableWidth, rowHeight).fill('#F9FAFB');
+                doc.restore();
+                doc.fillColor('#111827');
+                doc.y = savedY2;
+              }
+           let x = contentLeft;
+           const values = [
+             String(index + 1),
+             sanitizePdfText(item.description),
+             sanitizePdfText(String(item.quantity ?? '-')),
+             `${toNumericValue(item.unitPrice).toFixed(2)}`,
+             `${toNumericValue(item.total).toFixed(2)}`,
+           ];
+           for (let i = 0; i < columns.length; i += 1) {
+             doc.text(values[i], x + 4, tableY + 7, { width: columns[i].width - 8, align: columns[i].align, ellipsis: true });
+             x += columns[i].width;
+           }
+           tableY += rowHeight;
+         });
+         doc.y = tableY + 8;
+
+         // === Totals ===
+         const subtotal = toNumericValue(options.subtotal);
+         const vat = toNumericValue(options.taxAmount);
+         const total = toNumericValue(options.total) || (subtotal + vat);
+         const blockWidth = 260;
+         const tx = contentRight - blockWidth;
+         const ensureSpace = (h: number) => {
+           if (doc.y + h > contentBottom) {
+             doc.addPage();
+             doc.y = contentTop;
+           }
+         };
+         ensureSpace(110);
+         let tY = doc.y;
+         const rows = [
+           { label: 'Sous-total HT', value: `${subtotal.toFixed(2)} DZD` },
+           { label: 'TVA', value: `${vat.toFixed(2)} DZD` },
+           { label: 'Total TTC', value: `${total.toFixed(2)} DZD`, strong: true },
+         ];
+          for (let i = 0; i < rows.length; i += 1) {
+            const row = rows[i];
+            if (row.strong) {
+              doc.moveTo(tx, tY - 2).lineTo(contentRight, tY - 2).strokeColor('#9CA3AF').stroke();
+            }
+           const labelFont = row.strong ? font.bold() : font.regular();
+           labelFont.fontSize(row.strong ? 11 : 10).fillColor('#111827').text(`${row.label} :`, tx, tY, { width: 150, lineGap: 2 });
+           const valueFont = row.strong ? font.bold() : font.regular();
+           valueFont.fontSize(row.strong ? 11 : 10).fillColor(row.strong ? '#2563EB' : '#111827').text(row.value, tx + 150, tY, { width: blockWidth - 150, align: 'right', lineGap: 2 });
+           tY += row.strong ? 22 : 18;
+         }
+         doc.y = tY + 8;
+
+         // === Notes ===
+         if (options.notes) {
+           ensureSpace(60);
+           font.bold().fontSize(11).fillColor('#111827').text('Notes', contentLeft, doc.y);
+           doc.y += 18;
+           font.regular().fontSize(10).fillColor('#111827').text(sanitizePdfText(options.notes), contentLeft, doc.y, { width: contentWidth, lineGap: 4 });
+           doc.y = doc.y + 8;
+         }
+
+         // === Footer on all pages ===
+         const range = doc.bufferedPageRange();
+         for (let i = 0; i < range.count; i += 1) {
+           doc.switchToPage(i);
+            const footerY = pageHeight - doc.page.margins.bottom - 28;
+            doc.moveTo(contentLeft, footerY).lineTo(contentRight, footerY).strokeColor('#D1D5DB').stroke();
+           font.regular().fontSize(8).fillColor('#374151').text(
+             'VentesPro | Société de gestion commerciale | Alger, Algérie',
+             contentLeft,
+             footerY + 4,
+             { width: contentWidth }
+           );
+           font.regular().fontSize(8).fillColor('#374151').text(
+             `Page ${i + 1} / ${range.count}`,
+             contentLeft + contentWidth * 0.78,
+             footerY + 14,
+             { width: contentWidth * 0.22, align: 'right' }
+           );
+         }
+
+         doc.end();
+       } catch (error) {
+         rejectOnce(error instanceof Error ? error : new Error(String(error)));
+       }
+     });
+   }
 
   // =================================================================
   // EXCEL EXPORT
@@ -1114,66 +1311,127 @@ export class ExportService {
     const isVatExempt = company.vatExempt || vatAmount <= 0 || uniqueVatRates.length === 0;
     const paymentMethod = pickString(invoice.paymentMethod, company.paymentTerms);
 
-    const buffer = await new Promise<Buffer>((resolve) => {
-      const doc = new PDFDocument({ margin: A4_MARGIN_PT, size: 'A4', bufferPages: true });
-      const chunks: Buffer[] = [];
-      const font = createPdfFontHelpers(doc);
-      const pageWidth = doc.page.width;
-      const pageHeight = doc.page.height;
-      const contentLeft = doc.page.margins.left;
-      const contentRight = pageWidth - doc.page.margins.right;
-      const contentWidth = contentRight - contentLeft;
-      const contentTop = doc.page.margins.top;
-      const contentBottom = pageHeight - doc.page.margins.bottom - 50;
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      let timeoutId: NodeJS.Timeout | undefined;
+      let settled = false;
 
-      doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-
-      const drawHeader = async () => {
-        const leftX = contentLeft;
-        const rightX = contentLeft + contentWidth * 0.58;
-        let y = contentTop;
-
-        if (logoBuffer) {
-          try {
-            doc.image(logoBuffer, leftX, y, { fit: [150, 80], align: 'left', valign: 'top' });
-          } catch {
-            doc.rect(leftX, y, 150, 80).strokeColor('#D1D5DB').stroke();
-            font.regular().fontSize(10).fillColor('#9CA3AF').text('[Logo de la société]', leftX + 8, y + 32, { width: 134, align: 'center' });
-          }
-        } else {
-          doc.rect(leftX, y, 150, 80).strokeColor('#D1D5DB').stroke();
-          font.regular().fontSize(10).fillColor('#9CA3AF').text('[Logo de la société]', leftX + 8, y + 32, { width: 134, align: 'center' });
-        }
-
-        const leftInfoY = y + 88;
-        font.bold().fontSize(12).fillColor('#111827').text(company.companyName || 'Société', leftX, leftInfoY, { width: contentWidth * 0.54 });
-        const addressParts = [company.address, [company.city, company.wilaya, company.postalCode].filter(Boolean).join(' ').trim(), company.country].filter(Boolean);
-        font.regular().fontSize(10).fillColor('#374151').text(addressParts.join(', ') || '-', leftX, leftInfoY + 16, { width: contentWidth * 0.54 });
-        const contacts = [company.phone ? `Tél: ${company.phone}` : '', company.fax ? `Fax: ${company.fax}` : '', company.email ? `Email: ${company.email}` : ''].filter(Boolean).join(' | ');
-        font.regular().fontSize(10).fillColor('#374151').text(contacts || '-', leftX, leftInfoY + 32, { width: contentWidth * 0.54 });
-        if (company.website) {
-          font.regular().fontSize(10).fillColor('#374151').text(company.website, leftX, leftInfoY + 48, { width: contentWidth * 0.54 });
-        }
-
-        font.bold().fontSize(24).fillColor('#111827').text('FACTURE', rightX, y + 4, { width: contentRight - rightX, align: 'right' });
-        font.regular().fontSize(10).fillColor('#111827');
-        doc.text(`Numéro: ${pickString(invoice.number, invoice.invoiceNumber, 'N/A')}`, rightX, y + 36, { width: contentRight - rightX, align: 'right' });
-        doc.text(`Date d'émission: ${formatDateFr(invoiceDate)}`, rightX, y + 52, { width: contentRight - rightX, align: 'right' });
-        doc.text(`Date d'échéance: ${formatDateFr(dueDate)}`, rightX, y + 68, { width: contentRight - rightX, align: 'right' });
-        doc.text(`Statut: ${mapInvoiceStatusToFrench(invoice.status)}`, rightX, y + 84, { width: contentRight - rightX, align: 'right' });
-
-        const separatorY = leftInfoY + 72;
-        doc.moveTo(contentLeft, separatorY).lineTo(contentRight, separatorY).strokeColor('#D1D5DB').stroke();
-        doc.y = separatorY + 12;
+      const cleanup = () => {
+        if (timeoutId) { clearTimeout(timeoutId); timeoutId = undefined; }
+        settled = true;
       };
+      const resolveOnce = (value: Buffer) => { if (!settled) { cleanup(); resolve(value); } };
+      const rejectOnce = (error: Error) => { if (!settled) { cleanup(); reject(error); } };
+
+      timeoutId = setTimeout(() => rejectOnce(new Error('Invoice PDF generation timed out')), 30000);
+
+      try {
+        const doc = new PDFDocument({ margin: A4_MARGIN_PT, size: 'A4', bufferPages: true });
+        const chunks: Buffer[] = [];
+        const font = createPdfFontHelpers(doc);
+        const pageWidth = doc.page.width;
+        const pageHeight = doc.page.height;
+        const contentLeft = doc.page.margins.left;
+        const contentRight = pageWidth - doc.page.margins.right;
+        const contentWidth = contentRight - contentLeft;
+        const contentTop = doc.page.margins.top;
+        const contentBottom = pageHeight - doc.page.margins.bottom - 50;
+
+        doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        doc.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          if (buf.length === 0) {
+            rejectOnce(new Error('Invoice PDF buffer is empty'));
+          } else {
+            resolveOnce(buf);
+          }
+        });
+        doc.on('error', (err) => rejectOnce(err));
+
+        const drawHeader = () => {
+          const leftX = contentLeft;
+          const rightX = contentLeft + contentWidth * 0.58;
+          const y = contentTop;
+
+          if (logoBuffer) {
+            try {
+              doc.image(logoBuffer, leftX, y, { fit: [150, 80], align: 'left', valign: 'top' });
+            } catch {
+              doc.rect(leftX, y, 150, 80).strokeColor('#D1D5DB').stroke();
+              font.regular().fontSize(10).fillColor('#9CA3AF').text('[Logo]', leftX + 8, y + 32, { width: 134, align: 'center' });
+            }
+          } else {
+            doc.rect(leftX, y, 150, 80).strokeColor('#D1D5DB').stroke();
+            font.regular().fontSize(10).fillColor('#9CA3AF').text('[Logo]', leftX + 8, y + 32, { width: 134, align: 'center' });
+          }
+
+          let leftInfoY = y + 88;
+          const leftWidth = contentWidth * 0.54;
+          font.bold().fontSize(12).fillColor('#111827').text(company.companyName || 'Société', leftX, leftInfoY, { width: leftWidth, lineGap: 4 });
+          leftInfoY = doc.y + 6;
+          const addressParts = [company.address, [company.city, company.wilaya, company.postalCode].filter(Boolean).join(' ').trim(), company.country].filter(Boolean);
+          font.regular().fontSize(10).fillColor('#374151').text(addressParts.join(', ') || '-', leftX, leftInfoY, { width: leftWidth, lineGap: 4 });
+          leftInfoY = doc.y + 6;
+          const contacts = [company.phone ? `Tél: ${company.phone}` : '', company.fax ? `Fax: ${company.fax}` : '', company.email ? `Email: ${company.email}` : ''].filter(Boolean).join(' | ');
+          font.regular().fontSize(10).fillColor('#374151').text(contacts || '-', leftX, leftInfoY, { width: leftWidth, lineGap: 4 });
+          leftInfoY = doc.y + 6;
+          if (company.website) {
+            font.regular().fontSize(10).fillColor('#374151').text(company.website, leftX, leftInfoY, { width: leftWidth, lineGap: 4 });
+            leftInfoY = doc.y;
+          }
+
+          font.bold().fontSize(24).fillColor('#111827').text('FACTURE', rightX, y + 4, { width: contentRight - rightX, align: 'right' });
+          font.regular().fontSize(10).fillColor('#111827');
+          doc.text(`Numéro: ${pickString(invoice.number, invoice.invoiceNumber, 'N/A')}`, rightX, y + 46, { width: contentRight - rightX, align: 'right', lineGap: 4 });
+          doc.text(`Date d'émission: ${formatDateFr(invoiceDate)}`, rightX, y + 66, { width: contentRight - rightX, align: 'right', lineGap: 4 });
+          doc.text(`Date d'échéance: ${formatDateFr(dueDate)}`, rightX, y + 86, { width: contentRight - rightX, align: 'right', lineGap: 4 });
+          doc.text(`Statut: ${mapInvoiceStatusToFrench(invoice.status)}`, rightX, y + 106, { width: contentRight - rightX, align: 'right' });
+
+          const separatorY = Math.max(leftInfoY, y + 126) + 14;
+          doc.moveTo(contentLeft, separatorY).lineTo(contentRight, separatorY).strokeColor('#D1D5DB').stroke();
+          doc.y = separatorY + 16;
+        };
 
       const drawPartyBlocks = () => {
         const colGap = 16;
         const colWidth = (contentWidth - colGap) / 2;
         const boxY = doc.y;
-        const titleHeight = 16;
-        const boxHeight = 112;
+        const titleHeight = 18;
+        const lineHeight = 18;
+
+        const sellerAddressParts = [
+          company.address,
+          [company.city, company.wilaya, company.postalCode].filter(Boolean).join(' ').trim(),
+          company.country,
+        ].filter(Boolean);
+        const sellerLines: string[] = [
+          company.companyName || '-',
+          `NIF: ${company.nif || 'NON RENSEIGNÉ'}`,
+          `RC: ${company.rc || 'NON RENSEIGNÉ'}`,
+          `AI: ${company.ai || 'NON RENSEIGNÉ'}`,
+          sellerAddressParts.join(', ') || '-',
+          company.phone ? `Tél: ${company.phone}` : 'Tél: -',
+        ];
+        const clientLines: string[] = [
+          clientName,
+          `NIF: ${pickString(invoice.client?.nif, '-')}`,
+          `RC: ${pickString(invoice.client?.rc, '-')}`,
+          clientAddress || '-',
+          invoice.client?.phone ? `Tél: ${invoice.client.phone}` : 'Tél: -',
+        ];
+
+        font.regular().fontSize(9);
+        const measureHeight = (lines: string[]): number => {
+          let h = 0;
+          for (const line of lines) {
+            const lh = doc.heightOfString(line, { width: colWidth - 12, lineGap: 2 });
+            h += lh + 4;
+          }
+          return h;
+        };
+        const sellerContentHeight = measureHeight(sellerLines);
+        const clientContentHeight = measureHeight(clientLines);
+        const contentHeight = Math.max(sellerContentHeight, clientContentHeight);
+        const boxHeight = titleHeight + 12 + contentHeight + 6;
 
         doc.rect(contentLeft, boxY, colWidth, boxHeight).strokeColor('#D1D5DB').stroke();
         doc.rect(contentLeft + colWidth + colGap, boxY, colWidth, boxHeight).strokeColor('#D1D5DB').stroke();
@@ -1183,34 +1441,20 @@ export class ExportService {
         font.bold().fontSize(10).fillColor('#111827').text('Émetteur / Vendeur', contentLeft + 6, boxY + 3, { width: colWidth - 12 });
         font.bold().fontSize(10).fillColor('#111827').text('Facturé à / Client', contentLeft + colWidth + colGap + 6, boxY + 3, { width: colWidth - 12 });
 
-        const sellerLines = [
-          company.companyName || '-',
-          `NIF: ${company.nif || 'NON RENSEIGNÉ'}`,
-          `RC: ${company.rc || 'NON RENSEIGNÉ'}`,
-          `AI: ${company.ai || 'NON RENSEIGNÉ'}`,
-          [company.address, company.city, company.wilaya, company.postalCode, company.country].filter(Boolean).join(', ') || '-',
-          company.phone ? `Tél: ${company.phone}` : 'Tél: -',
-        ];
-        const clientLines = [
-          clientName,
-          `NIF: ${pickString(invoice.client?.nif, '-')}`,
-          `RC: ${pickString(invoice.client?.rc, '-')}`,
-          clientAddress || '-',
-          invoice.client?.phone ? `Tél: ${invoice.client.phone}` : 'Tél: -',
-        ];
-
         font.regular().fontSize(9).fillColor('#111827');
         let sellerY = boxY + titleHeight + 6;
         for (const line of sellerLines) {
-          doc.text(line, contentLeft + 6, sellerY, { width: colWidth - 12 });
-          sellerY += 16;
+          const lh = doc.heightOfString(line, { width: colWidth - 12, lineGap: 2 });
+          doc.text(line, contentLeft + 6, sellerY, { width: colWidth - 12, lineGap: 2 });
+          sellerY += lh + 4;
         }
         let clientY = boxY + titleHeight + 6;
         for (const line of clientLines) {
-          doc.text(line, contentLeft + colWidth + colGap + 6, clientY, { width: colWidth - 12 });
-          clientY += 16;
+          const lh = doc.heightOfString(line, { width: colWidth - 12, lineGap: 2 });
+          doc.text(line, contentLeft + colWidth + colGap + 6, clientY, { width: colWidth - 12, lineGap: 2 });
+          clientY += lh + 4;
         }
-        doc.y = boxY + boxHeight + 12;
+        doc.y = boxY + boxHeight + 16;
       };
 
       const columns = [
@@ -1282,7 +1526,7 @@ export class ExportService {
       };
 
       const drawTotals = () => {
-        ensureSpace(128);
+        ensureSpace(150);
         const blockWidth = 260;
         const x = contentRight - blockWidth;
         let y = doc.y;
@@ -1300,26 +1544,28 @@ export class ExportService {
             doc.moveTo(x, y - 2).lineTo(contentRight, y - 2).strokeColor('#9CA3AF').stroke();
           }
           const labelFont = row.strong ? font.bold() : font.regular();
-          labelFont.fontSize(row.strong ? 11 : 10).fillColor('#111827').text(`${row.label} :`, x, y, { width: 150 });
+          labelFont.fontSize(row.strong ? 11 : 10).fillColor('#111827').text(`${row.label} :`, x, y, { width: 150, lineGap: 2 });
           const valueFont = row.strong ? font.bold() : font.regular();
           valueFont.fontSize(row.strong ? 11 : 10).fillColor(row.strong ? accentColor : '#111827').text(row.value, x + 150, y, {
             width: blockWidth - 150,
             align: 'right',
+            lineGap: 2,
           });
-          y += index === rows.length - 2 ? 22 : 16;
+          y += index === rows.length - 2 ? 24 : 18;
         });
-        doc.y = y + 4;
+        doc.y = y + 6;
         font.bold().fontSize(10).fillColor('#111827').text('Montant en lettres', x, doc.y, { width: blockWidth });
-        font.regular().fontSize(9).fillColor('#374151').text(amountToFrenchWords(total), x, doc.y + 14, {
+        font.regular().fontSize(9).fillColor('#374151').text(amountToFrenchWords(total), x, doc.y + 16, {
           width: blockWidth,
+          lineGap: 2,
         });
-        doc.y += 44;
+        doc.y += 50;
       };
 
       const drawConditions = () => {
-        ensureSpace(88);
+        ensureSpace(110);
         font.bold().fontSize(11).fillColor('#111827').text('Conditions et notes', contentLeft, doc.y);
-        doc.y += 16;
+        doc.y += 20;
         const lines = [
           `Conditions de paiement: ${paymentMethod || '-'}`,
           `Délai de paiement: ${dueDate ? `au plus tard le ${formatDateFr(dueDate)}` : '-'}`,
@@ -1328,8 +1574,8 @@ export class ExportService {
         ];
         font.regular().fontSize(10).fillColor('#111827');
         lines.forEach((line) => {
-          doc.text(line, contentLeft, doc.y, { width: contentWidth });
-          doc.y += 14;
+          doc.text(line, contentLeft, doc.y, { width: contentWidth, lineGap: 2 });
+          doc.y += 18;
         });
       };
 
@@ -1360,14 +1606,16 @@ export class ExportService {
         }
       };
 
-      Promise.resolve(drawHeader()).then(() => {
-        drawPartyBlocks();
-        drawInvoiceRows();
-        drawTotals();
-        drawConditions();
-        drawFooterOnAllPages();
-        doc.end();
-      });
+      drawHeader();
+      drawPartyBlocks();
+      drawInvoiceRows();
+      drawTotals();
+      drawConditions();
+      drawFooterOnAllPages();
+      doc.end();
+      } catch (error) {
+        rejectOnce(error instanceof Error ? error : new Error(String(error)));
+      }
     });
 
     if (!buffer || buffer.length === 0) {
@@ -1399,7 +1647,9 @@ export class ExportService {
       title: 'Devis',
       reference: quote.number,
       status: quote.status,
-      clientName: quote.client?.companyName || `${quote.client?.firstName || ''} ${quote.client?.lastName || ''}`.trim(),
+      clientName: quote.client?.companyName || `${quote.client?.firstName || ''} ${quote.client?.lastName || ''}`.trim() || 'Client',
+      clientAddress: quote.client?.address || '',
+      clientPhone: quote.client?.phone || '',
       issueDate: quote.quoteDate || quote.createdAt,
       dueDate: quote.validUntil,
       notes: quote.notes,
@@ -1535,6 +1785,52 @@ export class ExportService {
       });
     });
 
-    await ExportService.writeBufferToFile((await workbook.xlsx.writeBuffer()) as Buffer, outputPath);
+await ExportService.writeBufferToFile((await workbook.xlsx.writeBuffer()) as Buffer, outputPath);
+   }
+
+  public static async generateOrderPdfBuffer(order: any): Promise<Buffer> {
+    return ExportService.generateBusinessDocumentPdfBuffer({
+      title: 'Commande',
+      reference: order.number,
+      status: order.status,
+      clientName: order.client?.companyName || `${order.client?.firstName || ''} ${order.client?.lastName || ''}`.trim() || 'Client',
+      clientAddress: order.client?.address || '',
+      clientPhone: order.client?.phone || '',
+      issueDate: order.orderDate || order.createdAt,
+      dueDate: order.deliveryDate || order.validUntil,
+      notes: order.notes,
+      subtotal: order.subtotal,
+      taxAmount: order.vatAmount,
+      total: order.total,
+      items: (order.items || []).map((item: any) => ({
+        description: item.product?.name || 'Article',
+        quantity: toNumericValue(item.quantity),
+        unitPrice: item.unitPrice,
+        total: item.total,
+      })),
+    });
   }
-} 
+
+  public static async generateQuotePdfBuffer(quote: any): Promise<Buffer> {
+    return ExportService.generateBusinessDocumentPdfBuffer({
+      title: 'Devis',
+      reference: quote.number,
+      status: quote.status,
+      clientName: quote.client?.companyName || `${quote.client?.firstName || ''} ${quote.client?.lastName || ''}`.trim() || 'Client',
+      clientAddress: quote.client?.address || '',
+      clientPhone: quote.client?.phone || '',
+      issueDate: quote.quoteDate || quote.createdAt,
+      dueDate: quote.validUntil,
+      notes: quote.notes,
+      subtotal: quote.subtotal,
+      taxAmount: quote.taxAmount ?? quote.vatAmount,
+      total: quote.total,
+      items: (quote.items || []).map((item: any) => ({
+        description: item.product?.name || 'Article',
+        quantity: toNumericValue(item.quantity),
+        unitPrice: item.unitPrice,
+        total: item.total,
+      })),
+    });
+  }
+}

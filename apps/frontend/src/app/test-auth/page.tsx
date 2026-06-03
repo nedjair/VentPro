@@ -10,7 +10,7 @@ export default function TestAuthPage() {
       // Créer un token JWT simulé (structure similaire à celle du backend)
       const payload = {
         userId: 'admin-user-id',
-        email: 'admin@technocommerce.dz',
+        email: 'admin@example.com',
         role: 'ADMIN',
         companyId: 'company-1',
         iat: Math.floor(Date.now() / 1000),
@@ -48,8 +48,6 @@ export default function TestAuthPage() {
       localStorage.setItem('auth-tokens', JSON.stringify(tokens))
 
       setMessage('✅ Connexion simulée créée ! Token et données stockés.')
-      console.log('🎯 Token créé:', token)
-      console.log('🎯 Payload:', payload)
     } catch (error) {
       setMessage('❌ Erreur lors de la simulation: ' + error)
       console.error('Erreur:', error)
@@ -134,3 +132,4 @@ export default function TestAuthPage() {
     </div>
   )
 }
+

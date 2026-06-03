@@ -6,6 +6,7 @@ export interface TabsProps {
   onValueChange?: (value: string) => void
   children: React.ReactNode
   defaultValue?: string
+  className?: string
 }
 
 export interface TabsListProps {
@@ -30,7 +31,7 @@ const TabsContext = React.createContext<{
   onValueChange?: (value: string) => void
 }>({})
 
-const Tabs = ({ value, onValueChange, children, defaultValue }: TabsProps) => {
+const Tabs = ({ value, onValueChange, children, defaultValue, className }: TabsProps) => {
   const [internalValue, setInternalValue] = React.useState(defaultValue || "")
   
   const currentValue = value !== undefined ? value : internalValue
@@ -38,7 +39,7 @@ const Tabs = ({ value, onValueChange, children, defaultValue }: TabsProps) => {
 
   return (
     <TabsContext.Provider value={{ value: currentValue, onValueChange: handleValueChange }}>
-      <div className="w-full">
+      <div className={cn("w-full", className)}>
         {children}
       </div>
     </TabsContext.Provider>

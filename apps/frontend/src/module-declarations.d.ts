@@ -17,7 +17,7 @@ declare module '@/components/ui/button' {
   import { ButtonHTMLAttributes, ForwardRefExoticComponent, RefAttributes } from 'react';
   
   export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline';
+    variant?: 'default' | 'primary' | 'secondary' | 'danger' | 'warning' | 'success' | 'ghost' | 'outline' | 'link' | 'destructive';
     size?: 'sm' | 'md' | 'lg';
     loading?: boolean;
     fullWidth?: boolean;
@@ -40,11 +40,13 @@ declare module '@/components/auth/protected-route' {
 declare module '@/components/ui/import-export-buttons' {
   export interface ImportExportButtonsProps {
     type: 'clients' | 'products' | 'suppliers' | 'orders' | 'invoices';
+    filters?: Record<string, any>;
     onImportSuccess?: (result: { success: boolean; message: string; count?: number }) => void;
     onImportError?: (message: string) => void;
     onExportError?: (message: string) => void;
     showPdfExport?: boolean;
     showImport?: boolean;
+    className?: string;
   }
   
   export function ImportExportButtons(props: ImportExportButtonsProps): JSX.Element;

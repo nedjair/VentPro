@@ -176,13 +176,10 @@ export default function StocksRealTimePage() {
                   productId={selectedProductId}
                   showActions={true}
                   onReserve={(quantity) => {
-                    console.log('Réserver', quantity)
                   }}
                   onRelease={(quantity) => {
-                    console.log('Libérer', quantity)
                   }}
                   onMovement={() => {
-                    console.log('Nouveau mouvement')
                   }}
                 />
               ) : (

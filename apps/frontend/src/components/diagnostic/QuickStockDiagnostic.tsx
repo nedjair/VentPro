@@ -51,7 +51,6 @@ export function QuickStockDiagnostic() {
     setLoading(true)
     
     try {
-      console.log('🔍 Diagnostic rapide des APIs existantes...')
       
       // Test des 3 endpoints principaux
       const startTime = Date.now()
@@ -201,7 +200,6 @@ export function QuickStockDiagnostic() {
       }
 
       setResult(diagnosticResult)
-      console.log('✅ Diagnostic terminé:', diagnosticResult)
 
     } catch (error: any) {
       console.error('❌ Erreur lors du diagnostic:', error)

@@ -37,7 +37,9 @@ export interface ApiError {
 // Schémas de validation communs
 export const PaginationSchema = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  // La validation accepte une borne large pour rester compatible avec les
+  // anciens clients, puis chaque handler plafonne réellement la taille renvoyée.
+  limit: z.coerce.number().min(1).max(10000).default(20),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 })

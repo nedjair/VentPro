@@ -33,13 +33,11 @@ export default function SyncStockPage() {
     setResult(null)
 
     try {
-      console.log('🔄 Démarrage de la synchronisation...')
       
       const response = await api.post('/api/v1/stock/sync-data')
       
       if (response.data.success) {
         setResult(response.data.data)
-        console.log('✅ Synchronisation réussie:', response.data.data)
       } else {
         setError(response.data.message || 'Erreur lors de la synchronisation')
       }

@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, ClientAnalytics } from '@/lib/api'
-import { ensureArray, safeMap } from '@/lib/defensive-utils'
+import { ensureArray } from '@/lib/defensive-utils'
 import {
   BarChart,
   Bar,
@@ -23,11 +23,7 @@ export function ClientAnalyticsComponent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadClientAnalytics()
-  }, [])
-
-  const loadClientAnalytics = async () => {
+  const loadClientAnalytics = useCallback(async () => {
     try {
       setLoading(true)
       
@@ -54,7 +50,11 @@ export function ClientAnalyticsComponent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void loadClientAnalytics()
+  }, [loadClientAnalytics])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-DZ', {
@@ -65,6 +65,10 @@ export function ClientAnalyticsComponent() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('fr-FR')
+  }
+
+  const safeMap = <T, R>(items: T[], mapper: (item: T, index: number) => R) => {
+    return Array.isArray(items) ? items.map(mapper) : []
   }
 
   const getSegmentIcon = (segment: string) => {
@@ -195,9 +199,10 @@ export function ClientAnalyticsComponent() {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ segment, percent }) =>
-                  `${segment} (${(percent * 100).toFixed(0)}%)`
-                }
+                label={({ payload, percent }: any) => {
+                  const segmentLabel = payload?.segment || 'Segment'
+                  return `${segmentLabel} (${((percent ?? 0) * 100).toFixed(0)}%)`
+                }}
                 outerRadius={100}
                 fill="hsl(var(--color-primary))"
                 dataKey="segmentRevenue"
@@ -206,7 +211,7 @@ export function ClientAnalyticsComponent() {
                   <Cell key={`cell-${index}`} fill={getSegmentColor(entry.segment)} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+              <Tooltip formatter={((value: any) => formatCurrency(Number(value || 0))) as any} />
             </PieChart>
           </ResponsiveContainer>
           
@@ -245,11 +250,11 @@ export function ClientAnalyticsComponent() {
             <YAxis yAxisId="left" orientation="left" tickFormatter={formatCurrency} />
             <YAxis yAxisId="right" orientation="right" />
             <Tooltip 
-              formatter={(value: number, name: string) => {
+              formatter={((value: any, name: string) => {
                 if (name === 'totalRevenue') return [formatCurrency(value), 'CA']
                 if (name === 'clientCount') return [value, 'Clients']
                 return [value, name]
-              }}
+              }) as any}
             />
             <Legend />
             <Bar yAxisId="left" dataKey="totalRevenue" fill="hsl(var(--color-primary))" name="CA" />
@@ -335,3 +340,4 @@ export function ClientAnalyticsComponent() {
     </div>
   )
 }
+

@@ -1,15 +1,12 @@
 'use client'
 
 export default function TestMinimalPage() {
-  console.log('🧪 TestMinimal: Rendu du composant')
   
   // JavaScript synchrone qui devrait s'exécuter côté client
   if (typeof window !== 'undefined') {
-    console.log('🚀 TestMinimal: Code côté client détecté')
     
     // Test avec setTimeout
     setTimeout(() => {
-      console.log('⏰ TestMinimal: setTimeout exécuté côté client')
     }, 100)
   }
 
@@ -23,7 +20,6 @@ export default function TestMinimalPage() {
           
           <button
             onClick={() => {
-              console.log('🖱️ TestMinimal: Clic détecté')
               alert('Clic fonctionne !')
             }}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"

@@ -380,7 +380,8 @@ export default async function stockRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          // Validation souple, plafonnement métier à 100 dans le handler.
+          limit: { type: 'integer', minimum: 1, maximum: 10000, default: 20 },
           sortBy: { type: 'string', default: 'createdAt' },
           sortOrder: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
           productId: { type: 'string' },
@@ -405,8 +406,8 @@ export default async function stockRoutes(server: FastifyInstance) {
 
       // Pagination avec valeurs par défaut
       const pagination = {
-        page: query.page || 1,
-        limit: Math.min(query.limit || 20, 100),
+        page: Math.max(1, Number(query.page || 1) || 1),
+        limit: Math.min(Math.max(1, Number(query.limit || 20) || 20), 100),
       }
 
       // Filtres avec conversion des dates
@@ -452,7 +453,7 @@ export default async function stockRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          limit: { type: 'integer', minimum: 1, maximum: 10000, default: 20 },
           sortBy: { type: 'string', default: 'createdAt' },
           sortOrder: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
         },
@@ -466,8 +467,8 @@ export default async function stockRoutes(server: FastifyInstance) {
 
       // Pagination avec valeurs par défaut
       const pagination = {
-        page: query.page || 1,
-        limit: Math.min(query.limit || 20, 100),
+        page: Math.max(1, Number(query.page || 1) || 1),
+        limit: Math.min(Math.max(1, Number(query.limit || 20) || 20), 100),
       }
 
       const result = await StockService.getProductStockHistory(productId, companyId, pagination)
@@ -664,7 +665,7 @@ export default async function stockRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          limit: { type: 'integer', minimum: 1, maximum: 10000, default: 20 },
           search: { type: 'string' },
           productId: { type: 'string' },
           lowStock: { type: 'boolean' },
@@ -1129,4 +1130,3 @@ export default async function stockRoutes(server: FastifyInstance) {
     }
   })
 }
-

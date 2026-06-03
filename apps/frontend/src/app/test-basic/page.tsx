@@ -11,7 +11,6 @@ export default function TestBasicPage() {
           
           <button
             onClick={() => {
-              console.log('🖱️ JavaScript inline fonctionne')
               alert('JavaScript inline fonctionne !')
             }}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -22,7 +21,6 @@ export default function TestBasicPage() {
           <script
             dangerouslySetInnerHTML={{
               __html: `
-                console.log('🧪 Script inline exécuté');
                 window.testBasicLoaded = true;
               `
             }}

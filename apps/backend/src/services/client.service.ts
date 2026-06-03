@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma'
 import { Prisma, Client, ClientType } from '@gestion/database'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
+import { getFallbackClientById, getFallbackClientStats, getFallbackClients, isDatabaseUnavailableError } from './dev-fallback-data.service'
 
 export interface CreateClientData {
   type: ClientType
@@ -233,6 +234,9 @@ export class ClientService {
 
       return client
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackClientById(ownerScopeId, id) as unknown as Client | null
+      }
       logger.error('Erreur lors de la récupération du client', { error, id })
       throw error
     }
@@ -437,6 +441,9 @@ export class ClientService {
         },
       }
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackClients(companyId, filters, pagination) as unknown as PaginationResponse<Client>
+      }
       logger.error('Erreur lors de la récupération des clients', { error, filters })
       throw error
     }
@@ -676,6 +683,9 @@ export class ClientService {
         recentCount,
       }
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackClientStats(companyId)
+      }
       logger.error('Erreur lors du calcul des statistiques clients', { error })
       throw error
     }
@@ -852,5 +862,4 @@ export class ClientService {
     }
   }
 }
-
 

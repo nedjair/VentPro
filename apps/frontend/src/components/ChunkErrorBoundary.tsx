@@ -34,7 +34,6 @@ export class ChunkErrorBoundary extends Component<Props, State> {
     if (error.message.includes('Loading chunk') || 
         error.message.includes('ChunkLoadError') ||
         error.name === 'ChunkLoadError') {
-      console.log('🔄 Erreur de chunk détectée, rechargement de la page...')
       setTimeout(() => {
         window.location.reload()
       }, 1000)

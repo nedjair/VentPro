@@ -360,37 +360,24 @@ export default async function quotesRoutes(fastify: FastifyInstance) {
       if (!quote) {
         return reply.status(404).send({
           success: false,
-          message: 'Devis non trouvÃ©',
+          message: 'Devis non trouvé',
         })
       }
 
-      // GÃ©nÃ©ration d'un vrai PDF tÃ©lÃ©chargeable pour Ã©viter le faux succÃ¨s JSON.
-      const exportService = new ExportService()
-      const filename = `devis_${quote.number}_${Date.now()}.pdf`
-      const fs = require('fs')
-      const path = require('path')
+      const buffer = await ExportService.generateQuotePdfBuffer(quote)
 
-      const exportsDir = path.join(process.cwd(), 'exports')
-      if (!fs.existsSync(exportsDir)) {
-        fs.mkdirSync(exportsDir, { recursive: true })
+      if (!buffer || buffer.length === 0) {
+        return reply.status(500).send({
+          success: false,
+          message: 'Le fichier généré est vide - erreur lors de la génération du PDF',
+        })
       }
 
-      const outputPath = path.join(exportsDir, filename)
-      await exportService.generateQuotePDF(quote, outputPath)
-
+      const filename = `devis_${quote.number}_${Date.now()}.pdf`
       reply.type('application/pdf')
       reply.header('Content-Disposition', `attachment; filename="${filename}"`)
-
-      const fileStream = fs.createReadStream(outputPath)
-      reply.send(fileStream)
-
-      fileStream.on('end', () => {
-        setTimeout(() => {
-          if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath)
-          }
-        }, 5000)
-      })
+      reply.header('Content-Length', String(buffer.length))
+      return reply.send(buffer)
     } catch (error) {
       logger.error('Erreur lors de l\'export PDF du devis', { error, id: request.params.id })
       reply.status(500).send({

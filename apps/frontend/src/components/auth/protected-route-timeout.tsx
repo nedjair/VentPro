@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'next/navigation'
+import { authStore, useAuthStore } from '@/stores/auth'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -18,43 +18,28 @@ export function ProtectedRouteTimeout({
   fallback
 }: ProtectedRouteProps) {
   const router = useRouter()
-  const pathname = usePathname()
   
   const [isClient, setIsClient] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
   
   // Store d'authentification
-  const { isAuthenticated, isLoading, user, checkAuth } = useAuthStore()
+  const { isAuthenticated, isLoading, user } = useAuthStore()
 
-  console.log('🔄 ProtectedRouteTimeout: Rendu', {
-    isClient,
-    authChecked,
-    isAuthenticated,
-    isLoading,
-    user: user?.email,
-    pathname,
-    timestamp: new Date().toISOString()
-  })
+  useEffect(() => {
+    setIsClient(true)
 
-  // Utiliser setTimeout au lieu de useEffect pour forcer l'exécution côté client
-  if (typeof window !== 'undefined' && !isClient) {
-    console.log('🚀 ProtectedRouteTimeout: Détection côté client avec setTimeout')
-    setTimeout(() => {
-      console.log('⏰ ProtectedRouteTimeout: setTimeout exécuté')
-      setIsClient(true)
-      
-      // Forcer la vérification d'authentification
-      setTimeout(() => {
-        console.log('🔍 ProtectedRouteTimeout: Vérification d\'authentification')
-        checkAuth()
+    // La vérification est déclenchée côté client pour éviter les faux positifs SSR.
+    authStore.checkAuth()
+      .catch(() => {
+        // L'état d'erreur est déjà géré dans le store; on évite une seconde cascade.
+      })
+      .finally(() => {
         setAuthChecked(true)
-      }, 100)
-    }, 0)
-  }
+      })
+  }, [])
 
   // Si nous ne sommes pas côté client, afficher le loader
   if (!isClient) {
-    console.log('⏳ ProtectedRouteTimeout: Pas encore côté client')
     return fallback || (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -67,7 +52,6 @@ export function ProtectedRouteTimeout({
 
   // Si l'authentification n'a pas encore été vérifiée
   if (!authChecked || isLoading) {
-    console.log('⏳ ProtectedRouteTimeout: Vérification d\'authentification en cours')
     return fallback || (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -80,7 +64,6 @@ export function ProtectedRouteTimeout({
 
   // Si l'utilisateur n'est pas authentifié, rediriger vers la page de connexion
   if (!isAuthenticated) {
-    console.log('🚫 ProtectedRouteTimeout: Non authentifié - Redirection vers /login')
     router.push('/login')
     return fallback || (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -94,7 +77,6 @@ export function ProtectedRouteTimeout({
 
   // Vérification des rôles si requis
   if (requiredRole && user?.role !== requiredRole) {
-    console.log('🚫 ProtectedRouteTimeout: Rôle insuffisant', { required: requiredRole, actual: user?.role })
     router.push('/unauthorized')
     return fallback || (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -104,8 +86,5 @@ export function ProtectedRouteTimeout({
       </div>
     )
   }
-
-  // Tout est OK, afficher le contenu
-  console.log('✅ ProtectedRouteTimeout: Authentification réussie - Affichage du contenu')
   return <>{children}</>
 }

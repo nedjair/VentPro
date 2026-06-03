@@ -6,9 +6,10 @@ import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
 import { Badge } from '../../ui/badge'
+import { ListPagination } from '../../ui/list-pagination'
 import { 
   Search, Filter, Plus, Eye, Edit, Trash2, Package, 
-  Calendar, User, FileText, ChevronLeft, ChevronRight,
+  Calendar, User, FileText,
   Download, RefreshCw, MoreHorizontal, CheckCircle,
   Clock, AlertCircle, XCircle, Truck
 } from 'lucide-react'
@@ -502,39 +503,15 @@ export function PurchaseOrderList({
         </CardContent>
       </Card>
 
-      {/* Pagination */}
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-700">
-            Affichage de {((pagination.page - 1) * pagination.limit) + 1} à{' '}
-            {Math.min(pagination.page * pagination.limit, pagination.total)} sur{' '}
-            {pagination.total} résultats
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(pagination.page - 1)}
-              disabled={pagination.page === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Précédent
-            </Button>
-            <span className="text-sm text-gray-700">
-              Page {pagination.page} sur {pagination.totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(pagination.page + 1)}
-              disabled={pagination.page === pagination.totalPages}
-            >
-              Suivant
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <ListPagination
+        totalItems={pagination.total}
+        currentPage={pagination.page}
+        totalPages={pagination.totalPages}
+        itemsPerPage={pagination.limit}
+        itemLabel="achats"
+        onPrevious={() => handlePageChange(pagination.page - 1)}
+        onNext={() => handlePageChange(pagination.page + 1)}
+      />
     </div>
   )
 }

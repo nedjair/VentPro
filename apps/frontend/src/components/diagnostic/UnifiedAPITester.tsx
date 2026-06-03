@@ -8,7 +8,6 @@ import {
   CheckCircle, 
   Database,
   Zap,
-  Sync,
   Activity
 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -22,10 +21,42 @@ interface APITestResult {
   timestamp: string
 }
 
+interface UnifiedComparison {
+  dashboard: {
+    unified: {
+      totalProducts?: number
+      outOfStock?: number
+      lowStock?: number
+      activeAlerts?: number
+    }
+    legacy: {
+      totalProducts?: number
+      outOfStock?: number
+      lowStock?: number
+      activeAlerts?: number
+    }
+  }
+  alerts: {
+    unified: {
+      total?: number
+      outOfStock?: number
+      lowStock?: number
+      overStock?: number
+    }
+    legacy: {
+      total?: number
+      outOfStock?: number
+      lowStock?: number
+      overStock?: number
+    }
+  }
+  inconsistencies: string[]
+}
+
 export function UnifiedAPITester() {
   const [results, setResults] = useState<APITestResult[]>([])
   const [loading, setLoading] = useState(false)
-  const [comparison, setComparison] = useState<any>(null)
+  const [comparison, setComparison] = useState<UnifiedComparison | null>(null)
 
   const testEndpoint = async (name: string, url: string): Promise<APITestResult> => {
     const startTime = Date.now()
@@ -60,7 +91,6 @@ export function UnifiedAPITester() {
     setComparison(null)
 
     try {
-      console.log('🧪 Test des APIs unifiées...')
 
       // Test des nouvelles APIs unifiées
       const unifiedTests = await Promise.all([
@@ -88,7 +118,7 @@ export function UnifiedAPITester() {
       const unifiedCounts = unifiedTests.find(r => r.endpoint === 'Unified Counts')
 
       if (unifiedDashboard?.success && legacyDashboard?.success && unifiedCounts?.success) {
-        const comparison = {
+        const comparison: UnifiedComparison = {
           dashboard: {
             unified: {
               totalProducts: unifiedDashboard.data.overview?.totalProducts,
@@ -121,7 +151,7 @@ export function UnifiedAPITester() {
         }
 
         // Détecter les incohérences
-        const dashInconsistencies = []
+        const dashInconsistencies: string[] = []
         if (comparison.dashboard.unified.totalProducts !== comparison.dashboard.legacy.totalProducts) {
           dashInconsistencies.push('Total produits différent')
         }
@@ -135,7 +165,7 @@ export function UnifiedAPITester() {
           dashInconsistencies.push('Alertes actives différentes')
         }
 
-        const alertInconsistencies = []
+        const alertInconsistencies: string[] = []
         if (comparison.alerts.unified.total !== comparison.alerts.legacy.total) {
           alertInconsistencies.push('Total alertes différent')
         }
@@ -150,8 +180,6 @@ export function UnifiedAPITester() {
         setComparison(comparison)
       }
 
-      console.log('✅ Tests terminés:', allResults)
-
     } catch (error: any) {
       console.error('❌ Erreur lors des tests:', error)
     } finally {
@@ -161,9 +189,7 @@ export function UnifiedAPITester() {
 
   const syncUnifiedAlerts = async () => {
     try {
-      console.log('🔄 Synchronisation des alertes...')
       const response = await api.post('/api/v1/stock-alerts/unified/sync')
-      console.log('✅ Synchronisation terminée:', response.data)
       
       // Relancer les tests après synchronisation
       await runUnifiedAPITests()
@@ -174,9 +200,7 @@ export function UnifiedAPITester() {
 
   const forceRefresh = async () => {
     try {
-      console.log('🔄 Rafraîchissement forcé...')
       const response = await api.post('/api/v1/stock-alerts/unified/refresh')
-      console.log('✅ Rafraîchissement terminé:', response.data)
       
       // Relancer les tests après rafraîchissement
       await runUnifiedAPITests()
@@ -225,7 +249,7 @@ export function UnifiedAPITester() {
             disabled={loading}
             className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
-            <Sync className="h-4 w-4 mr-2" />
+            <RefreshCw className="h-4 w-4 mr-2" />
             Synchroniser
           </button>
           

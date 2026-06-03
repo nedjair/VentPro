@@ -205,12 +205,14 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
               width={200}
               tick={{ fontSize: 12 }}
             />
-            <Tooltip 
-              formatter={(value: number, name: string) => {
-                if (name === 'totalRevenue') return [formatCurrency(value), 'CA']
-                if (name === 'totalQuantity') return [value, 'Quantité']
-                return [value, name]
-              }}
+            <Tooltip
+              // Recharts passe parfois `undefined` selon la source du point, donc on normalise ici.
+              formatter={((value: unknown, name: string) => {
+                const numericValue = Number(value || 0)
+                if (name === 'totalRevenue') return [formatCurrency(numericValue), 'CA']
+                if (name === 'totalQuantity') return [numericValue, 'Quantité']
+                return [numericValue, name]
+              }) as any}
             />
             <Bar dataKey="totalRevenue" fill="hsl(var(--color-primary))" name="CA" />
           </BarChart>
@@ -230,9 +232,13 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ category, percent }) =>
-                  `${category} (${(percent * 100).toFixed(0)}%)`
-                }
+                label={({ payload, percent }: any) => {
+                  const categoryValue = payload?.category
+                  const categoryLabel = typeof categoryValue === 'string'
+                    ? categoryValue
+                    : categoryValue?.name || 'Non catégorisé'
+                  return `${categoryLabel} (${((percent ?? 0) * 100).toFixed(0)}%)`
+                }}
                 outerRadius={100}
                 fill="hsl(var(--color-primary))"
                 dataKey="totalRevenue"
@@ -241,7 +247,7 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+              <Tooltip formatter={(value: any) => formatCurrency(Number(value || 0)) as any} />
             </PieChart>
           </ResponsiveContainer>
           
@@ -249,13 +255,15 @@ export function ProductAnalyticsComponent({ period = '3m', limit = 10 }: Product
             <h4 className="font-medium text-card-foreground">Détails par catégorie</h4>
             <div className="max-h-64 overflow-y-auto">
               {(productData.categoryDistribution || []).map((item, index) => (
-                <div key={item.category} className="flex items-center justify-between py-2">
+                <div key={typeof item.category === 'string' ? item.category : item.category?.name || index} className="flex items-center justify-between py-2">
                   <div className="flex items-center">
                     <div 
                       className="w-3 h-3 rounded-full mr-2"
                       style={{ backgroundColor: COLORS[index % COLORS.length] }}
                     ></div>
-                    <span className="text-sm font-medium">{item.category}</span>
+                    <span className="text-sm font-medium">
+                      {typeof item.category === 'string' ? item.category : item.category?.name || 'Non catégorisé'}
+                    </span>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-medium">{formatCurrency(item.revenue || 0)}</div>

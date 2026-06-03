@@ -1,6 +1,7 @@
 import { prisma as prismaClient } from '../lib/database'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
+import { getFallbackPurchaseOrderById, getFallbackPurchaseOrderStats, getFallbackPurchaseOrders, isDatabaseUnavailableError } from './dev-fallback-data.service'
 
 type PurchaseOrderStatusValue = 'DRAFT' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED'
 type PurchaseOrder = Record<string, any>
@@ -198,6 +199,9 @@ export class PurchaseOrderService {
 
       return purchaseOrder
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackPurchaseOrderById(companyId, id)
+      }
       logger.error('Erreur lors de la récupération de la commande fournisseur', { error, id, companyId })
       throw error
     }
@@ -213,16 +217,8 @@ export class PurchaseOrderService {
   ): Promise<PaginationResponse<PurchaseOrder>> {
     try {
       if (!this.hasPurchaseOrderModel()) {
-        logger.warn('Table PurchaseOrder absente sur ce schéma local : retour d\'une liste vide', { companyId })
-        return {
-          data: [],
-          pagination: {
-            page: pagination.page || 1,
-            limit: pagination.limit || 10,
-            total: 0,
-            totalPages: 0,
-          },
-        }
+        logger.warn('Table PurchaseOrder absente sur ce schéma local : utilisation du dataset fallback', { companyId })
+        return getFallbackPurchaseOrders(companyId, filters, pagination)
       }
 
       const { page = 1, limit = 10 } = pagination
@@ -282,19 +278,12 @@ export class PurchaseOrderService {
       }
     } catch (error) {
       if (this.isMissingPurchaseOrderTable(error)) {
-        logger.warn('Table PurchaseOrder absente sur ce schéma local : retour d\'une liste vide', {
-          companyId,
-        })
+        logger.warn('Table PurchaseOrder absente sur ce schéma local : utilisation du dataset fallback', { companyId })
+        return getFallbackPurchaseOrders(companyId, filters, pagination)
+      }
 
-        return {
-          data: [],
-          pagination: {
-            page: pagination.page || 1,
-            limit: pagination.limit || 10,
-            total: 0,
-            totalPages: 0,
-          },
-        }
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackPurchaseOrders(companyId, filters, pagination)
       }
 
       logger.error('Erreur lors de la récupération des commandes fournisseurs', { error, companyId, filters })
@@ -305,16 +294,8 @@ export class PurchaseOrderService {
   static async getPurchaseOrderStats(companyId: string) {
     try {
       if (!this.hasPurchaseOrderModel()) {
-        logger.warn('Table PurchaseOrder absente sur ce schéma local : statistiques vides', { companyId })
-        return {
-          totalOrders: 0,
-          totalAmount: 0,
-          pendingOrders: 0,
-          receivedOrders: 0,
-          averageOrderValue: 0,
-          topSuppliers: [],
-          monthlyTrends: [],
-        }
+        logger.warn('Table PurchaseOrder absente sur ce schéma local : statistiques fallback', { companyId })
+        return getFallbackPurchaseOrderStats(companyId)
       }
 
       const [totalOrders, aggregateAmount, pendingOrders, receivedOrders] = await Promise.all([
@@ -335,16 +316,12 @@ export class PurchaseOrderService {
       }
     } catch (error) {
       if (this.isMissingPurchaseOrderTable(error)) {
-        logger.warn('Table PurchaseOrder absente sur ce schéma local : statistiques vides', { companyId })
-        return {
-          totalOrders: 0,
-          totalAmount: 0,
-          pendingOrders: 0,
-          receivedOrders: 0,
-          averageOrderValue: 0,
-          topSuppliers: [],
-          monthlyTrends: [],
-        }
+        logger.warn('Table PurchaseOrder absente sur ce schéma local : statistiques fallback', { companyId })
+        return getFallbackPurchaseOrderStats(companyId)
+      }
+
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackPurchaseOrderStats(companyId)
       }
 
       logger.error('Erreur lors de la récupération des statistiques des commandes fournisseurs', { error, companyId })

@@ -6,6 +6,7 @@ export interface SelectProps {
   value?: string
   onValueChange?: (value: string) => void
   children: React.ReactNode
+  disabled?: boolean
 }
 
 export interface SelectTriggerProps
@@ -32,16 +33,18 @@ const SelectContext = React.createContext<{
   onValueChange?: (value: string) => void
   open: boolean
   setOpen: (open: boolean) => void
+  disabled: boolean
 }>({
   open: false,
-  setOpen: () => {}
+  setOpen: () => {},
+  disabled: false,
 })
 
-const Select = ({ value, onValueChange, children }: SelectProps) => {
+const Select = ({ value, onValueChange, children, disabled = false }: SelectProps) => {
   const [open, setOpen] = React.useState(false)
 
   return (
-    <SelectContext.Provider value={{ value, onValueChange, open, setOpen }}>
+    <SelectContext.Provider value={{ value, onValueChange, open: disabled ? false : open, setOpen, disabled }}>
       <div className="relative">
         {children}
       </div>
@@ -51,7 +54,7 @@ const Select = ({ value, onValueChange, children }: SelectProps) => {
 
 const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
   ({ className, children, ...props }, ref) => {
-    const { open, setOpen } = React.useContext(SelectContext)
+    const { open, setOpen, disabled } = React.useContext(SelectContext)
 
     return (
       <button
@@ -61,7 +64,12 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
           "flex h-11 w-full items-center justify-between rounded-xl border border-input bg-card px-4 py-2.5 text-sm text-card-foreground shadow-[0_4px_14px_rgba(15,23,42,0.04)] ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary/15 disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
-        onClick={() => setOpen(!open)}
+        disabled={disabled || props.disabled}
+        onClick={() => {
+          if (!disabled && !props.disabled) {
+            setOpen(!open)
+          }
+        }}
         {...props}
       >
         {children}

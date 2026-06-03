@@ -57,14 +57,12 @@ export function usePurchaseOrders(initialFilters?: PurchaseOrderFilters): UsePur
   )
 
   const fetchPurchaseOrders = useCallback(async (filters?: PurchaseOrderFilters) => {
-    console.log('🔍 fetchPurchaseOrders appelé', { user: !!user, filters, currentFilters })
 
     try {
       setState(prev => ({ ...prev, loading: true, error: null }))
 
       const filtersToUse = filters || currentFilters
       setCurrentFilters(filtersToUse)
-      console.log('📋 Filtres utilisés:', filtersToUse)
 
       const queryParams = new URLSearchParams()
       
@@ -77,13 +75,10 @@ export function usePurchaseOrders(initialFilters?: PurchaseOrderFilters): UsePur
       if (filtersToUse.dateTo) queryParams.append('dateTo', filtersToUse.dateTo)
 
       const url = `/api/v1/purchase-orders?${queryParams.toString()}`
-      console.log('🌐 Appel API:', url)
 
       const response = await api.get<PurchaseOrderListResponse>(url)
-      console.log('📦 Réponse API reçue:', response.data)
 
       if (response.data.success) {
-        console.log('✅ Mise à jour du state avec', response.data.data.length, 'commandes')
         setState(prev => ({
           ...prev,
           purchaseOrders: response.data.data,
@@ -110,11 +105,9 @@ export function usePurchaseOrders(initialFilters?: PurchaseOrderFilters): UsePur
       const response = await api.post<PurchaseOrderResponse>('/api/v1/purchase-orders', data)
 
       if (response.data.success) {
-        console.log('🔄 Commande créée avec succès, rafraîchissement de la liste...', { currentFilters })
 
         // Rafraîchir la liste après création avec les filtres actuels
         await fetchPurchaseOrders(currentFilters)
-        console.log('✅ Liste rafraîchie avec succès')
 
         setState(prev => ({ ...prev, loading: false }))
         return response.data.data

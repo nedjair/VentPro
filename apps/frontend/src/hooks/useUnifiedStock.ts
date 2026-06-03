@@ -54,8 +54,6 @@ export function useUnifiedStock(): UnifiedStockData {
     try {
       setLoading(true)
       setError(null)
-
-      console.log('🔄 Chargement des produits avec données unifiées...')
       
       const response = await api.get('/api/v1/products?limit=100')
       
@@ -72,7 +70,6 @@ export function useUnifiedStock(): UnifiedStockData {
         }))
         
         setProducts(unifiedProducts)
-        console.log(`✅ ${unifiedProducts.length} produits chargés avec données unifiées`)
       } else {
         throw new Error(response.data.message || 'Erreur lors du chargement des produits')
       }
@@ -87,12 +84,10 @@ export function useUnifiedStock(): UnifiedStockData {
   const unifyData = useCallback(async () => {
     try {
       setError(null)
-      console.log('🔄 Unification des données de stock...')
       
       const response = await api.post('/api/v1/stock/unify-data')
       
       if (response.data.success) {
-        console.log('✅ Unification terminée:', response.data.message)
         // Recharger les données après unification
         await loadProducts()
       } else {

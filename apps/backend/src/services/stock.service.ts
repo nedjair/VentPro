@@ -1,6 +1,7 @@
 import { StockAlertService } from '../services/stock-alert.service'
 import { prisma, Prisma, StockMovement, StockMovementType, MovementStatus, Product } from '@gestion/database'
 import { logger } from '../utils/logger'
+import { getFallbackStockAlerts, getFallbackStockById, getFallbackStockDashboard, getFallbackStocks, getFallbackStockStats, isDatabaseUnavailableError } from './dev-fallback-data.service'
 
 // Types simplifiés pour éviter les erreurs d'import
 interface PaginationParams {
@@ -611,6 +612,9 @@ export class StockService {
         recentMovements,
       }
     } catch (error) {
+      logger.warn('Fallback statistiques stock en mémoire', { companyId, error })
+      return getFallbackStockStats(companyId)
+      /* istanbul ignore next */
       logger.error('Erreur lors du calcul des statistiques de stock', { error })
       throw error
     }
@@ -678,6 +682,9 @@ export class StockService {
         totalAlerts: lowStockProducts.length + outOfStockProducts.length,
       }
     } catch (error) {
+      logger.warn('Fallback alertes stock en mémoire', { companyId, error })
+      return getFallbackStockAlerts(companyId)
+      /* istanbul ignore next */
       logger.error('Erreur lors de la récupération des alertes de stock', { error })
       throw error
     }
@@ -879,6 +886,9 @@ export class StockService {
         },
       }
     } catch (error: any) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackStocks(companyId, filters, pagination)
+      }
       logger.error('Erreur lors de la récupération des stocks', { error: error.message })
       throw new Error('Erreur lors de la récupération des stocks')
     }
@@ -905,6 +915,9 @@ export class StockService {
 
       return stock
     } catch (error: any) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackStockById(companyId, id) as unknown as Stock | null
+      }
       logger.error('Erreur lors de la récupération du stock', { error: error.message, id })
       throw error
     }
@@ -1523,6 +1536,9 @@ export class StockService {
         lastUpdate: new Date(),
       }
     } catch (error) {
+      logger.warn('Fallback tableau de bord stock en mémoire', { companyId, error })
+      return getFallbackStockDashboard(companyId)
+      /* istanbul ignore next */
       logger.error('Erreur lors de la récupération du tableau de bord temps réel', { error })
       throw error
     }
@@ -1682,5 +1698,3 @@ export class StockService {
     }
   }
 }
-
-

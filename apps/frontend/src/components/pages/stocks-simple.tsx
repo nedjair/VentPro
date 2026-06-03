@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Search, Package, TrendingUp } from 'lucide-react'
 
 import { MainLayout } from '@/components/layout/main-layout'
+import { ListPagination } from '@/components/ui/list-pagination'
 import { api } from '@/lib/api'
 import { ensureApiAuthentication } from '@/lib/auth-utils'
 import {
@@ -129,6 +130,8 @@ export function StocksPageSimple() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 20
 
   const getDisplayStockStatusClasses = (product: UnifiedProduct) => {
     const status = getDisplayStockStatus(product)
@@ -191,6 +194,22 @@ export function StocksPageSimple() {
     () => stockProducts.filter((product) => matchesStockSearch(product, searchTerm)),
     [stockProducts, searchTerm]
   )
+
+  // La pagination reste locale pour éviter d'alourdir les appels réseau.
+  const totalItems = filteredStockProducts.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage))
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const paginatedStockProducts = filteredStockProducts.slice(startIndex, startIndex + itemsPerPage)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
 
   useEffect(() => {
     upsertHeaderNotificationsBySource(STOCK_NOTIFICATION_SOURCE, buildStockStatusNotifications(stockProducts))
@@ -305,13 +324,13 @@ export function StocksPageSimple() {
                 </tr>
               </thead>
               <tbody className="bg-card divide-y divide-border">
-                {filteredStockProducts.length === 0 ? (
+                {paginatedStockProducts.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">
                       Aucun stock ne correspond à votre recherche.
                     </td>
                   </tr>
-                ) : filteredStockProducts.map((product) => {
+                ) : paginatedStockProducts.map((product) => {
                   const stockStatus = getDisplayStockStatus(product)
                   const StatusIcon = stockStatus.icon === TrendingUp ? TrendingUp : getStockStatusIcon(stockStatus)
 
@@ -369,6 +388,16 @@ export function StocksPageSimple() {
             </table>
           </div>
         </div>
+
+        <ListPagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          itemLabel="produits"
+          onPrevious={() => setCurrentPage(Math.max(1, currentPage - 1))}
+          onNext={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+        />
       </div>
     </MainLayout>
   )

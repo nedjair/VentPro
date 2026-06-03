@@ -40,11 +40,7 @@ export function StockAlerts() {
     try {
       setLoading(true)
       setError(null)
-
-      console.log('🔄 Chargement des alertes de stock...')
       const response = await api.get('/api/v1/stock/alerts')
-
-      console.log('📡 Réponse API alertes:', response.data)
 
       if (response.data.success) {
         const alertsData = response.data.data
@@ -57,21 +53,6 @@ export function StockAlerts() {
 
         setAlerts(processedAlerts)
         setLastUpdated(new Date())
-
-        console.log('✅ Alertes de stock mises à jour:', {
-          lowStock: processedAlerts.lowStock.length,
-          outOfStock: processedAlerts.outOfStock.length,
-          total: processedAlerts.totalAlerts,
-          lowStockDetails: processedAlerts.lowStock.map(p => ({
-            name: p.name,
-            stock: p.stockQuantity,
-            min: p.minStock
-          })),
-          outOfStockDetails: processedAlerts.outOfStock.map(p => ({
-            name: p.name,
-            stock: p.stockQuantity
-          }))
-        })
       } else {
         console.error('❌ Erreur API:', response.data)
         setError('Erreur lors du chargement des alertes')

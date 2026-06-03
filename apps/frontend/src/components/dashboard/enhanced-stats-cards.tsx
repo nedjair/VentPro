@@ -59,7 +59,7 @@ interface DashboardStats {
 }
 
 interface EnhancedStatsCardsProps {
-  stats: DashboardStats
+  stats: Record<string, any> | null
   loading?: boolean
 }
 

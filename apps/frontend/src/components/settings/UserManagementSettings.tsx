@@ -373,7 +373,7 @@ export function UserManagementSettings() {
 
         {showPasswordModal && selectedUser && (
           <ChangePasswordModal
-            userId={selectedUser.id}
+            user={{ id: selectedUser.id }}
             onClose={() => {
               setShowPasswordModal(false)
               setSelectedUser(null)

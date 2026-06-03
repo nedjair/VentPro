@@ -21,13 +21,16 @@ interface DashboardStats {
     outOfStock: number;
   };
   sales: {
-    month: number;
+    month?: number;
+    currentMonth?: number;
     growth: number;
   };
   orders: {
     pending: number;
     processing: number;
     completed: number;
+    accepted?: number;
+    total?: number;
   };
 }
 import { formatCurrency } from '@/lib/utils'
@@ -74,7 +77,7 @@ export function StatsCards({ stats, loading }: StatsCardsProps) {
     },
     {
       title: 'Ventes du mois',
-      value: stats?.sales?.currentMonth || 0,
+      value: stats?.sales?.currentMonth ?? stats?.sales?.month ?? 0,
       change: stats?.sales?.growth || 0,
       icon: DollarSign,
       color: 'purple',
@@ -88,7 +91,7 @@ export function StatsCards({ stats, loading }: StatsCardsProps) {
       icon: ShoppingCart,
       color: 'yellow',
       suffix: '',
-      subtitle: stats ? `${stats.orders?.accepted || 0} acceptées, ${stats.orders?.total || 0} total` : '',
+      subtitle: stats ? `${stats.orders?.accepted ?? 0} acceptées, ${stats.orders?.total ?? 0} total` : '',
     },
   ]
 

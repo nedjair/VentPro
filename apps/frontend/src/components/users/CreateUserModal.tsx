@@ -22,7 +22,6 @@ export function CreateUserModal({ onClose, onUserCreated }: CreateUserModalProps
   // Attendre que l'authentification soit chargée
   useEffect(() => {
     if (!authLoading && currentUser) {
-      console.log('✅ Auth loaded, user available:', currentUser)
     }
   }, [authLoading, currentUser])
 
@@ -44,7 +43,7 @@ export function CreateUserModal({ onClose, onUserCreated }: CreateUserModalProps
       firstName: '',
       lastName: '',
       role: 'EMPLOYEE' as UserRole,
-      companyId: currentUser?.companyId || currentCompany?.id || 'auto-detect'
+      companyId: currentCompany?.id || 'auto-detect'
     }
   })
 
@@ -131,7 +130,6 @@ export function CreateUserModal({ onClose, onUserCreated }: CreateUserModalProps
         console.error('❌ Erreur inconnue:', error)
       }
     } finally {
-      console.log('🔄 FORM SUBMIT - Fin (finally block)')
       setLoading(false)
     }
   }

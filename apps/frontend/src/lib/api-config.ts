@@ -7,6 +7,35 @@
  */
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, '') || ''
 
+const MAX_SAFE_API_LIMIT = 100
+
+function sanitizeApiUrlQuery(path: string): string {
+  const [rawPath, rawQuery = ''] = path.split('?')
+  if (!rawQuery) {
+    return path
+  }
+
+  const query = new URLSearchParams(rawQuery)
+  const rawLimit = query.get('limit')
+  if (rawLimit !== null) {
+    const parsedLimit = Number.parseInt(rawLimit, 10)
+    if (Number.isFinite(parsedLimit)) {
+      query.set('limit', String(Math.min(Math.max(1, parsedLimit), MAX_SAFE_API_LIMIT)))
+    }
+  }
+
+  const rawPage = query.get('page')
+  if (rawPage !== null) {
+    const parsedPage = Number.parseInt(rawPage, 10)
+    if (Number.isFinite(parsedPage)) {
+      query.set('page', String(Math.max(1, parsedPage)))
+    }
+  }
+
+  const sanitizedQuery = query.toString()
+  return sanitizedQuery ? `${rawPath}?${sanitizedQuery}` : rawPath
+}
+
 /**
  * Construit une URL API stable.
  *
@@ -15,5 +44,6 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace
  */
 export function buildApiUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath
+  const sanitizedPath = sanitizeApiUrlQuery(normalizedPath)
+  return API_BASE_URL ? `${API_BASE_URL}${sanitizedPath}` : sanitizedPath
 }

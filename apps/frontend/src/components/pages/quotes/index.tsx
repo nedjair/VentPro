@@ -35,6 +35,8 @@ interface Quote {
     id: string
     number: string
   }
+  createdAt: string
+  updatedAt: string
 }
 
 interface QuoteItem {
@@ -79,7 +81,7 @@ const QuotesPage: React.FC = () => {
   const [totalItems, setTotalItems] = useState(0)
   const itemsPerPage = 10
 
-  const getAuthHeaders = () => {
+  const getAuthHeaders = (): Record<string, string> => {
     // Compatibilité ascendante : certaines anciennes pages utilisaient la clé
     // `token`, alors que le login courant stocke les jetons dans `auth-tokens`.
     let accessToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null
@@ -95,7 +97,11 @@ const QuotesPage: React.FC = () => {
       }
     }
 
-    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+    const headers: Record<string, string> = {}
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`
+    }
+    return headers
   }
 
   useEffect(() => {

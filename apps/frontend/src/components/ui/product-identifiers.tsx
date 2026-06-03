@@ -1,6 +1,6 @@
 'use client'
 
-import { Package, Barcode3 } from 'lucide-react'
+import { Package, Barcode } from 'lucide-react'
 
 interface ProductIdentifiersProps {
   sku?: string
@@ -38,7 +38,7 @@ export function ProductIdentifiers({
         )}
         {barcode && (
           <div className="flex items-center gap-1">
-            {showIcons && <Barcode3 className="h-3 w-3 text-gray-400" />}
+            {showIcons && <Barcode className="h-3 w-3 text-gray-400" />}
             <span className="text-gray-500">CODE:</span>
             <span className="font-mono text-gray-600">{barcode}</span>
           </div>
@@ -61,7 +61,7 @@ export function ProductIdentifiers({
         )}
         {barcode && (
           <div className="flex items-center gap-2">
-            {showIcons && <Barcode3 className="h-4 w-4 text-green-500" />}
+            {showIcons && <Barcode className="h-4 w-4 text-green-500" />}
             <div>
               <span className="text-xs text-gray-500 block">Code-barres</span>
               <span className="text-sm font-mono text-gray-700">{barcode}</span>
@@ -94,7 +94,7 @@ export function ProductIdentifiers({
       
       {barcode && (
         <div className="flex items-start gap-2">
-          {showIcons && <Barcode3 className="h-4 w-4 text-green-500 mt-0.5" />}
+          {showIcons && <Barcode className="h-4 w-4 text-green-500 mt-0.5" />}
           <div className="flex-1">
             <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
               Code-barres
@@ -171,7 +171,7 @@ export function ProductIdentifierBadges({
       
       {barcode && (
         <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 text-xs rounded-md">
-          <Barcode3 className="h-3 w-3" />
+          <Barcode className="h-3 w-3" />
           <span className="font-medium">CODE:</span>
           <span className="font-mono">{barcode}</span>
         </div>

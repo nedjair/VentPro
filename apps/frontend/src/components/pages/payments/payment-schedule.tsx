@@ -87,12 +87,12 @@ export function PaymentSchedule({ onClose, onCreatePayment }: PaymentSchedulePro
         api.get('/invoices/upcoming-due')
       ])
 
-      if (overdueResponse.success) {
-        setOverdueInvoices(ensureArray(overdueResponse.data))
+      if (overdueResponse.data?.success) {
+        setOverdueInvoices(ensureArray(overdueResponse.data.data))
       }
 
-      if (upcomingResponse.success) {
-        setUpcomingPayments(ensureArray(upcomingResponse.data))
+      if (upcomingResponse.data?.success) {
+        setUpcomingPayments(ensureArray(upcomingResponse.data.data))
       }
     } catch (err) {
       console.error('❌ Erreur lors du chargement des échéances:', err)
@@ -130,10 +130,10 @@ export function PaymentSchedule({ onClose, onCreatePayment }: PaymentSchedulePro
     try {
       const response = await api.post(`/invoices/${invoiceId}/send-reminder`)
       
-      if (response.success) {
+      if (response.data?.success) {
         alert('Rappel envoyé avec succès')
       } else {
-        throw new Error(response.message || 'Erreur lors de l\'envoi du rappel')
+        throw new Error(response.data?.message || 'Erreur lors de l\'envoi du rappel')
       }
     } catch (err) {
       console.error('❌ Erreur lors de l\'envoi du rappel:', err)

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Bell, Search, ShieldCheck } from 'lucide-react'
 
 import { useAuth } from '@/stores/auth'
@@ -25,11 +26,23 @@ function getInitials(fullName: string) {
     .slice(0, 2)
 }
 
+/** z-index au-dessus des barres d’actions (Excel, PDF, etc.) du header. */
+const NOTIFICATIONS_PANEL_Z_INDEX = 9999
+
+type NotificationsPanelPosition = {
+  top: number
+  right: number
+  width: number
+}
+
 export function Header({ title, subtitle, actions }: HeaderProps) {
   const { user } = useAuth()
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [notifications, setNotifications] = useState<AppHeaderNotification[]>([])
+  const [panelPosition, setPanelPosition] = useState<NotificationsPanelPosition | null>(null)
   const notificationsRef = useRef<HTMLDivElement | null>(null)
+  const notificationsTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const notificationsPanelRef = useRef<HTMLDivElement | null>(null)
 
   const currentDate = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long',
@@ -49,9 +62,46 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
     })
   }, [])
 
+  const updateNotificationsPanelPosition = useCallback(() => {
+    const trigger = notificationsTriggerRef.current
+    if (!trigger) {
+      return
+    }
+
+    const rect = trigger.getBoundingClientRect()
+    const width = Math.min(360, window.innerWidth - 16)
+
+    setPanelPosition({
+      top: rect.bottom + 12,
+      right: Math.max(8, window.innerWidth - rect.right),
+      width,
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!isNotificationsOpen) {
+      setPanelPosition(null)
+      return
+    }
+
+    updateNotificationsPanelPosition()
+
+    window.addEventListener('resize', updateNotificationsPanelPosition)
+    window.addEventListener('scroll', updateNotificationsPanelPosition, true)
+
+    return () => {
+      window.removeEventListener('resize', updateNotificationsPanelPosition)
+      window.removeEventListener('scroll', updateNotificationsPanelPosition, true)
+    }
+  }, [isNotificationsOpen, updateNotificationsPanelPosition])
+
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (!notificationsRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node
+      const clickedInsideTrigger = notificationsRef.current?.contains(target)
+      const clickedInsidePanel = notificationsPanelRef.current?.contains(target)
+
+      if (!clickedInsideTrigger && !clickedInsidePanel) {
         setIsNotificationsOpen(false)
       }
     }
@@ -64,6 +114,52 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
       document.removeEventListener('mousedown', handlePointerDown)
     }
   }, [isNotificationsOpen])
+
+  const notificationsPanel =
+    isNotificationsOpen && panelPosition ? (
+      <div
+        ref={notificationsPanelRef}
+        role="dialog"
+        aria-label="Notifications"
+        className="overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_rgba(19,33,54,0.16)]"
+        style={{
+          position: 'fixed',
+          top: panelPosition.top,
+          right: panelPosition.right,
+          width: panelPosition.width,
+          zIndex: NOTIFICATIONS_PANEL_Z_INDEX,
+        }}
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-card-foreground">Notifications</p>
+            <p className="text-xs text-muted-foreground">
+              {notifications.length} alerte{notifications.length > 1 ? 's' : ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="max-h-80 overflow-y-auto p-3">
+          {notifications.length === 0 ? (
+            <div className="rounded-2xl bg-secondary px-4 py-6 text-center text-sm text-muted-foreground">
+              Aucune notification disponible.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="rounded-2xl border border-border bg-secondary/40 px-4 py-3"
+                >
+                  <p className="text-sm font-semibold text-card-foreground">{notification.title}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{notification.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    ) : null
 
   return (
     <header className="border-b border-border/80 bg-[rgba(247,248,252,0.82)] backdrop-blur-xl transition-colors duration-300">
@@ -91,12 +187,17 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
                 />
               </label>
 
-              <div className="relative" ref={notificationsRef}>
+              <div
+                className={isNotificationsOpen ? 'relative z-[100]' : 'relative'}
+                ref={notificationsRef}
+              >
                 <button
+                  ref={notificationsTriggerRef}
                   type="button"
                   className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground shadow-[0_12px_26px_rgba(19,33,54,0.05)] transition-all hover:text-card-foreground"
                   aria-label="Notifications"
                   aria-expanded={isNotificationsOpen}
+                  aria-haspopup="dialog"
                   title="Notifications"
                   onClick={() => setIsNotificationsOpen((current) => !current)}
                 >
@@ -105,37 +206,6 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
                     <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#E15858] ring-2 ring-white" />
                   ) : null}
                 </button>
-
-                {isNotificationsOpen ? (
-                  <div className="absolute right-0 top-full z-50 mt-3 w-[360px] overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_rgba(19,33,54,0.16)]">
-                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-card-foreground">Notifications</p>
-                        <p className="text-xs text-muted-foreground">{notifications.length} alerte{notifications.length > 1 ? 's' : ''}</p>
-                      </div>
-                    </div>
-
-                    <div className="max-h-80 overflow-y-auto p-3">
-                      {notifications.length === 0 ? (
-                        <div className="rounded-2xl bg-secondary px-4 py-6 text-center text-sm text-muted-foreground">
-                          Aucune notification disponible.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {notifications.map((notification) => (
-                            <div
-                              key={notification.id}
-                              className="rounded-2xl border border-border bg-secondary/40 px-4 py-3"
-                            >
-                              <p className="text-sm font-semibold text-card-foreground">{notification.title}</p>
-                              <p className="mt-1 text-sm text-muted-foreground">{notification.message}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
               </div>
 
               <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2.5 shadow-[0_12px_26px_rgba(19,33,54,0.05)]">
@@ -149,10 +219,16 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
               </div>
             </div>
 
-            {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
+            {actions ? (
+              <div className="relative z-0 flex flex-wrap items-center gap-3">{actions}</div>
+            ) : null}
           </div>
         </div>
       </div>
+
+      {typeof document !== 'undefined' && notificationsPanel
+        ? createPortal(notificationsPanel, document.body)
+        : null}
     </header>
   )
 }

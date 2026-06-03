@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/layout/main-layout'
 import { Button } from '@/components/ui/button'
+import { ListPagination } from '@/components/ui/list-pagination'
 import { ProductIdentifiersInline } from '@/components/ui/product-identifiers'
 import { ProductCategoryBadge } from '@/components/ui/category-display'
 import { ImportExportButtons, ImportExportMessage } from '@/components/ui/import-export-buttons'
@@ -39,6 +40,8 @@ export function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 20
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
     category: '',
@@ -56,7 +59,6 @@ export function ProductsPage() {
   const loadProducts = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement des produits...')
 
       // S'assurer que l'utilisateur est authentifié
       const isAuthenticated = await ensureAuthentication()
@@ -66,7 +68,6 @@ export function ProductsPage() {
       }
 
       const response = await api.getProducts()
-      console.log('📦 Réponse produits:', response)
 
       // Approche simplifiée et robuste
       let productsData: Product[] = []
@@ -94,7 +95,6 @@ export function ProductsPage() {
 
       // Assurer que nous avons toujours un tableau
       const safeProducts = ensureArray<Product>(productsData)
-      console.log('✅ Produits chargés avec succès:', safeProducts.length, 'produits')
 
       setProducts(safeProducts)
       setError(null)
@@ -203,6 +203,18 @@ export function ProductsPage() {
     return matchesSearch && matchesCategory && matchesStockStatus
   })
 
+  // Pagination locale pour garder une UX homogène avec la page Clients.
+  const totalItems = filteredProducts.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage))
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const paginatedProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage)
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
   // Fonction pour adapter le produit au format ProductWithStock
   const adaptProductForStock = (product: Product): ProductWithStock => {
     return {
@@ -245,17 +257,18 @@ export function ProductsPage() {
   }
 
   const handleFilters = () => {
-    console.log('Ouverture des filtres...')
     setShowFilters(!showFilters)
   }
 
   const handleNewProduct = () => {
-    console.log('Navigation vers création produit...')
     router.push('/products/new')
   }
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
   const handleEditProduct = (productId: string) => {
-    console.log('Navigation vers modification produit:', productId)
     router.push(`/products/${productId}/edit`)
   }
 
@@ -264,7 +277,6 @@ export function ProductsPage() {
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer le produit "${product?.name}" ?\n\nCette action est irréversible.`)) {
       try {
-        console.log('Suppression du produit:', productId)
         setLoading(true)
 
         // S'assurer que l'utilisateur est authentifié
@@ -276,8 +288,6 @@ export function ProductsPage() {
 
         await api.deleteProduct(productId)
         await loadProducts()
-
-        console.log('✅ Produit supprimé avec succès')
       } catch (error) {
         console.error('❌ Erreur lors de la suppression:', error)
 
@@ -300,14 +310,13 @@ export function ProductsPage() {
   }
 
   const handleViewProduct = (productId: string) => {
-    console.log('Navigation vers détails produit:', productId)
     router.push(`/products/${productId}`)
   }
 
   return (
     <MainLayout 
       title="Produits" 
-      subtitle={`${filteredProducts.length} produit${filteredProducts.length > 1 ? 's' : ''} trouvé${filteredProducts.length > 1 ? 's' : ''}`}
+      subtitle={`${totalItems} produit${totalItems > 1 ? 's' : ''} trouvé${totalItems > 1 ? 's' : ''}`}
     >
       <div className="space-y-6">
         {/* Message d'import/export */}
@@ -358,7 +367,10 @@ export function ProductsPage() {
                   type="text"
                   placeholder="Rechercher un Produit..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value)
+                    setCurrentPage(1)
+                  }}
                   className="pl-10 pr-4 py-2 w-full border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground placeholder:text-muted-foreground"
                 />
               </div>
@@ -388,7 +400,10 @@ export function ProductsPage() {
               <label className="text-sm font-medium text-muted-foreground">Statut:</label>
               <select
                 value={filters.stockStatus}
-                onChange={(e) => setFilters(prev => ({ ...prev, stockStatus: e.target.value }))}
+                onChange={(e) => {
+                  setFilters(prev => ({ ...prev, stockStatus: e.target.value }))
+                  setCurrentPage(1)
+                }}
                 className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
               >
                 <option value="">Tous</option>
@@ -437,14 +452,14 @@ export function ProductsPage() {
                       </div>
                     </td>
                   </tr>
-                ) : filteredProducts.length === 0 ? (
+                ) : paginatedProducts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-4 text-center text-muted-foreground">
                       {searchTerm ? 'Aucun produit trouvé pour cette recherche' : 'Aucun produit enregistré'}
                     </td>
                   </tr>
                 ) : (
-                  safeMap(ensureArray(filteredProducts), (product) => {
+                  safeMap(ensureArray(paginatedProducts), (product) => {
                     const stockStatus = getStockStatus(product)
                     return (
                       <tr key={safeTextRender(product.id, `product-${Math.random()}`)} className="hover:bg-secondary">
@@ -531,6 +546,16 @@ export function ProductsPage() {
             </table>
           </div>
         </div>
+
+        <ListPagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          itemLabel="produits"
+          onPrevious={() => handlePageChange(Math.max(1, currentPage - 1))}
+          onNext={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+        />
       </div>
     </MainLayout>
   )

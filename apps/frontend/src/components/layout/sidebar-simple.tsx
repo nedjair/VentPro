@@ -105,17 +105,11 @@ export function SidebarSimple({ className }: SidebarProps) {
   const router = useRouter()
   const { user, logout } = useAuth()
 
-  // Debug: Vérifier que le sidebar simplifié est bien chargé
-  console.log('🔧 SidebarSimple: Chargé avec', mainNavigation.length, 'modules principaux')
-
   // Fonction pour gérer la navigation avec debug
   const handleNavigation = (href: string, name: string) => {
-    console.log(`🧭 SidebarSimple Navigation: Clic sur ${name} vers ${href}`)
-    console.log(`🧭 URL actuelle: ${pathname}`)
 
     try {
       router.push(href)
-      console.log(`✅ Navigation initiée vers ${href}`)
     } catch (error) {
       console.error(`❌ Erreur de navigation vers ${href}:`, error)
     }

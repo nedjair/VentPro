@@ -49,14 +49,10 @@ export function ReportsPage() {
   const loadAnalyticsData = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement des données analytics...')
 
       const kpiResponse = await api.getKPIMetrics()
 
-      console.log('📊 Réponse KPI:', kpiResponse)
-
       if (kpiResponse.success && kpiResponse.data) {
-        console.log('✅ KPI chargés:', kpiResponse.data)
         setKpiData(kpiResponse.data)
       }
 
@@ -233,7 +229,6 @@ export function ReportsPage() {
   const handleExportGlobal = async () => {
     setExporting(true)
     try {
-      console.log('📊 Export global des rapports...')
       // Export des données principales en Excel
       await Promise.all([
         ExportService.downloadClientsExcel(),

@@ -87,13 +87,11 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
     try {
       setLoading(true)
       setError(null)
-      console.log('🔍 Chargement du fournisseur:', supplierId)
 
       const response = await api.getSupplier(supplierId)
 
       if (response.success && response.data) {
         const supplier = response.data
-        console.log('✅ Données fournisseur chargées:', supplier)
 
         // Mise à jour défensive des données du formulaire
         setFormData(prevData => ({
@@ -123,7 +121,6 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
         }))
 
         setTagsInput(Array.isArray(supplier.tags) ? supplier.tags.join(', ') : '')
-        console.log('✅ Formulaire mis à jour avec les données du fournisseur')
       } else {
         throw new Error('Fournisseur non trouvé')
       }
@@ -204,9 +201,6 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
       setSaving(true)
       setError(null)
 
-      console.log(`💾 ${mode === 'create' ? 'Création' : 'Modification'} du fournisseur...`)
-      console.log('📋 Données du formulaire:', formData)
-
       // Préparer les données en excluant les champs vides qui ne respectent pas les formats requis
       const submitData: any = {
         ...formData,
@@ -252,21 +246,15 @@ export function SupplierFormPage({ mode, supplierId }: SupplierFormPageProps) {
       if (!submitData.rcs || !submitData.rcs.trim()) {
         delete submitData.rcs
       }
-      console.log('📤 Données à envoyer:', submitData)
 
       let response
       if (mode === 'create') {
-        console.log('🆕 Création d\'un nouveau fournisseur...')
         response = await api.createSupplier(submitData)
       } else {
-        console.log(`✏️ Modification du fournisseur ${supplierId}...`)
         response = await api.updateSupplier(supplierId!, submitData)
       }
 
-      console.log('📥 Réponse de l\'API:', response)
-
       if (response.success) {
-        console.log('✅ Fournisseur sauvegardé avec succès')
 
         // Redirection avec paramètre de rafraîchissement pour forcer le reload de la liste
         const timestamp = Date.now()

@@ -2,6 +2,7 @@ import { prisma as prismaClient } from '../lib/prisma'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
 import { QuoteService, QuoteFilters } from './quote-sales.service'
+import { getFallbackOrderById, getFallbackOrderStats, getFallbackOrders, isDatabaseUnavailableError } from './dev-fallback-data.service'
 
 const prisma: any = prismaClient
 export type OrderType = 'QUOTE' | 'ORDER'
@@ -36,14 +37,31 @@ export class OrderService {
     return mapOrder(order)
   }
 
-  static async getOrderById(id: string, ownerScopeId: string): Promise<any | null> { const order = await prisma.order.findFirst({ where: { id, userId: ownerScopeId }, include: { client: true, items: { include: { product: true } }, invoice: true, Quote: true } }); return order ? mapOrder(order) : null }
+  static async getOrderById(id: string, ownerScopeId: string): Promise<any | null> {
+    try {
+      const order = await prisma.order.findFirst({ where: { id, userId: ownerScopeId }, include: { client: true, items: { include: { product: true } }, invoice: true, Quote: true } })
+      return order ? mapOrder(order) : null
+    } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackOrderById(ownerScopeId, id)
+      }
+      throw error
+    }
+  }
 
   static async getOrders(ownerScopeId: string, filters: OrderFilters = {}, pagination?: PaginationParams): Promise<PaginationResponse<any>> {
-    const page = Math.max(1, Number(pagination?.page) || 1), limit = Math.max(1, Number(pagination?.limit) || 10)
-    if (filters.type === 'QUOTE') { const quotes = await QuoteService.getQuotes(ownerScopeId, { page, limit }, filters as QuoteFilters); return { ...quotes, data: quotes.data.map(mapQuoteAsOrder) } }
-    const rows = (await prisma.order.findMany({ where: { userId: ownerScopeId, ...(filters.clientId && { clientId: filters.clientId }), ...(filters.status && { status: dbStatus(filters.status) }), ...(filters.dateFrom || filters.dateTo ? { createdAt: { ...(filters.dateFrom && { gte: filters.dateFrom }), ...(filters.dateTo && { lte: filters.dateTo }) } } : {}) }, include: { client: true, items: { include: { product: true } }, invoice: true, Quote: true }, orderBy: { createdAt: 'desc' } })) as any[]
-    const search = filters.search?.toLowerCase(); const filtered = !search ? rows : rows.filter((o) => [o.orderNumber, o.notes, o.client?.name, o.client?.email].filter(Boolean).some((v) => String(v).toLowerCase().includes(search)))
-    return { data: filtered.slice((page - 1) * limit, page * limit).map(mapOrder), pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) || 1, hasNext: page * limit < filtered.length, hasPrev: page > 1 } }
+    try {
+      const page = Math.max(1, Number(pagination?.page) || 1), limit = Math.max(1, Number(pagination?.limit) || 10)
+      if (filters.type === 'QUOTE') { const quotes = await QuoteService.getQuotes(ownerScopeId, { page, limit }, filters as QuoteFilters); return { ...quotes, data: quotes.data.map(mapQuoteAsOrder) } }
+      const rows = (await prisma.order.findMany({ where: { userId: ownerScopeId, ...(filters.clientId && { clientId: filters.clientId }), ...(filters.status && { status: dbStatus(filters.status) }), ...(filters.dateFrom || filters.dateTo ? { createdAt: { ...(filters.dateFrom && { gte: filters.dateFrom }), ...(filters.dateTo && { lte: filters.dateTo }) } } : {}) }, include: { client: true, items: { include: { product: true } }, invoice: true, Quote: true }, orderBy: { createdAt: 'desc' } })) as any[]
+      const search = filters.search?.toLowerCase(); const filtered = !search ? rows : rows.filter((o) => [o.orderNumber, o.notes, o.client?.name, o.client?.email].filter(Boolean).some((v) => String(v).toLowerCase().includes(search)))
+      return { data: filtered.slice((page - 1) * limit, page * limit).map(mapOrder), pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) || 1, hasNext: page * limit < filtered.length, hasPrev: page > 1 } }
+    } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackOrders(ownerScopeId, filters, pagination)
+      }
+      throw error
+    }
   }
 
   static async updateOrder(id: string, data: UpdateOrderData, ownerScopeId: string): Promise<any> {
@@ -80,10 +98,17 @@ export class OrderService {
   }
 
   static async getOrderStats(ownerScopeId: string) {
-    const [totalOrders, totalQuotes, recentOrdersCount, pendingQuotes, acceptedQuotes] = await Promise.all([
-      prisma.order.count({ where: { userId: ownerScopeId } }), prisma.quote.count({ where: { userId: ownerScopeId } }), prisma.order.count({ where: { userId: ownerScopeId, createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } }), prisma.quote.count({ where: { userId: ownerScopeId, status: 'sent' } }), prisma.quote.count({ where: { userId: ownerScopeId, status: { in: ['accepted', 'confirmed'] } } }),
-    ])
-    return { totalOrders, totalQuotes, pendingQuotes, acceptedQuotes, recentOrdersCount }
+    try {
+      const [totalOrders, totalQuotes, recentOrdersCount, pendingQuotes, acceptedQuotes] = await Promise.all([
+        prisma.order.count({ where: { userId: ownerScopeId } }), prisma.quote.count({ where: { userId: ownerScopeId } }), prisma.order.count({ where: { userId: ownerScopeId, createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } }), prisma.quote.count({ where: { userId: ownerScopeId, status: 'sent' } }), prisma.quote.count({ where: { userId: ownerScopeId, status: { in: ['accepted', 'confirmed'] } } }),
+      ])
+      return { totalOrders, totalQuotes, pendingQuotes, acceptedQuotes, recentOrdersCount }
+    } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackOrderStats(ownerScopeId)
+      }
+      throw error
+    }
   }
 
   private static async generateOrderNumber(ownerScopeId: string, orderDate: Date): Promise<string> {
@@ -100,5 +125,4 @@ export class OrderService {
   static async confirmOrder(orderId: string, ownerScopeId: string): Promise<any> { logger.warn('RÃ©servation de stock dÃ©sactivÃ©e: service alignÃ© sur le schÃ©ma minimal actif', { orderId, ownerScopeId }); return this.updateOrderStatus(orderId, 'ACCEPTED', ownerScopeId) }
   static async cancelOrder(orderId: string, ownerScopeId: string): Promise<any> { logger.warn('LibÃ©ration de stock dÃ©sactivÃ©e: service alignÃ© sur le schÃ©ma minimal actif', { orderId, ownerScopeId }); return this.updateOrderStatus(orderId, 'CANCELLED', ownerScopeId) }
 }
-
 

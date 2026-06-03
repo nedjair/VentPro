@@ -2,6 +2,35 @@ import { Product } from '@gestion/database'
 // Service dashboard avec données réelles depuis PostgreSQL via Prisma
 import { logger } from '../utils/logger'
 import { prisma } from '../lib/prisma'
+import { getFallbackChartData, getFallbackDashboardAlerts, getFallbackDashboardStats, getFallbackRecentActivity, isDatabaseUnavailableError } from './dev-fallback-data.service'
+
+const COMPANY_KEYWORDS = [
+  'sarl',
+  'spa',
+  'eurl',
+  'entreprise',
+  'groupe',
+  'société',
+  'societe',
+  'cabinet',
+  'clinique',
+  'atelier',
+  'magasin',
+  'service',
+  'distribution',
+  'solutions',
+  'informatique',
+  'tech',
+]
+
+function isCompanyLikeName(name?: string | null): boolean {
+  if (!name) {
+    return false
+  }
+
+  const normalized = name.toLowerCase()
+  return COMPANY_KEYWORDS.some(keyword => normalized.includes(keyword))
+}
 
 export class DashboardService {
   static async getDashboardStats(companyId: string) {
@@ -13,31 +42,36 @@ export class DashboardService {
     //    On fournit ici un fallback minimal mais utile pour les cartes du dashboard.
     try {
       const [
-        clientCounts,
+        clientRows,
         productCounts,
         orderCounts,
         invoiceCounts,
-        salesSums,
+        paymentSums,
       ] = await Promise.all([
         prisma.$queryRaw<Array<{
-          total: bigint | number | string
-          recent: bigint | number | string
+          name: string | null
+          createdAt: Date
         }>>`
           SELECT
-            COUNT(*) AS total,
-            COUNT(*) FILTER (WHERE "createdAt" >= NOW() - INTERVAL '30 days') AS recent
+            name,
+            "createdAt"
           FROM "Client"
           WHERE "userId" = ${companyId}
         `,
         prisma.$queryRaw<Array<{
           total: bigint | number | string
           inStock: bigint | number | string
+          lowStock: bigint | number | string
           outOfStock: bigint | number | string
           totalStockValue: number | string | null
         }>>`
           SELECT
             COUNT(*) AS total,
             COUNT(*) FILTER (WHERE COALESCE(s.quantity, 0) > 0) AS "inStock",
+            COUNT(*) FILTER (
+              WHERE COALESCE(s.quantity, 0) > 0
+                AND COALESCE(s.quantity, 0) <= COALESCE(p."minStock", 0)
+            ) AS "lowStock",
             COUNT(*) FILTER (WHERE COALESCE(s.quantity, 0) <= 0) AS "outOfStock",
             COALESCE(SUM(COALESCE(p.price, 0) * COALESCE(s.quantity, 0)), 0) AS "totalStockValue"
           FROM "Product" p
@@ -51,10 +85,10 @@ export class DashboardService {
           averageValue: number | string | null
         }>>`
           SELECT
-            COUNT(*) AS total,
-            COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('draft', 'pending', 'preparing')) AS pending,
-            COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('confirmed', 'sent', 'completed')) AS accepted,
-            COALESCE(AVG(COALESCE(total, 0)), 0) AS "averageValue"
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('draft', 'pending', 'preparing')) AS pending,
+          COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('confirmed', 'sent', 'completed')) AS accepted,
+          COALESCE(AVG(COALESCE(total, 0)), 0) AS "averageValue"
           FROM "Order"
           WHERE "userId" = ${companyId}
         `,
@@ -65,16 +99,18 @@ export class DashboardService {
           overdue: bigint | number | string
           totalAmount: number | string | null
           paidAmount: number | string | null
-          pendingAmount: number | string | null
         }>>`
           SELECT
             COUNT(*) AS total,
             COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) = 'paid') AS paid,
-            COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('sent', 'pending')) AS pending,
+            COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('sent', 'pending', 'issued', 'partial')) AS pending,
             COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) = 'overdue') AS overdue,
             COALESCE(SUM(COALESCE(total, 0)), 0) AS "totalAmount",
-            COALESCE(SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'paid' THEN COALESCE(total, 0) ELSE 0 END), 0) AS "paidAmount",
-            COALESCE(SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('sent', 'pending') THEN COALESCE(total, 0) ELSE 0 END), 0) AS "pendingAmount"
+            COALESCE((
+              SELECT SUM(COALESCE(p.amount, 0))
+              FROM "Payment" p
+              WHERE p."userId" = ${companyId}
+            ), 0) AS "paidAmount"
           FROM "Invoice"
           WHERE "userId" = ${companyId}
         `,
@@ -83,39 +119,42 @@ export class DashboardService {
           previousMonth: number | string | null
         }>>`
           SELECT
-            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', COALESCE("paidDate", "createdAt")) = DATE_TRUNC('month', NOW()) THEN COALESCE(total, 0) ELSE 0 END), 0) AS "currentMonth",
-            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', COALESCE("paidDate", "createdAt")) = DATE_TRUNC('month', NOW() - INTERVAL '1 month') THEN COALESCE(total, 0) ELSE 0 END), 0) AS "previousMonth"
-          FROM "Invoice"
+            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', "paymentDate") = DATE_TRUNC('month', NOW()) THEN COALESCE(amount, 0) ELSE 0 END), 0) AS "currentMonth",
+            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', "paymentDate") = DATE_TRUNC('month', NOW() - INTERVAL '1 month') THEN COALESCE(amount, 0) ELSE 0 END), 0) AS "previousMonth"
+          FROM "Payment"
           WHERE "userId" = ${companyId}
-            AND LOWER(COALESCE(status, '')) = 'paid'
         `,
       ])
 
-      const clients = clientCounts[0]
+      const clients = clientRows
       const products = productCounts[0]
       const orders = orderCounts[0]
       const invoices = invoiceCounts[0]
-      const sales = salesSums[0]
+      const sales = paymentSums[0]
 
       const currentMonth = Number(sales?.currentMonth || 0)
       const previousMonth = Number(sales?.previousMonth || 0)
       const growth = previousMonth > 0 ? ((currentMonth - previousMonth) / previousMonth) * 100 : 0
-      const totalClients = Number(clients?.total || 0)
-      const recentClients = Number(clients?.recent || 0)
+      const totalClients = clients.length
+      const companyClients = clients.filter(client => isCompanyLikeName(client.name)).length
+      const recentClients = clients.filter(client => {
+        const createdAt = new Date(client.createdAt)
+        return createdAt >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      }).length
 
       return {
         clients: {
           total: totalClients,
-          individuals: 0,
-          companies: totalClients,
+          individuals: Math.max(totalClients - companyClients, 0),
+          companies: companyClients,
           recentCount: recentClients,
           growth: totalClients > 0 ? Math.round((recentClients / totalClients) * 10000) / 100 : 0,
         },
         products: {
           total: Number(products?.total || 0),
           inStock: Number(products?.inStock || 0),
+          lowStock: Number(products?.lowStock || 0),
           outOfStock: Number(products?.outOfStock || 0),
-          lowStock: 0,
           totalStockValue: Number(products?.totalStockValue || 0),
         },
         sales: {
@@ -139,7 +178,7 @@ export class DashboardService {
           overdue: Number(invoices?.overdue || 0),
           totalAmount: Number(invoices?.totalAmount || 0),
           paidAmount: Number(invoices?.paidAmount || 0),
-          pendingAmount: Number(invoices?.pendingAmount || 0),
+          pendingAmount: Math.max(Number(invoices?.totalAmount || 0) - Number(invoices?.paidAmount || 0), 0),
         },
         lastUpdated: new Date().toISOString(),
       }
@@ -147,225 +186,138 @@ export class DashboardService {
       logger.warn('Fallback dashboard : schéma PostgreSQL actuel non accessible via SQL brut', { error: currentSchemaError, companyId })
     }
 
-    try {
-      // Récupération des statistiques de base (sans les tables optionnelles)
-      const [
-        clientsStats,
-        productsStats,
-        ordersStats,
-        invoicesStats
-      ] = await Promise.all([
-        // Statistiques clients
-        Promise.all([
-          prisma.client.count({ where: { companyId, isActive: true } }),
-          prisma.client.count({ where: { companyId, isActive: true, type: 'INDIVIDUAL' } }),
-          prisma.client.count({ where: { companyId, isActive: true, type: 'COMPANY' } }),
-          prisma.client.count({
-            where: {
-              companyId,
-              isActive: true,
-              createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 30 derniers jours
-            }
-          })
-        ]),
-
-        // Statistiques produits - Utilisation des mêmes critères que StockService
-        Promise.all([
-          prisma.product.count({
-            where: {
-              companyId,
-              isActive: true,
-              isService: false // Exclure les services comme dans StockService
-            }
+      try {
+        // Récupération des statistiques de base sur le schéma actif.
+        const [clientRows, productsStats, ordersStats, invoicesStats, paymentsStats] = await Promise.all([
+          prisma.client.findMany({
+            where: { userId: companyId },
+            select: { name: true, createdAt: true },
           }),
-          prisma.product.count({
-            where: {
-              companyId,
-              isActive: true,
-              stock: { quantiteActuelle: { gt: 0 } }
-            }
-          }),
-          // Stock faible : utiliser la table stocks
-          prisma.$queryRaw`
-            SELECT COUNT(*) as count
-            FROM products p
-            INNER JOIN stocks s ON p.id = s."productId"
-            WHERE p."companyId" = ${companyId}
-              AND p."isActive" = true
-              AND s."quantiteActuelle" <= s."quantiteMinimale"
-              AND s."quantiteMinimale" > 0
+          prisma.$queryRaw<Array<{
+            total: bigint | number | string
+            inStock: bigint | number | string
+            lowStock: bigint | number | string
+            outOfStock: bigint | number | string
+            totalStockValue: number | string | null
+          }>>`
+            SELECT
+              COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE COALESCE(s.quantity, 0) > 0) AS "inStock",
+              COUNT(*) FILTER (
+                WHERE COALESCE(s.quantity, 0) > 0
+                  AND COALESCE(s.quantity, 0) <= COALESCE(p."minStock", 0)
+              ) AS "lowStock",
+              COUNT(*) FILTER (WHERE COALESCE(s.quantity, 0) <= 0) AS "outOfStock",
+              COALESCE(SUM(COALESCE(p.price, 0) * COALESCE(s.quantity, 0)), 0) AS "totalStockValue"
+            FROM "Product" p
+            LEFT JOIN "Stock" s ON s."productId" = p.id
+            WHERE p."userId" = ${companyId}
           `,
-          prisma.product.count({
-            where: {
-              companyId,
-              isActive: true,
-              stock: { quantiteActuelle: { lte: 0 } }
-            }
-          }),
-          // Valeur totale du stock : utiliser la table stocks comme StockService
-          prisma.stock.aggregate({
-            where: { companyId },
-            _sum: { valeurStock: true }
-          })
-        ]),
-
-        // Statistiques commandes (simplifiées pour éviter les erreurs d'enum)
-        Promise.all([
-          prisma.order.count({ where: { companyId } }),
-          prisma.order.count({ where: { companyId, status: 'DRAFT' } }),
-          prisma.order.count({ where: { companyId, status: 'SENT' } }),
-          prisma.order.count({ where: { companyId } }), // Placeholder pour éviter l'erreur
-          prisma.order.aggregate({
-            where: { companyId },
-            _avg: { total: true }
-          })
-        ]),
-
-        // Statistiques factures (simplifiées pour éviter les erreurs d'enum)
-        Promise.all([
-          prisma.invoice.count({ where: { companyId } }),
-          prisma.invoice.count({ where: { companyId, status: 'PAID' } }),
-          prisma.invoice.count({ where: { companyId, status: 'SENT' } }),
-          prisma.invoice.count({ where: { companyId, status: 'OVERDUE' } }),
-          prisma.invoice.aggregate({
-            where: { companyId },
-            _sum: { total: true }
-          }),
-          prisma.invoice.aggregate({
-            where: { companyId, status: 'PAID' },
-            _sum: { total: true }
-          }),
-          prisma.invoice.aggregate({
-            where: { companyId, status: 'SENT' },
-            _sum: { total: true }
-          })
-        ]),
-
-        // Statistiques ventes (mois actuel vs précédent)
-        Promise.all([
-          // CA du mois actuel
-          prisma.invoice.aggregate({
-            where: {
-              companyId,
-              status: 'PAID',
-              createdAt: {
-                gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-              }
-            },
-            _sum: { total: true }
-          }),
-          // CA du mois précédent
-          prisma.invoice.aggregate({
-            where: {
-              companyId,
-              status: 'PAID',
-              createdAt: {
-                gte: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1),
-                lt: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-              }
-            },
-            _sum: { total: true }
-          })
+          Promise.all([
+            prisma.order.count({ where: { userId: companyId } }),
+            prisma.order.count({ where: { userId: companyId, status: 'pending' } }),
+            prisma.order.count({ where: { userId: companyId, status: { in: ['confirmed', 'sent', 'completed'] } } }),
+            prisma.order.aggregate({
+              where: { userId: companyId },
+              _avg: { total: true },
+            }),
+          ]),
+          Promise.all([
+            prisma.invoice.count({ where: { userId: companyId } }),
+            prisma.invoice.count({ where: { userId: companyId, status: 'paid' } }),
+            prisma.invoice.count({ where: { userId: companyId, status: { in: ['issued', 'sent', 'pending', 'partial'] } } }),
+            prisma.invoice.count({ where: { userId: companyId, status: 'overdue' } }),
+            prisma.invoice.aggregate({
+              where: { userId: companyId },
+              _sum: { total: true },
+            }),
+          ]),
+          prisma.$queryRaw<Array<{
+            currentMonth: number | string | null
+            previousMonth: number | string | null
+            totalPaid: number | string | null
+          }>>`
+            SELECT
+              COALESCE(SUM(CASE WHEN DATE_TRUNC('month', "paymentDate") = DATE_TRUNC('month', NOW()) THEN COALESCE(amount, 0) ELSE 0 END), 0) AS "currentMonth",
+              COALESCE(SUM(CASE WHEN DATE_TRUNC('month', "paymentDate") = DATE_TRUNC('month', NOW() - INTERVAL '1 month') THEN COALESCE(amount, 0) ELSE 0 END), 0) AS "previousMonth",
+              COALESCE(SUM(COALESCE(amount, 0)), 0) AS "totalPaid"
+            FROM "Payment"
+            WHERE "userId" = ${companyId}
+          `,
         ])
-      ])
 
-      // Calcul des statistiques clients
-      const [totalClients, individualClients, companyClients, recentClients] = clientsStats
-      const clientGrowth = totalClients > 0 ? ((recentClients / totalClients) * 100) : 0
+        const totalClients = clientRows.length
+        const companyClients = clientRows.filter(client => isCompanyLikeName(client.name)).length
+        const recentClients = clientRows.filter(client => {
+          const createdAt = new Date(client.createdAt)
+          return createdAt >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        }).length
+        const clientGrowth = totalClients > 0 ? (recentClients / totalClients) * 100 : 0
 
-      // Calcul des statistiques produits
-      const [totalProducts, inStockProducts, lowStockProductsRaw, outOfStockProducts, stockValue] = productsStats
+        const [totalOrders, pendingOrders, acceptedOrders, avgOrderValue] = ordersStats
+        const [totalInvoices, paidInvoices, pendingInvoices, overdueInvoices, totalAmount] = invoicesStats
+        const sales = paymentsStats[0]
 
-      // Extraire le count de la requête SQL brute pour lowStock
-      const lowStockProducts = Number((lowStockProductsRaw as any[])[0]?.count || 0)
+        const currentMonth = Number(sales?.currentMonth || 0)
+        const previousMonth = Number(sales?.previousMonth || 0)
+        const salesGrowth = previousMonth > 0 ? ((currentMonth - previousMonth) / previousMonth) * 100 : 0
+        const paidAmount = Number(sales?.totalPaid || 0)
+        const totalInvoicesAmount = Number(totalAmount._sum.total || 0)
 
-      // Calcul des statistiques commandes
-      const [totalOrders, draftOrders, sentOrders, placeholderOrders, avgOrderValue] = ordersStats
-
-      // Calcul des statistiques factures
-      const [totalInvoices, paidInvoices, sentInvoices, overdueInvoices, totalAmount, paidAmount, sentAmount] = invoicesStats
-
-      // Calcul des statistiques ventes (basées sur les factures payées)
-      const currentDate = new Date()
-      const currentMonthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-      const previousMonthStart = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)
-      const previousMonthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0)
-
-      const [currentMonthSales, previousMonthSales] = await Promise.all([
-        prisma.invoice.aggregate({
-          where: {
-            companyId,
-            status: 'PAID',
-            paidDate: { gte: currentMonthStart }
+        const dashboardData = {
+          clients: {
+            total: totalClients,
+            individuals: Math.max(totalClients - companyClients, 0),
+            companies: companyClients,
+            recentCount: recentClients,
+            growth: Math.round(clientGrowth * 100) / 100,
           },
-          _sum: { total: true }
-        }),
-        prisma.invoice.aggregate({
-          where: {
-            companyId,
-            status: 'PAID',
-            paidDate: { gte: previousMonthStart, lt: previousMonthEnd }
+          products: {
+            total: Number(productsStats[0]?.total || 0),
+            inStock: Number(productsStats[0]?.inStock || 0),
+            lowStock: Number(productsStats[0]?.lowStock || 0),
+            outOfStock: Number(productsStats[0]?.outOfStock || 0),
+            totalStockValue: Number(productsStats[0]?.totalStockValue || 0),
           },
-          _sum: { total: true }
+          sales: {
+            currentMonth,
+            previousMonth,
+            growth: Math.round(salesGrowth * 100) / 100,
+            currency: 'DZD',
+          },
+          orders: {
+            total: Number(totalOrders || 0),
+            pending: Number(pendingOrders || 0),
+            accepted: Number(acceptedOrders || 0),
+            rejected: 0,
+            averageValue: Math.round(Number(avgOrderValue._avg.total || 0) * 100) / 100,
+          },
+          invoices: {
+            total: Number(totalInvoices || 0),
+            paid: Number(paidInvoices || 0),
+            pending: Number(pendingInvoices || 0),
+            overdue: Number(overdueInvoices || 0),
+            totalAmount: totalInvoicesAmount,
+            paidAmount,
+            pendingAmount: Math.max(totalInvoicesAmount - paidAmount, 0),
+          },
+          lastUpdated: new Date().toISOString(),
+        }
+
+        logger.info('Dashboard stats retrieved successfully from PostgreSQL', {
+          companyId,
+          clientsTotal: totalClients,
+          productsTotal: Number(productsStats[0]?.total || 0),
+          ordersTotal: Number(totalOrders || 0),
+          currentMonthSales: currentMonth,
         })
-      ])
 
-      const currentMonth = Number(currentMonthSales._sum.total || 0)
-      const previousMonth = Number(previousMonthSales._sum.total || 0)
-      const salesGrowth = previousMonth > 0 ? ((currentMonth - previousMonth) / previousMonth * 100) : 0
-      // Toutes les statistiques de base sont maintenant calculées
-
-      const dashboardData = {
-        clients: {
-          total: totalClients,
-          individuals: individualClients,
-          companies: companyClients,
-          recentCount: recentClients,
-          growth: Math.round(clientGrowth * 100) / 100
-        },
-        products: {
-          total: totalProducts,
-          inStock: inStockProducts,
-          lowStock: lowStockProducts,
-          outOfStock: outOfStockProducts,
-          totalStockValue: Number(stockValue._sum.valeurStock || 0)
-        },
-        sales: {
-          currentMonth: currentMonth,
-          previousMonth: previousMonth,
-          growth: Math.round(salesGrowth * 100) / 100,
-          currency: 'DZD'
-        },
-        orders: {
-          total: totalOrders,
-          pending: draftOrders,
-          accepted: sentOrders,
-          rejected: sentOrders,
-          averageValue: Math.round((Number(avgOrderValue._avg.total || 0)) * 100) / 100
-        },
-        invoices: {
-          total: totalInvoices,
-          paid: paidInvoices,
-          pending: sentInvoices,
-          overdue: overdueInvoices,
-          totalAmount: Number(totalAmount._sum.total || 0),
-          paidAmount: Number(paidAmount._sum.total || 0),
-          pendingAmount: Number(sentAmount._sum.total || 0)
-        },
-        lastUpdated: new Date().toISOString()
-      }
-
-      logger.info('Dashboard stats retrieved successfully from PostgreSQL', {
-        companyId,
-        clientsTotal: totalClients,
-        productsTotal: totalProducts,
-        ordersTotal: totalOrders,
-        currentMonthSales: currentMonth
-      })
-
-      return dashboardData
+        return dashboardData
 
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackDashboardStats(companyId)
+      }
       logger.error('Error retrieving dashboard stats from PostgreSQL', { error, companyId })
 
       // Fallback vers des données par défaut en cas d'erreur
@@ -394,11 +346,12 @@ export class DashboardService {
     logger.info('Getting recent activity from PostgreSQL', { companyId, limit })
 
     try {
-      const [recentOrders, recentClients, recentInvoices] = await Promise.all([
+      const sliceSize = Math.max(1, Math.ceil(limit / 6))
+      const [recentOrders, recentClients, recentInvoices, recentPayments, recentPurchases, recentDeliveries] = await Promise.all([
         prisma.order.findMany({
           where: { userId: companyId },
           orderBy: { createdAt: 'desc' },
-          take: Math.ceil(limit / 3),
+          take: sliceSize,
           include: {
             client: {
               select: { name: true }
@@ -409,15 +362,42 @@ export class DashboardService {
         prisma.client.findMany({
           where: { userId: companyId },
           orderBy: { createdAt: 'desc' },
-          take: Math.ceil(limit / 3),
+          take: sliceSize,
           select: { id: true, name: true, createdAt: true }
         }),
 
         prisma.invoice.findMany({
           where: { userId: companyId },
           orderBy: { createdAt: 'desc' },
-          take: Math.ceil(limit / 3),
+          take: sliceSize,
           select: { id: true, invoiceNumber: true, status: true, createdAt: true }
+        }),
+
+        prisma.payment.findMany({
+          where: { userId: companyId },
+          orderBy: { paymentDate: 'desc' },
+          take: sliceSize,
+          include: {
+            invoice: { select: { invoiceNumber: true } },
+          },
+        }),
+
+        prisma.purchase.findMany({
+          where: { userId: companyId },
+          orderBy: { createdAt: 'desc' },
+          take: sliceSize,
+          include: {
+            supplier: { select: { name: true } },
+          },
+        }),
+
+        prisma.delivery.findMany({
+          where: { order: { userId: companyId } },
+          orderBy: { createdAt: 'desc' },
+          take: sliceSize,
+          include: {
+            order: { select: { orderNumber: true } },
+          },
         })
       ])
 
@@ -462,11 +442,50 @@ export class DashboardService {
         })
       })
 
+      recentPayments.forEach(payment => {
+        activities.push({
+          id: `payment-${payment.id}`,
+          type: 'PAYMENT',
+          title: 'Paiement enregistré',
+          description: payment.invoice?.invoiceNumber
+            ? `Paiement ${payment.paymentNumber} lié à ${payment.invoice.invoiceNumber}`
+            : `Paiement ${payment.paymentNumber} enregistré`,
+          timestamp: payment.paymentDate.toISOString()
+        })
+      })
+
+      recentPurchases.forEach(purchase => {
+        activities.push({
+          id: `purchase-${purchase.id}`,
+          type: 'PURCHASE',
+          title: purchase.status?.toLowerCase() === 'received' ? 'Achat réceptionné' : 'Achat créé',
+          description: purchase.supplier?.name
+            ? `Achat ${purchase.purchaseNumber} auprès de ${purchase.supplier.name}`
+            : `Achat ${purchase.purchaseNumber} enregistré`,
+          timestamp: purchase.createdAt.toISOString()
+        })
+      })
+
+      recentDeliveries.forEach(delivery => {
+        activities.push({
+          id: `delivery-${delivery.id}`,
+          type: 'DELIVERY',
+          title: delivery.status?.toLowerCase() === 'delivered' ? 'Livraison validée' : 'Livraison planifiée',
+          description: delivery.order?.orderNumber
+            ? `Livraison ${delivery.deliveryNumber} pour la commande ${delivery.order.orderNumber}`
+            : `Livraison ${delivery.deliveryNumber} enregistrée`,
+          timestamp: delivery.createdAt.toISOString()
+        })
+      })
+
       return activities
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, limit)
 
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackRecentActivity(companyId, limit)
+      }
       logger.error('Error retrieving recent activity from PostgreSQL', { error, companyId })
       return []
     }
@@ -545,6 +564,9 @@ export class DashboardService {
       return alerts
 
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackDashboardAlerts(companyId)
+      }
       logger.error('Error retrieving alerts from PostgreSQL', { error, companyId })
       return []
     }
@@ -554,100 +576,109 @@ export class DashboardService {
     logger.info('Getting chart data from PostgreSQL', { companyId })
 
     try {
-      // Récupérer les données des 6 derniers mois
       const sixMonthsAgo = new Date()
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-
-      // Tendance des ventes par mois
-      const salesTrendData = await prisma.invoice.groupBy({
-        by: ['createdAt'],
-        where: {
-          companyId,
-          status: 'PAID',
-          createdAt: { gte: sixMonthsAgo }
-        },
-        _sum: { total: true },
-        _count: { id: true }
-      })
-
-      // Formater les données par mois
       const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
-      const salesTrend = []
+      const [paymentRows, topProductRows, clientRows] = await Promise.all([
+        prisma.$queryRaw<Array<{
+          month: Date
+          sales: number | string | null
+          orders: bigint | number | string
+        }>>`
+          SELECT
+            DATE_TRUNC('month', "paymentDate") AS month,
+            COALESCE(SUM(amount), 0) AS sales,
+            COUNT(*) AS orders
+          FROM "Payment"
+          WHERE "userId" = ${companyId}
+            AND "paymentDate" >= ${sixMonthsAgo}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+        prisma.$queryRaw<Array<{
+          productId: string
+          name: string
+          sales: bigint | number | string
+          revenue: number | string | null
+        }>>`
+          SELECT
+            oi."productId" AS "productId",
+            p.name AS name,
+            COALESCE(SUM(oi.quantity), 0) AS sales,
+            COALESCE(SUM(oi.quantity * oi.price), 0) AS revenue
+          FROM "OrderItem" oi
+          INNER JOIN "Order" o ON o.id = oi."orderId"
+          INNER JOIN "Product" p ON p.id = oi."productId"
+          WHERE o."userId" = ${companyId}
+          GROUP BY oi."productId", p.name
+          ORDER BY revenue DESC
+          LIMIT 5
+        `,
+        prisma.$queryRaw<Array<{ name: string | null }>>`
+          SELECT name
+          FROM "Client"
+          WHERE "userId" = ${companyId}
+        `,
+      ])
 
-      for (let i = 5; i >= 0; i--) {
+      const salesByMonth = new Map<string, { sales: number; orders: number }>()
+      for (let i = 5; i >= 0; i -= 1) {
         const date = new Date()
         date.setMonth(date.getMonth() - i)
-        const monthStart = new Date(date.getFullYear(), date.getMonth(), 1)
-        const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0)
-
-        const monthData = salesTrendData.filter(item => {
-          const itemDate = new Date(item.createdAt)
-          return itemDate >= monthStart && itemDate <= monthEnd
-        })
-
-        const totalSales = monthData.reduce((sum, item) => sum + Number(item._sum.total || 0), 0)
-        const totalOrders = monthData.reduce((sum, item) => sum + item._count.id, 0)
-
-        salesTrend.push({
-          month: monthNames[date.getMonth()],
-          sales: Math.round(totalSales * 100) / 100,
-          orders: totalOrders
-        })
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        salesByMonth.set(key, { sales: 0, orders: 0 })
       }
 
-      // Top produits (basé sur les commandes)
-      const topProductsData = await prisma.orderItem.groupBy({
-        by: ['productId'],
-        where: {
-          order: { companyId }
-        },
-        _sum: {
-          quantity: true,
-          total: true
-        },
-        orderBy: {
-          _sum: {
-            total: 'desc'
-          }
-        },
-        take: 5
-      })
-
-      // Récupérer les détails des produits
-      const productIds = topProductsData.map(item => item.productId)
-      const products = await prisma.product.findMany({
-        where: { id: { in: productIds } },
-        select: { id: true, name: true }
-      })
-
-      const topProducts = topProductsData.map(item => {
-        const product = products.find(p => p.id === item.productId)
-        return {
-          id: item.productId,
-          name: product?.name || 'Produit inconnu',
-          sales: item._sum.quantiteActuelle || 0,
-          revenue: Math.round((Number(item._sum.total || 0)) * 100) / 100
+      paymentRows.forEach(row => {
+        const paymentDate = new Date(row.month)
+        const key = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`
+        if (salesByMonth.has(key)) {
+          const bucket = salesByMonth.get(key)!
+          bucket.sales += Number(row.sales || 0)
+          bucket.orders += Number(row.orders || 0)
         }
       })
 
-      // Distribution des clients
-      const [individualCount, companyCount] = await Promise.all([
-        prisma.client.count({ where: { companyId, type: 'INDIVIDUAL', isActive: true } }),
-        prisma.client.count({ where: { companyId, type: 'COMPANY', isActive: true } })
-      ])
+      const salesTrend = Array.from(salesByMonth.entries()).map(([key, value]) => {
+        const monthIndex = Number(key.split('-')[1]) - 1
+        return {
+          month: monthNames[monthIndex],
+          sales: Math.round(value.sales * 100) / 100,
+          orders: value.orders,
+        }
+      })
 
-      const totalClients = individualCount + companyCount
+      const productTotals = new Map<string, { id: string; name: string; sales: number; revenue: number }>()
+      topProductRows.forEach(item => {
+        const current = productTotals.get(item.productId) || { id: item.productId, name: item.name, sales: 0, revenue: 0 }
+        current.sales += Number(item.sales || 0)
+        current.revenue += Number(item.revenue || 0)
+        productTotals.set(productId, current)
+      })
+
+      const topProducts = Array.from(productTotals.values())
+        .sort((left, right) => right.revenue - left.revenue)
+        .slice(0, 5)
+        .map(product => ({
+          id: product.id,
+          name: product.name,
+          sales: product.sales,
+          revenue: Math.round(product.revenue * 100) / 100,
+        }))
+
+      const companyCount = clients.filter(client => isCompanyLikeName(client.name)).length
+      const totalClients = clients.length
       const clientDistribution = [
         {
           type: 'Entreprises',
           count: companyCount,
-          percentage: totalClients > 0 ? Math.round((companyCount / totalClients) * 1000) / 10 : 0
+          percentage: totalClients > 0 ? Math.round((companyCount / totalClients) * 1000) / 10 : 0,
         },
         {
           type: 'Particuliers',
-          count: individualCount,
-          percentage: totalClients > 0 ? Math.round((individualCount / totalClients) * 1000) / 10 : 0
-        }
+          count: Math.max(totalClients - companyCount, 0),
+          percentage: totalClients > 0 ? Math.round(((totalClients - companyCount) / totalClients) * 1000) / 10 : 0,
+        },
       ]
 
       return {
@@ -657,6 +688,9 @@ export class DashboardService {
       }
 
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackChartData(companyId)
+      }
       logger.error('Error retrieving chart data from PostgreSQL', { error, companyId })
 
       // Fallback vers des données par défaut

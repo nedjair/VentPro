@@ -16,7 +16,6 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
   const alertsCallbacks = useRef<Set<() => void>>(new Set())
 
   const triggerDashboardRefresh = useCallback(() => {
-    console.log('🔄 Triggering dashboard refresh for all components')
     dashboardCallbacks.current.forEach(callback => {
       try {
         callback()
@@ -27,7 +26,6 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const triggerAlertsRefresh = useCallback(() => {
-    console.log('🔄 Triggering alerts refresh for all components')
     alertsCallbacks.current.forEach(callback => {
       try {
         callback()

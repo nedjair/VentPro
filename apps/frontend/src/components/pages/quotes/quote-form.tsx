@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Button } from '../../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/card'
 import { Plus, Trash2, Search } from 'lucide-react'
+import { buildApiUrl } from '@/lib/api-config'
 
 interface Client {
   id: string
@@ -72,7 +73,8 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ quote, onSubmit, onCancel }) => {
 
   const fetchClients = async () => {
     try {
-      const response = await fetch('/api/v1/clients', {
+      // On borne explicitement la pagination pour rester sous la limite backend.
+      const response = await fetch(buildApiUrl('/api/v1/clients?page=1&limit=100'), {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -90,7 +92,8 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ quote, onSubmit, onCancel }) => {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/v1/products', {
+      // Même logique côté produits : page 1 et maximum 100 éléments chargés.
+      const response = await fetch(buildApiUrl('/api/v1/products?page=1&limit=100'), {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

@@ -26,6 +26,7 @@ export interface AuthTokens {
   accessToken: string
   refreshToken: string
   expiresIn: number
+  expiresAt?: number
 }
 
 interface AuthContextType {
@@ -94,8 +95,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const accessDate = new Date(tokensData.access).getTime()
             // Considérer le token valide pendant 24h par défaut
             tokenExpiry = accessDate + (24 * 60 * 60 * 1000)
-            accessToken = tokensData.access // Utiliser la date comme token temporairement
-            console.log('🔄 Auth: Conversion de l\'ancien format de tokens')
+            accessToken = tokensData.access
           }
 
 
@@ -112,9 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
             setTokens(normalizedTokens)
             api.setAuthToken(normalizedTokens.accessToken)
-            console.log('✅ Auth: Données d\'authentification restaurées')
           } else {
-            console.log('⚠️ Auth: Token expiré, nettoyage')
             clearAuthData()
           }
         }
@@ -142,8 +140,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(userData)
       setTokens(tokensWithExpiry)
       api.setAuthToken(tokensData.accessToken)
-
-      console.log('✅ Auth: Données sauvegardées')
     } catch (error) {
       console.error('❌ Auth: Erreur lors de la sauvegarde:', error)
     }
@@ -156,14 +152,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(null)
     setTokens(null)
     api.clearAuthToken()
-    console.log('🧹 Auth: Données nettoyées')
   }
 
   // Connexion
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true)
-      console.log('🔐 Auth: Tentative de connexion pour:', email)
 
       const response = await api.login({ email, password })
 
@@ -172,7 +166,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (userData && tokensData) {
           saveAuthData(userData, tokensData)
-          console.log('✅ Auth: Connexion réussie')
         } else {
           throw new Error('Données d\'authentification manquantes dans la réponse')
         }
@@ -192,7 +185,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = async () => {
     try {
       setIsLoading(true)
-      console.log('🚪 Auth: Déconnexion en cours')
 
       // Appeler l'API de déconnexion si possible
       if (tokens) {
@@ -204,7 +196,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       clearAuthData()
-      console.log('✅ Auth: Déconnexion réussie')
 
       // Rediriger vers la page de connexion
       window.location.href = '/login'
@@ -222,14 +213,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!tokens?.refreshToken) {
         throw new Error('Aucun refresh token disponible')
       }
-
-      console.log('🔄 Auth: Rafraîchissement du token')
       const response = await api.refreshToken(tokens.refreshToken)
 
       if (response.success && response.data) {
         const { user: userData, tokens: tokensData } = response.data
         saveAuthData(userData, tokensData)
-        console.log('✅ Auth: Token rafraîchi')
       } else {
         throw new Error('Erreur lors du rafraîchissement')
       }
@@ -245,7 +233,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setUser(userData)
       localStorage.setItem('auth-user', JSON.stringify(userData))
-      console.log('✅ Auth: Données utilisateur mises à jour')
     } catch (error) {
       console.error('❌ Auth: Erreur lors de la mise à jour utilisateur:', error)
     }
@@ -262,9 +249,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Rafraîchir le token 5 minutes avant expiration
       if (timeUntilExpiry < 5 * 60 * 1000 && timeUntilExpiry > 0) {
-        console.log('⏰ Auth: Token expire bientôt, rafraîchissement automatique')
         refreshAuth().catch(() => {
-          console.log('❌ Auth: Échec du rafraîchissement automatique, déconnexion')
           logout()
         })
       }

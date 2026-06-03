@@ -55,11 +55,19 @@ export function StockConsistencyChecker() {
     refresh: refreshUnified
   } = useUnifiedStockData()
 
+  type StockProductLike = {
+    stockQuantity?: number
+    stock?: number
+    minStock?: number
+    min_stock?: number
+    maxStock?: number | null
+    max_stock?: number | null
+  }
+
   const runConsistencyCheck = async () => {
     setLoading(true)
     
     try {
-      console.log('🔍 Démarrage du contrôle de cohérence...')
       
       // 1. Appel direct des endpoints pour comparaison
       const [dashboardRes, alertsRes, productsRes] = await Promise.allSettled([
@@ -81,14 +89,15 @@ export function StockConsistencyChecker() {
       }
 
       // 2. Calculs basés sur les données des produits
-      let productsData = []
+      // On garde un type minimal ici pour éviter les any implicites dans les filtres de validation.
+      let productsData: StockProductLike[] = []
       if (endpoints.products.success) {
         productsData = Array.isArray(endpoints.products.data) 
           ? endpoints.products.data 
           : endpoints.products.data?.data || endpoints.products.data?.products || []
       }
 
-      let alertsData = []
+      let alertsData: unknown[] = []
       if (endpoints.alerts.success) {
         alertsData = Array.isArray(endpoints.alerts.data)
           ? endpoints.alerts.data
@@ -211,8 +220,6 @@ export function StockConsistencyChecker() {
       }
 
       setReport(newReport)
-      
-      console.log('✅ Contrôle de cohérence terminé:', newReport)
 
     } catch (error: any) {
       console.error('❌ Erreur lors du contrôle:', error)

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { CreateUserData, UpdateUserData, User } from '@/types/user'
 
 interface UseUserFormOptions {
-  initialData?: Partial<CreateUserData | UpdateUserData>
+  initialData?: Record<string, any>
   mode?: 'create' | 'edit'
   user?: User
 }
@@ -23,14 +23,14 @@ interface UseUserFormReturn {
   clearErrors: () => void
   validateForm: () => boolean
   validateField: (field: string) => string | null
-  resetForm: () => void
+  resetForm: (data?: Record<string, any>) => void
 }
 
 export function useUserForm(options: UseUserFormOptions = {}): UseUserFormReturn {
   const { initialData = {}, mode = 'create', user } = options
 
   // Données initiales selon le mode
-  const getInitialFormData = () => {
+  const getInitialFormData = (): Record<string, any> => {
     if (mode === 'edit' && user) {
       return {
         email: user.email,
@@ -56,7 +56,7 @@ export function useUserForm(options: UseUserFormOptions = {}): UseUserFormReturn
     }
   }
 
-  const [formData, setFormDataState] = useState(getInitialFormData())
+  const [formData, setFormDataState] = useState<Record<string, any>>(getInitialFormData())
   const [errors, setErrorsState] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
 
@@ -171,11 +171,11 @@ export function useUserForm(options: UseUserFormOptions = {}): UseUserFormReturn
     setErrorsState({})
   }, [])
 
-  const resetForm = useCallback(() => {
-    setFormDataState(getInitialFormData())
+  const resetForm = useCallback((data?: Record<string, any>) => {
+    setFormDataState(data ? { ...getInitialFormData(), ...data } : getInitialFormData())
     setErrorsState({})
     setLoading(false)
-  }, [])
+  }, [mode, user, initialData])
 
   // Calculer si le formulaire est valide
   const isValid = useMemo(() => {
@@ -321,8 +321,12 @@ export function usePasswordForm(): UsePasswordFormReturn {
     setErrors({})
   }, [])
 
-  const isPasswordFormValid = Object.keys(errors).length === 0 &&
-    formData.currentPassword && formData.newPassword && formData.confirmPassword
+  const isPasswordFormValid = Boolean(
+    Object.keys(errors).length === 0 &&
+      formData.currentPassword &&
+      formData.newPassword &&
+      formData.confirmPassword
+  )
 
   return {
     formData,

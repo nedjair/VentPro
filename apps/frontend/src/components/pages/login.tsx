@@ -11,7 +11,7 @@ export function LoginPage() {
   const { login, isLoading, error, clearError } = useAuth()
 
   const [formData, setFormData] = useState({
-    // Identifiants de développement alignés sur la base PostgreSQL locale actuelle.
+    // Identifiants de développement alignés sur le compte administrateur local.
     email: 'admin@example.com',
     password: 'admin123',
     rememberMe: false,
@@ -240,8 +240,8 @@ export function LoginPage() {
             <div className="mt-4 bg-blue-50 border border-blue-200 rounded-md p-4">
               <div className="text-sm text-blue-700">
                 <p className="font-medium">Utilisez ces identifiants pour tester :</p>
-                <p className="mt-1">Email : admin@technocommerce.dz</p>
-                <p>Mot de passe : demo123</p>
+                <p className="mt-1">Email : admin@example.com</p>
+                <p>Mot de passe : admin123</p>
               </div>
             </div>
           </div>

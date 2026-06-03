@@ -117,7 +117,6 @@ export class ExportService {
    */
   private static downloadBlob(blob: Blob, filename: string): void {
     try {
-      console.log(`ðŸ’¾ TÃ©lÃ©chargement du fichier: ${filename} (${blob.size} bytes)`);
 
       // VÃ©rifier que le blob n'est pas vide
       if (blob.size === 0) {
@@ -138,8 +137,6 @@ export class ExportService {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       }, 100);
-
-      console.log(`âœ… TÃ©lÃ©chargement initiÃ©: ${filename}`);
     } catch (error) {
       console.error('âŒ Erreur lors du tÃ©lÃ©chargement:', error);
       throw error;
@@ -154,8 +151,6 @@ export class ExportService {
       if (!normalizedInvoiceId) {
         throw new Error('Identifiant de facture invalide');
       }
-
-      console.log(`ðŸ“„ TÃ©lÃ©chargement PDF facture ${invoiceId}...`);
       
       // S'assurer que l'utilisateur est authentifiÃ©
       const authToken = getExportAuthToken();
@@ -199,8 +194,6 @@ export class ExportService {
       }
 
       this.downloadBlob(blob, filename);
-      
-      console.log('âœ… PDF tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       if (error instanceof TypeError && /failed to fetch/i.test(error.message)) {
         const networkError = new Error('Impossible de joindre le service PDF. Vérifiez la connexion réseau ou la configuration CORS.');
@@ -217,7 +210,6 @@ export class ExportService {
    */
   static async downloadClientsExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“Š TÃ©lÃ©chargement Excel clients...', { params });
       
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -242,8 +234,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-      
-      console.log('âœ… Excel clients tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement Excel clients:', error);
       throw error;
@@ -255,7 +245,6 @@ export class ExportService {
    */
   static async downloadProductsExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“Š TÃ©lÃ©chargement Excel produits...');
       
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -279,8 +268,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-      
-      console.log('âœ… Excel produits tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement Excel produits:', error);
       throw error;
@@ -292,7 +279,6 @@ export class ExportService {
    */
   static async downloadOrderPDF(orderId: string): Promise<void> {
     try {
-      console.log(`ðŸ“„ TÃ©lÃ©chargement PDF commande ${orderId}...`);
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -329,7 +315,6 @@ export class ExportService {
    */
   static async downloadOrdersExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“Š TÃ©lÃ©chargement Excel commandes...');
       
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -356,8 +341,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-      
-      console.log('âœ… Excel commandes tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement Excel commandes:', error);
       throw error;
@@ -369,7 +352,6 @@ export class ExportService {
    */
   static async downloadInvoicesExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“Š TÃ©lÃ©chargement Excel factures...', { params });
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -395,8 +377,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… Excel factures tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement Excel factures:', {
         error,
@@ -411,7 +391,6 @@ export class ExportService {
    */
   static async downloadClientsPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“„ TÃ©lÃ©chargement PDF clients...', { params });
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -435,8 +414,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… PDF clients tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement PDF clients:', error);
       throw error;
@@ -448,7 +425,6 @@ export class ExportService {
    */
   static async downloadProductsPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“„ TÃ©lÃ©chargement PDF produits...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -472,8 +448,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… PDF produits tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement PDF produits:', error);
       throw error;
@@ -485,7 +459,6 @@ export class ExportService {
    */
   static async downloadSuppliersExcel(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“Š TÃ©lÃ©chargement Excel fournisseurs...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -512,8 +485,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… Excel fournisseurs tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement Excel fournisseurs:', error);
       throw error;
@@ -525,7 +496,6 @@ export class ExportService {
    */
   static async downloadSuppliersPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“„ TÃ©lÃ©chargement PDF fournisseurs...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -552,8 +522,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… PDF fournisseurs tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement PDF fournisseurs:', error);
       throw error;
@@ -565,7 +533,6 @@ export class ExportService {
    */
   static async downloadImportTemplate(type: 'clients' | 'products' | 'suppliers'): Promise<void> {
     try {
-      console.log(`ðŸ“‹ TÃ©lÃ©chargement template ${type}...`);
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -588,8 +555,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log(`âœ… Template ${type} tÃ©lÃ©chargÃ© avec succÃ¨s`);
     } catch (error) {
       console.error(`âŒ Erreur tÃ©lÃ©chargement template ${type}:`, error);
       throw error;
@@ -601,7 +566,6 @@ export class ExportService {
    */
   static async downloadOrdersPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“„ TÃ©lÃ©chargement PDF commandes...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -631,8 +595,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… PDF commandes tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement PDF commandes:', error);
       throw error;
@@ -644,7 +606,6 @@ export class ExportService {
    */
   static async downloadInvoicesPDF(params?: Record<string, any>): Promise<void> {
     try {
-      console.log('ðŸ“„ TÃ©lÃ©chargement PDF factures...', { params });
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -671,8 +632,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… PDF factures tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement PDF factures:', {
         error,
@@ -687,7 +646,6 @@ export class ExportService {
    */
   static async downloadSalesReportPDF(period: string): Promise<void> {
     try {
-      console.log(`ðŸ“„ TÃ©lÃ©chargement rapport ventes PDF (${period})...`);
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -710,8 +668,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… Rapport ventes PDF tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement rapport ventes PDF:', error);
       throw error;
@@ -723,7 +679,6 @@ export class ExportService {
    */
   static async downloadSalesReportExcel(period: string): Promise<void> {
     try {
-      console.log(`ðŸ“Š TÃ©lÃ©chargement rapport ventes Excel (${period})...`);
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -746,8 +701,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log('âœ… Rapport ventes Excel tÃ©lÃ©chargÃ© avec succÃ¨s');
     } catch (error) {
       console.error('âŒ Erreur tÃ©lÃ©chargement rapport ventes Excel:', error);
       throw error;
@@ -786,7 +739,6 @@ export class ExportService {
    */
   static async importClientsFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('ðŸ“¥ Import clients depuis Excel...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -809,7 +761,6 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('âœ… Import clients terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -827,7 +778,6 @@ export class ExportService {
    */
   static async importProductsFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('ðŸ“¥ Import produits depuis Excel...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -850,7 +800,6 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('âœ… Import produits terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -868,7 +817,6 @@ export class ExportService {
    */
   static async importSuppliersFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('ðŸ“¥ Import fournisseurs depuis Excel...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -891,7 +839,6 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('âœ… Import fournisseurs terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -909,7 +856,6 @@ export class ExportService {
    */
   static async importOrdersFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('ðŸ“¥ Import commandes depuis Excel...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -932,7 +878,6 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('âœ… Import commandes terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -950,7 +895,6 @@ export class ExportService {
    */
   static async importInvoicesFromExcel(file: File): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      console.log('ðŸ“¥ Import factures depuis Excel...');
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -973,7 +917,6 @@ export class ExportService {
       }
 
       const result = await response.json();
-      console.log('âœ… Import factures terminÃ© avec succÃ¨s');
 
       return {
         success: result.success,
@@ -991,7 +934,6 @@ export class ExportService {
    */
   static async downloadTemplateExcel(type: string): Promise<void> {
     try {
-      console.log(`ðŸ“‹ TÃ©lÃ©chargement template Excel ${type}...`);
 
       const authToken = getExportAuthToken();
       if (!authToken) {
@@ -1014,8 +956,6 @@ export class ExportService {
 
       const blob = await response.blob();
       this.downloadBlob(blob, filename);
-
-      console.log(`âœ… Template Excel ${type} tÃ©lÃ©chargÃ© avec succÃ¨s`);
     } catch (error) {
       console.error(`âŒ Erreur tÃ©lÃ©chargement template Excel ${type}:`, error);
       throw error;
@@ -1033,7 +973,6 @@ export class ExportService {
     filters?: Record<string, any>;
   }): Promise<void> {
     try {
-      console.log('ðŸ“Š GÃ©nÃ©ration rapport personnalisÃ©...', config);
 
       // TODO: ImplÃ©menter la gÃ©nÃ©ration de rapports personnalisÃ©s
       // Cette fonctionnalitÃ© sera ajoutÃ©e dans une future version

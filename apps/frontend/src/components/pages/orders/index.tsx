@@ -32,10 +32,6 @@ export function OrdersPage() {
 
   useEffect(() => {
     loadOrders()
-  }, [])
-
-  useEffect(() => {
-    loadOrders()
   }, [activeTab])
 
   const ensureAuthentication = () => ensureApiAuthentication()
@@ -68,7 +64,7 @@ export function OrdersPage() {
 
       const baseParams = {
         page: 1,
-        limit: 50,
+        limit: 20,
         search: searchTerm || undefined,
         status: statusFilter || undefined,
       }

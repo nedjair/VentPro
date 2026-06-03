@@ -4,6 +4,7 @@ import { AuthProvider } from '@/contexts/auth-context'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { ToastProvider } from '@/components/ui/toast'
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary'
+import { QueryProvider } from '@/components/providers/query-provider'
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -36,7 +37,9 @@ export default function RootLayout({
         <ChunkErrorBoundary>
           <ThemeProvider>
             <AuthProvider>
-              {children}
+              <QueryProvider>
+                {children}
+              </QueryProvider>
               <ToastProvider />
             </AuthProvider>
           </ThemeProvider>

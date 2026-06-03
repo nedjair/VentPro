@@ -16,6 +16,22 @@ export interface AuthUser {
   companyId: string | null
 }
 
+const FALLBACK_ADMIN_EMAIL = 'admin@example.com'
+const FALLBACK_ADMIN_PASSWORD = 'admin123'
+const FALLBACK_COMPANY_ID = 'dev-company-fallback'
+
+function isDatabaseUnavailableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+
+  return (
+    message.includes("Can't reach database server") ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('connect ECONNREFUSED') ||
+    message.includes('Error querying the database') ||
+    message.includes('Erreur de connexion à la base de données')
+  )
+}
+
 function isMissingRelationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message.includes('relation "users" does not exist') || message.includes('relation "User" does not exist')
@@ -23,6 +39,44 @@ function isMissingRelationError(error: unknown): boolean {
 
 export class AuthService {
   private legacyUsersTableExists: boolean | null = null
+
+  /**
+   * Fournit un compte de secours strictement local quand PostgreSQL est hors
+   * service. Ce mode est volontairement limité au compte admin de démonstration
+   * pour garder un accès de maintenance au frontend le temps de réparer la base.
+   */
+  private async tryDevelopmentFallback(credentials: LoginCredentials, rootCause?: unknown): Promise<AuthUser | null> {
+    if (process.env.NODE_ENV !== 'development') {
+      return null
+    }
+
+    if (
+      credentials.email.toLowerCase() !== FALLBACK_ADMIN_EMAIL ||
+      credentials.password !== FALLBACK_ADMIN_PASSWORD
+    ) {
+      return null
+    }
+
+    logger.warn(
+      {
+        email: credentials.email.toLowerCase(),
+        rootCause: rootCause instanceof Error ? rootCause.message : String(rootCause || ''),
+      },
+      'Base indisponible, utilisation du compte administrateur de secours en développement'
+    )
+
+    return {
+      id: 'dev-admin-fallback',
+      email: FALLBACK_ADMIN_EMAIL,
+      firstName: 'Admin',
+      lastName: 'Fallback',
+      role: 'ADMIN',
+      // Important: several routes scope data by companyId first.
+      // A stable non-null fallback prevents empty datasets on screens that
+      // rely on the authenticated company context while PostgreSQL is down.
+      companyId: FALLBACK_COMPANY_ID,
+    }
+  }
 
   /**
    * Détecte la présence de la table legacy `public.users`.
@@ -102,6 +156,13 @@ export class AuthService {
           }
         }
       } catch (currentSchemaError) {
+        if (isDatabaseUnavailableError(currentSchemaError)) {
+          const fallbackUser = await this.tryDevelopmentFallback({ email: normalizedEmail, password }, currentSchemaError)
+          if (fallbackUser) {
+            return fallbackUser
+          }
+        }
+
         logger.warn('Schéma PostgreSQL actuel non disponible via Prisma raw query, tentative de fallback legacy', currentSchemaError)
       }
 
@@ -169,6 +230,13 @@ export class AuthService {
           companyId: legacyUser.companyId,
         }
       } catch (legacySchemaError) {
+        if (isDatabaseUnavailableError(legacySchemaError)) {
+          const fallbackUser = await this.tryDevelopmentFallback({ email: normalizedEmail, password }, legacySchemaError)
+          if (fallbackUser) {
+            return fallbackUser
+          }
+        }
+
         if (!isMissingRelationError(legacySchemaError)) {
           throw legacySchemaError
         }

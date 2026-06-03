@@ -70,9 +70,16 @@ export interface PasswordChangeData {
 
 export interface UserStats {
   total: number
+  active: number
+  inactive: number
   admins: number
   managers: number
   employees: number
+  byRole?: {
+    ADMIN?: number
+    MANAGER?: number
+    EMPLOYEE?: number
+  }
 }
 
 export interface ApiResponse<T> {

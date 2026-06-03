@@ -36,7 +36,6 @@ export class StockDiagnostic {
       avgResponseTime: number
     }
   }> {
-    console.log('🔍 Démarrage du diagnostic complet des données de stock...')
     
     // 1. Test de tous les endpoints
     const endpoints = await this.testAllEndpoints()
@@ -91,7 +90,6 @@ export class StockDiagnostic {
     const results: DiagnosticResult[] = []
 
     for (const endpoint of endpointsToTest) {
-      console.log(`🧪 Test de ${endpoint.name}...`)
       const result = await this.testSingleEndpoint(endpoint.name, endpoint.url)
       results.push(result)
       

@@ -122,7 +122,6 @@ export function useStockDashboard(refreshInterval: number = 30000) {
     setError(null)
 
     try {
-      console.log('🔄 Fetching dashboard data...', new Date().toISOString())
       const response = await api.get('/stock/dashboard')
 
       if (response.data.success) {
@@ -130,14 +129,6 @@ export function useStockDashboard(refreshInterval: number = 30000) {
         setDashboard(newDashboard)
         setLastUpdate(new Date())
         setRetryCount(0)
-
-        console.log('✅ Dashboard updated:', {
-          activeAlerts: newDashboard.activity.activeAlerts,
-          critical: newDashboard.alerts.critical,
-          warning: newDashboard.alerts.warning,
-          info: newDashboard.alerts.info,
-          timestamp: new Date().toISOString()
-        })
       } else {
         throw new Error(response.data.message || 'Erreur lors de la récupération du tableau de bord')
       }
@@ -192,13 +183,10 @@ export function useStockDashboard(refreshInterval: number = 30000) {
 
       if (registerSync) {
         return registerSync(() => {
-          console.log('🔄 Dashboard refresh triggered by context')
           fetchDashboard(true)
         })
       }
     } catch (error) {
-      // Context not available, continue without it
-      console.log('Stock context not available, using standalone mode')
     }
   }, [fetchDashboard])
 
@@ -206,7 +194,6 @@ export function useStockDashboard(refreshInterval: number = 30000) {
   useEffect(() => {
     const handleFocus = () => {
       if (document.visibilityState === 'visible') {
-        console.log('🔄 Tab focused, refreshing dashboard...')
         fetchDashboard(true)
       }
     }
@@ -379,7 +366,6 @@ export function useStockMovements() {
             triggerAlertsRefresh()
           }, 1000) // Delay to allow backend processing
         } catch (error) {
-          console.log('Stock context not available for refresh trigger')
         }
 
         return response.data.data
@@ -416,7 +402,6 @@ export function useStockMovements() {
             triggerAlertsRefresh()
           }, 1000)
         } catch (error) {
-          console.log('Stock context not available for refresh trigger')
         }
 
         return response.data.data
@@ -456,7 +441,6 @@ export function useStockMovements() {
             triggerAlertsRefresh()
           }, 1000)
         } catch (error) {
-          console.log('Stock context not available for refresh trigger')
         }
 
         return response.data.data

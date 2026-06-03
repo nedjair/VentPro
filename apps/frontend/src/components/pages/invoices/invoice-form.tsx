@@ -21,7 +21,7 @@ interface InvoiceFormPageProps {
 
 const nativeSelectClass =
   'flex h-11 w-full rounded-2xl border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
-const queryLimit = 100
+const queryLimit = 20
 
 export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
   const router = useRouter()
@@ -86,7 +86,6 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
   const loadInitialData = async () => {
     try {
       setLoading(true)
-      console.log('🔄 INVOICE FORM: Début du chargement des données initiales')
 
       // S'assurer que l'utilisateur est authentifié
       const isAuthenticated = await ensureAuthentication()
@@ -95,8 +94,6 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
         setError('Erreur d\'authentification. Impossible de charger les données.')
         return
       }
-
-      console.log('✅ INVOICE FORM: Authentification réussie, chargement des données...')
 
       const [clientsResult, productsResult, ordersResult, invoicesResult] = await Promise.allSettled([
         requestWithRetry(() => api.getClients({ limit: queryLimit })),
@@ -110,16 +107,8 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
       const ordersResponse = ordersResult.status === 'fulfilled' ? ordersResult.value : null
       const invoicesResponse = invoicesResult.status === 'fulfilled' ? invoicesResult.value : null
 
-      console.log('📊 INVOICE FORM: Réponses reçues:', {
-        clients: { success: clientsResponse?.success, dataType: typeof clientsResponse?.data, hasData: !!clientsResponse?.data },
-        products: { success: productsResponse?.success, dataType: typeof productsResponse?.data, hasData: !!productsResponse?.data },
-        orders: { success: ordersResponse?.success, dataType: typeof ordersResponse?.data, hasData: !!ordersResponse?.data },
-        invoices: { success: invoicesResponse?.success, dataType: typeof invoicesResponse?.data, hasData: !!invoicesResponse?.data }
-      })
-
       if (clientsResponse?.success && clientsResponse.data) {
         const clientsData = clientsResponse.data.data || clientsResponse.data
-        console.log('👥 INVOICE FORM: Clients chargés:', Array.isArray(clientsData) ? clientsData.length : 'Non-array', clientsData)
         setClients(Array.isArray(clientsData) ? clientsData : [])
       } else {
         console.warn('⚠️ INVOICE FORM: Échec du chargement des clients:', clientsResponse)
@@ -128,7 +117,6 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
 
       if (productsResponse?.success && productsResponse.data) {
         const productsData = productsResponse.data.data || productsResponse.data
-        console.log('📦 INVOICE FORM: Produits chargés:', Array.isArray(productsData) ? productsData.length : 'Non-array', productsData)
         setProducts(Array.isArray(productsData) ? productsData : [])
       } else {
         console.warn('⚠️ INVOICE FORM: Échec du chargement des produits:', productsResponse)
@@ -159,8 +147,6 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
       } else {
         setError(null)
       }
-
-      console.log('✅ INVOICE FORM: Chargement des données terminé')
     } catch (err) {
       console.error('❌ INVOICE FORM: Erreur lors du chargement des données:', err)
 
@@ -347,17 +333,13 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
         }))
       }
 
-      console.log(`💾 ${isEditing ? 'Modification' : 'Création'} de la facture...`)
-
       let response
       if (isEditing && invoiceId) {
         // @ts-ignore - Nous utilisons un type partiel pour la mise à jour
         response = await api.updateInvoice(invoiceId, invoiceData)
-        console.log('✅ Facture modifiée avec succès:', response)
       } else {
         // @ts-ignore - Nous utilisons un type partiel pour la création
         response = await api.createInvoice(invoiceData)
-        console.log('✅ Facture créée avec succès:', response)
       }
 
       // Vérifier que la réponse est valide
@@ -367,7 +349,6 @@ export function InvoiceFormPage({ invoiceId }: InvoiceFormPageProps) {
 
       // Redirection avec message de succès
       const successMessage = isEditing ? 'Facture modifiée avec succès' : 'Facture créée avec succès'
-      console.log(`✅ ${successMessage}`)
 
       // Rediriger vers la liste des factures avec un paramètre pour forcer le rechargement
       const timestamp = Date.now()

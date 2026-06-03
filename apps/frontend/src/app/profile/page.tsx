@@ -30,9 +30,9 @@ export default function ProfilePage() {
   useEffect(() => {
     if (currentUser) {
       setFormData({
-        firstName: currentUser.firstName,
-        lastName: currentUser.lastName,
-        email: currentUser.email
+        firstName: currentUser.firstName || '',
+        lastName: currentUser.lastName || '',
+        email: currentUser.email || ''
       })
     }
   }, [currentUser])
@@ -71,7 +71,17 @@ export default function ProfilePage() {
       const updatedUser = await userService.updateUser(currentUser.id, formData)
       
       // Mettre à jour le contexte d'authentification
-      updateUser(updatedUser)
+      updateUser({
+        id: updatedUser.id,
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        role: updatedUser.role,
+        permissions: currentUser.permissions,
+        avatar: currentUser.avatar,
+        createdAt: updatedUser.createdAt || currentUser.createdAt,
+        lastLoginAt: updatedUser.lastLoginAt || currentUser.lastLoginAt,
+      })
       
       setIsEditing(false)
       toast.success('Profil mis à jour avec succès')
@@ -87,9 +97,9 @@ export default function ProfilePage() {
   const handleCancel = () => {
     if (currentUser) {
       setFormData({
-        firstName: currentUser.firstName,
-        lastName: currentUser.lastName,
-        email: currentUser.email
+        firstName: currentUser.firstName || '',
+        lastName: currentUser.lastName || '',
+        email: currentUser.email || ''
       })
     }
     setIsEditing(false)
@@ -271,7 +281,7 @@ export default function ProfilePage() {
                 <div>
                   <p className="text-sm text-gray-600">Nom complet</p>
                   <p className="font-medium text-gray-900">
-                    {currentUser.firstName} {currentUser.lastName}
+                    {(currentUser.firstName || '').trim()} {(currentUser.lastName || '').trim()}
                   </p>
                 </div>
               </div>
@@ -280,7 +290,7 @@ export default function ProfilePage() {
                 <Mail className="w-5 h-5 text-gray-600" />
                 <div>
                   <p className="text-sm text-gray-600">Email</p>
-                  <p className="font-medium text-gray-900">{currentUser.email}</p>
+                  <p className="font-medium text-gray-900">{currentUser.email || 'Email non renseigné'}</p>
                 </div>
               </div>
               
@@ -298,9 +308,7 @@ export default function ProfilePage() {
                 <Building className="w-5 h-5 text-gray-600" />
                 <div>
                   <p className="text-sm text-gray-600">Entreprise</p>
-                  <p className="font-medium text-gray-900">
-                    {currentUser.company?.name || 'Non définie'}
-                  </p>
+                  <p className="font-medium text-gray-900">Non définie</p>
                 </div>
               </div>
               
@@ -334,9 +342,9 @@ export default function ProfilePage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Statut du compte</h2>
             
             <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${currentUser.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className={`font-medium ${currentUser.isActive ? 'text-green-700' : 'text-red-700'}`}>
-                {currentUser.isActive ? 'Compte actif' : 'Compte désactivé'}
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+              <span className="font-medium text-green-700">
+                Compte actif
               </span>
             </div>
           </div>
@@ -346,7 +354,7 @@ export default function ProfilePage() {
       {/* Modal de changement de mot de passe */}
       {showChangePasswordModal && (
         <ChangePasswordModal
-          userId={currentUser.id}
+          user={currentUser}
           onClose={() => setShowChangePasswordModal(false)}
           onPasswordChanged={handlePasswordChanged}
         />

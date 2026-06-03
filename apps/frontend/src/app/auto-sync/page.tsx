@@ -60,7 +60,6 @@ export default function AutoSyncPage() {
     setError(null)
 
     try {
-      console.log('🔄 Chargement des données de synchronisation automatique...')
 
       // Charger le statut des tâches, la configuration et la cohérence en parallèle
       const [jobsResponse, configResponse, consistencyResponse] = await Promise.all([

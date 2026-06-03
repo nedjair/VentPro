@@ -12,6 +12,7 @@ export interface User {
   role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE'
   permissions: string[]
   avatar?: string
+  companyId?: string
   createdAt: string
   lastLoginAt?: string
 }
@@ -20,6 +21,7 @@ export interface AuthTokens {
   accessToken: string
   refreshToken: string
   expiresIn: number
+  expiresAt?: number
 }
 
 export interface LoginCredentials {
@@ -288,6 +290,20 @@ class AuthStore {
     }
   }
 
+  updateUser(user: User): void {
+    const currentTokens = this.state.tokens
+
+    if (currentTokens) {
+      this.persistAuth(user, currentTokens)
+    }
+
+    this.setState({
+      user,
+      isAuthenticated: Boolean(currentTokens),
+      isHydrated: true,
+    })
+  }
+
   // Méthode pour nettoyer l'authentification
   clearAuth(): void {
     this.clearStoredAuth()
@@ -358,6 +374,10 @@ export function useAuth() {
     return authStore.logout()
   }, [])
 
+  const updateUser = React.useCallback((user: User) => {
+    return authStore.updateUser(user)
+  }, [])
+
   const clearError = React.useCallback(() => {
     return authStore.clearError()
   }, [])
@@ -382,6 +402,7 @@ export function useAuth() {
     hasRole,
     hasPermission,
     isAdmin,
+    updateUser,
   }
 }
 

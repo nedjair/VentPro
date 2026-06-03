@@ -54,9 +54,8 @@ export function InvoicesPage() {
 
   // Détecter le paramètre refresh et recharger les données
   useEffect(() => {
-    const refreshParam = searchParams.get('refresh')
+    const refreshParam = searchParams?.get('refresh')
     if (refreshParam) {
-      console.log('🔄 Paramètre refresh détecté, rechargement des factures...')
       loadInvoices()
 
       // Nettoyer l'URL en supprimant le paramètre refresh
@@ -70,13 +69,11 @@ export function InvoicesPage() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        console.log('🔄 Page visible, rechargement des factures...')
         loadInvoices()
       }
     }
 
     const handleFocus = () => {
-      console.log('🔄 Page focus, rechargement des factures...')
       loadInvoices()
     }
 
@@ -95,7 +92,6 @@ export function InvoicesPage() {
     try {
       setLoading(true)
       setError(null)
-      console.log('🔍 Chargement des factures...')
 
       // S'assurer que l'utilisateur est authentifié
       const isAuthenticated = await ensureAuthentication()
@@ -106,14 +102,13 @@ export function InvoicesPage() {
 
       const response = await api.getInvoices({
         page: 1,
-        limit: 50,
+        limit: 20,
         search: searchTerm || undefined,
         status: statusFilter || undefined,
         type: typeFilter || undefined,
       })
       if (response.success && response.data) {
         const safeInvoices = extractCollection<Invoice>(response.data)
-        console.log('✅ Factures chargées avec succès:', safeInvoices.length, 'factures')
         setInvoices(safeInvoices)
         setError(null)
       } else {
@@ -156,12 +151,6 @@ export function InvoicesPage() {
 
     return matchesSearch && matchesStatus && matchesType
   })
-
-  console.log('📊 État actuel (v3):')
-  console.log('📊 invoices.length:', invoices.length)
-  console.log('📊 filteredInvoices.length:', filteredInvoices.length)
-  console.log('📊 loading:', loading)
-  console.log('📊 error:', error)
 
   const getTypeIcon = (type: string | undefined) => {
     switch (type) {
@@ -223,8 +212,6 @@ export function InvoicesPage() {
   const handleDeleteInvoice = async (invoiceId: string) => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette facture ?')) {
       try {
-        console.log('Suppression de la facture:', invoiceId)
-
         // S'assurer que l'utilisateur est authentifié
         const isAuthenticated = await ensureAuthentication()
         if (!isAuthenticated) {
@@ -234,8 +221,6 @@ export function InvoicesPage() {
 
         await api.deleteInvoice(invoiceId)
         await loadInvoices() // Recharger la liste
-
-        console.log('✅ Facture supprimée avec succès')
       } catch (error) {
         console.error('❌ Erreur lors de la suppression:', error)
 
@@ -270,14 +255,12 @@ export function InvoicesPage() {
     }
 
     try {
-      console.log(`📄 Téléchargement PDF facture ${invoiceId}...`)
       const isAuthenticated = await ensureAuthentication()
       if (!isAuthenticated) {
         setError('Erreur d’authentification. Veuillez vous reconnecter.')
         return
       }
       await ExportService.downloadInvoicePDF(invoiceId)
-      console.log('✅ PDF téléchargé avec succès')
     } catch (error) {
       console.error('❌ Erreur téléchargement PDF:', error)
       const errorMessage = error instanceof Error

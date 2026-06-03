@@ -34,6 +34,8 @@ interface Payment {
   paymentMethod: 'CASH' | 'CHECK' | 'TRANSFER' | 'CARD' | 'OTHER'
   reference?: string
   notes?: string
+  invoiceId: string
+  clientId: string
   invoice: {
     id: string
     number: string
@@ -326,10 +328,10 @@ export function PaymentsPage() {
     try {
       const response = await api.delete(`/payments/${paymentId}`)
 
-      if (response.success) {
+      if (response.data?.success) {
         await loadPayments() // Recharger la liste
       } else {
-        throw new Error(response.message || 'Erreur lors de la suppression du paiement')
+        throw new Error(response.data?.message || 'Erreur lors de la suppression du paiement')
       }
     } catch (err) {
       console.error('❌ Erreur lors de la suppression:', err)
@@ -368,7 +370,7 @@ export function PaymentsPage() {
   // Rendu conditionnel pour les états de chargement et d'erreur
   if (loading) {
     return (
-      <MainLayout>
+      <MainLayout title="Paiements">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -381,7 +383,7 @@ export function PaymentsPage() {
 
   if (error) {
     return (
-      <MainLayout>
+      <MainLayout title="Paiements">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center">
             <AlertCircle className="h-5 w-5 text-red-600" />
@@ -405,7 +407,7 @@ export function PaymentsPage() {
   }
 
   return (
-    <MainLayout>
+      <MainLayout title="Paiements">
       <div className="space-y-6">
         {/* En-tête avec actions */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

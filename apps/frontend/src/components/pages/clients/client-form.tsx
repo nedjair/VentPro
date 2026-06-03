@@ -60,7 +60,6 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
     
     try {
       setLoading(true)
-      console.log('🔍 Chargement du client:', clientId)
       
       const response = await api.getClient(clientId)
       
@@ -145,14 +144,10 @@ export function ClientFormPage({ mode, clientId }: ClientFormPageProps) {
         return
       }
 
-      console.log(`💾 ${mode === 'create' ? 'Création' : 'Modification'} du client...`)
-
       if (mode === 'create') {
         const response = await api.createClient(formData)
-        console.log('✅ Client créé avec succès:', response)
       } else if (clientId) {
         const response = await api.updateClient(clientId, formData)
-        console.log('✅ Client modifié avec succès:', response)
       }
 
       // Redirection vers la liste des clients

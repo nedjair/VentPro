@@ -213,7 +213,9 @@ export default async function invoiceRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          // On accepte une borne de validation large, puis on plafonne au
+          // niveau métier pour garder une UI tolérante aux anciens appels.
+          limit: { type: 'integer', minimum: 1, maximum: 10000, default: 20 },
           sortBy: { type: 'string', default: 'createdAt' },
           sortOrder: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
           search: { type: 'string' },
@@ -241,8 +243,8 @@ export default async function invoiceRoutes(server: FastifyInstance) {
 
       // Pagination avec valeurs par défaut
       const pagination = {
-        page: query.page || 1,
-        limit: Math.min(query.limit || 20, 100),
+        page: Math.max(1, Number(query.page || 1) || 1),
+        limit: Math.min(Math.max(1, Number(query.limit || 20) || 20), 100),
       }
 
       // Filtres avec conversion des dates

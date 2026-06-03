@@ -14,9 +14,7 @@ export default function TestApiDirectPage() {
     setResult(null)
 
     try {
-      console.log('🔍 Test direct de l\'API suppliers...')
       const response = await api.get('/api/v1/suppliers?isActive=true&limit=100')
-      console.log('✅ Réponse reçue:', response)
       
       setResult({
         status: response.status,

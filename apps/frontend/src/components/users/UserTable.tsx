@@ -4,7 +4,7 @@ import { User, PaginationResult, UserRole } from '@/types/user'
 
 interface UserTableProps {
   users: User[]
-  currentUser: User
+  currentUser: Pick<User, 'id' | 'role'> & Partial<User>
   onEdit: (user: User) => void
   onDelete: (user: User) => void
   onToggleStatus: (user: User) => void

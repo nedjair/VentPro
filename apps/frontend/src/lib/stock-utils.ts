@@ -4,7 +4,7 @@ import { AlertTriangle, Package, TrendingDown } from 'lucide-react'
  * Interface pour le statut de stock
  */
 export interface StockStatus {
-  status: 'rupture' | 'faible' | 'normal' | 'non-suivi'
+  status: 'rupture' | 'faible' | 'normal' | 'non-suivi' | 'surstock'
   label: string
   color: string
   bgColor: string

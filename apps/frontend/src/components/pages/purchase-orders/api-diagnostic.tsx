@@ -83,8 +83,6 @@ export function ApiDiagnostic() {
           const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001'
           const url = `${baseUrl}/api/v1/suppliers?isActive=true&limit=100`
           
-          console.log('🔍 Test API direct - URL:', url)
-          
           const response = await fetch(url, {
             method: 'GET',
             headers: {
@@ -93,11 +91,7 @@ export function ApiDiagnostic() {
             },
           })
 
-          console.log('🔍 Test API direct - Status:', response.status)
-          console.log('🔍 Test API direct - Headers:', Object.fromEntries(response.headers.entries()))
-
           const responseText = await response.text()
-          console.log('🔍 Test API direct - Response text:', responseText)
 
           let responseData
           try {
@@ -187,9 +181,7 @@ export function ApiDiagnostic() {
     // Test 4: Test avec le client API
     const startApiClient = Date.now()
     try {
-      console.log('🔍 Test avec client API...')
       const response = await api.get('/api/v1/suppliers?isActive=true&limit=100')
-      console.log('🔍 Client API - Réponse:', response)
 
       if (response.data.success) {
         const suppliers = response.data.data || []
@@ -229,20 +221,20 @@ export function ApiDiagnostic() {
     // Test 5: Test avec la méthode getSuppliers
     const startGetSuppliers = Date.now()
     try {
-      console.log('🔍 Test avec api.getSuppliers...')
       const response = await api.getSuppliers({ isActive: true, limit: 100 })
-      console.log('🔍 getSuppliers - Réponse:', response)
 
-      if (response.data.success) {
-        const suppliers = response.data.data || []
+      const payload = response.data as any
+
+      if (payload?.success) {
+        const suppliers = payload.data || []
         diagnosticResults.push({
           test: 'Méthode getSuppliers',
           status: 'success',
           message: `getSuppliers fonctionne - ${suppliers.length} fournisseurs`,
           details: {
-            success: response.data.success,
+            success: payload.success,
             suppliersCount: suppliers.length,
-            response: response.data
+            response: payload
           },
           duration: Date.now() - startGetSuppliers
         })

@@ -52,7 +52,6 @@ export function SalesReportPage() {
   const handleExportPDF = async () => {
     setExporting(true)
     try {
-      console.log('📄 Export PDF du rapport des ventes...')
       await ExportService.downloadSalesReportPDF(period)
       setExportMessage({
         type: 'success',
@@ -72,7 +71,6 @@ export function SalesReportPage() {
   const handleExportExcel = async () => {
     setExporting(true)
     try {
-      console.log('📊 Export Excel du rapport des ventes...')
       await ExportService.downloadSalesReportExcel(period)
       setExportMessage({
         type: 'success',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, SalesAnalytics, EvolutionData } from '@/lib/api'
 import {
   LineChart,
@@ -31,11 +31,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
   const [error, setError] = useState<string | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState(period)
 
-  useEffect(() => {
-    loadAnalyticsData()
-  }, [selectedPeriod])
-
-  const loadAnalyticsData = async () => {
+  const loadAnalyticsData = useCallback(async () => {
     try {
       setLoading(true)
       
@@ -74,7 +70,11 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedPeriod])
+
+  useEffect(() => {
+    void loadAnalyticsData()
+  }, [loadAnalyticsData])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-DZ', {
@@ -171,7 +171,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                 />
                 <YAxis tickFormatter={formatCurrency} />
                 <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), 'CA']}
+                  formatter={((value: number) => [formatCurrency(value), 'CA']) as any}
                   labelFormatter={(label) => formatMonth(label)}
                 />
                 <Area
@@ -209,12 +209,12 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                   />
                   <YAxis tickFormatter={formatCurrency} />
                   <Tooltip
-                    formatter={(value: number, name: string) => {
+                    formatter={((value: number, name: string) => {
                       if (name === 'revenue') return [formatCurrency(value), 'CA']
                       if (name === 'invoiceCount') return [value, 'Factures']
                       if (name === 'avgInvoice') return [formatCurrency(value), 'Panier moyen']
                       return [value, name]
-                    }}
+                    }) as any}
                     labelFormatter={(label) => formatMonth(label)}
                   />
                   <Legend />
@@ -249,7 +249,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                     tick={{ fontSize: 12 }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [formatCurrency(value), 'CA']}
+                    formatter={((value: number) => [formatCurrency(value), 'CA']) as any}
                   />
                   <Bar dataKey="totalRevenue" fill="hsl(var(--color-primary))" />
                 </BarChart>
@@ -275,7 +275,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ type, percent }) => `${type} (${(percent * 100).toFixed(0)}%)`}
+                      label={(({ type, percent }: any) => `${type} (${((percent ?? 0) * 100).toFixed(0)}%)`) as any}
                       outerRadius={80}
                       fill="hsl(var(--color-primary))"
                       dataKey="revenue"
@@ -284,7 +284,7 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
                   </PieChart>
                 </ResponsiveContainer>
 
@@ -320,3 +320,4 @@ export function AnalyticsCharts({ period = '12m' }: AnalyticsChartsProps) {
     </div>
   )
 }
+

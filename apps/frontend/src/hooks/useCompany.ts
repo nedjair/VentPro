@@ -39,16 +39,10 @@ export function useCompany(): UseCompanyReturn {
       setLoading(true)
       setError(null)
 
-      console.log('🔍 useCompany: Début de fetchCurrentCompany')
-      console.log('🔍 useCompany: Token disponible:', api.getAuthToken() ? 'Oui' : 'Non')
-
       const response = await api.get('/api/v1/companies/current')
-
-      console.log('🔍 useCompany: Réponse reçue:', response.data)
 
       if (response.data.success) {
         setCurrentCompany(response.data.data)
-        console.log('🔍 useCompany: Entreprise définie:', response.data.data.name)
       } else {
         console.error('🔍 useCompany: Réponse non réussie:', response.data)
         setError('Erreur lors de la récupération de l\'entreprise')
@@ -64,7 +58,6 @@ export function useCompany(): UseCompanyReturn {
       setError(err.response?.data?.message || 'Erreur lors de la récupération de l\'entreprise')
     } finally {
       setLoading(false)
-      console.log('🔍 useCompany: Fin de fetchCurrentCompany')
     }
   }
 

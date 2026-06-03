@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MainLayout } from '@/components/layout/main-layout'
 import { 
   Play, 
   RefreshCw, 
@@ -27,10 +28,8 @@ export default function DiagnosticStockPage() {
     setError(null)
     
     try {
-      console.log('🔍 Démarrage du diagnostic...')
       const result = await stockDiagnostic.runFullDiagnostic()
       setDiagnostic(result)
-      console.log('✅ Diagnostic terminé:', result)
     } catch (err: any) {
       console.error('❌ Erreur lors du diagnostic:', err)
       setError(err.message)
@@ -67,55 +66,40 @@ export default function DiagnosticStockPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <Database className="h-8 w-8 mr-3 text-blue-600" />
-            Diagnostic Avancé - Synchronisation Stock
-          </h1>
-          <p className="mt-2 text-gray-600">
-            Investigation approfondie des problèmes de cohérence des données de stock
-          </p>
-        </div>
+    <MainLayout
+      title="Diagnostic Avancé - Synchronisation Stock"
+      subtitle="Investigation approfondie des problèmes de cohérence des données de stock"
+      actions={
+        <div className="flex gap-4">
+          <button
+            onClick={runDiagnostic}
+            disabled={loading}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? (
+              <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-5 w-5 mr-2" />
+            )}
+            {loading ? 'Diagnostic en cours...' : 'Lancer le Diagnostic Complet'}
+          </button>
 
-        {/* Actions */}
-        <div className="bg-white rounded-lg shadow mb-8">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">Actions de Diagnostic</h2>
-          </div>
-          <div className="p-6">
-            <div className="flex gap-4">
-              <button
-                onClick={runDiagnostic}
-                disabled={loading}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                {loading ? (
-                  <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
-                ) : (
-                  <Play className="h-5 w-5 mr-2" />
-                )}
-                {loading ? 'Diagnostic en cours...' : 'Lancer le Diagnostic Complet'}
-              </button>
-              
-              {diagnostic && (
-                <button
-                  onClick={downloadReport}
-                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  <Download className="h-5 w-5 mr-2" />
-                  Télécharger le Rapport
-                </button>
-              )}
-            </div>
-          </div>
+          {diagnostic && (
+            <button
+              onClick={downloadReport}
+              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            >
+              <Download className="h-5 w-5 mr-2" />
+              Télécharger le Rapport
+            </button>
+          )}
         </div>
-
+      }
+    >
+      <div className="space-y-8">
         {/* Erreur */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-center">
               <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
               <span className="text-red-800 font-medium">Erreur lors du diagnostic</span>
@@ -272,6 +256,6 @@ export default function DiagnosticStockPage() {
           </div>
         )}
       </div>
-    </div>
+    </MainLayout>
   )
 }

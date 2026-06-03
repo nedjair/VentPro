@@ -6,7 +6,7 @@ import '@testing-library/jest-dom'
 import { afterEach, vi } from 'vitest'
 
 // Mock des variables d'environnement pour les tests
-process.env.NODE_ENV = 'test'
+;(process.env as Record<string, string | undefined>).NODE_ENV = 'test'
 delete process.env.NEXT_PUBLIC_API_URL
 delete process.env.NEXT_PUBLIC_API_BASE_URL
 
@@ -73,7 +73,7 @@ global.IntersectionObserver = class IntersectionObserver {
   unobserve() {
     return null
   }
-}
+} as any
 
 // Mock de ResizeObserver
 global.ResizeObserver = class ResizeObserver {
@@ -87,7 +87,7 @@ global.ResizeObserver = class ResizeObserver {
   unobserve() {
     return null
   }
-}
+} as any
 
 // Mock de fetch pour les tests
 vi.stubGlobal('fetch', vi.fn())

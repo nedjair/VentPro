@@ -134,11 +134,11 @@ export function PaymentForm({ payment, onSave, onCancel }: PaymentFormProps) {
         api.get('/api/v1/invoices?limit=50&status=PARTIAL')
       ])
 
-      if (clientsResponse.success) {
+      if (clientsResponse.data?.success) {
         setClients(ensureArray(clientsResponse.data?.data || clientsResponse.data))
       }
 
-      if (sentInvoicesResponse.success && partialInvoicesResponse.success) {
+      if (sentInvoicesResponse.data?.success && partialInvoicesResponse.data?.success) {
         // Combiner les factures SENT et PARTIAL
         const sentInvoices = ensureArray(sentInvoicesResponse.data?.data || sentInvoicesResponse.data)
         const partialInvoices = ensureArray(partialInvoicesResponse.data?.data || partialInvoicesResponse.data)
@@ -230,13 +230,13 @@ export function PaymentForm({ payment, onSave, onCancel }: PaymentFormProps) {
         response = await api.post('/api/v1/payments', paymentData)
       }
 
-      if (response.success) {
+      if (response.data?.success) {
         setSuccess(true)
         setTimeout(() => {
-          onSave(response.data)
+          onSave(response.data.data as Payment)
         }, 1000)
       } else {
-        throw new Error(response.message || 'Erreur lors de la sauvegarde')
+        throw new Error(response.data?.message || 'Erreur lors de la sauvegarde')
       }
     } catch (err) {
       console.error('❌ Erreur lors de la sauvegarde:', err)

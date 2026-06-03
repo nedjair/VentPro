@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, KPIMetrics } from '@/lib/api'
 import { normalizeCurrencyCode } from '@/lib/currency'
 import { 
@@ -21,25 +21,14 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadKPIData()
-    
-    const interval = setInterval(loadKPIData, refreshInterval)
-    return () => clearInterval(interval)
-  }, [refreshInterval])
-
-  const loadKPIData = async () => {
+  const loadKPIData = useCallback(async () => {
     try {
-      console.log('🔍 Chargement des KPI...')
       const response = await api.getKPIMetrics()
-      console.log('📊 Réponse KPI:', response)
 
       if (response.success && response.data) {
-        console.log('✅ KPI chargés avec succès:', response.data)
         setKpi(response.data)
         setError(null)
       } else {
-        console.error('❌ Erreur dans la réponse KPI:', response)
         throw new Error('Erreur lors du chargement des KPI')
       }
     } catch (err) {
@@ -48,7 +37,17 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void loadKPIData()
+
+    const interval = setInterval(() => {
+      void loadKPIData()
+    }, refreshInterval)
+
+    return () => clearInterval(interval)
+  }, [loadKPIData, refreshInterval])
 
   const formatCurrency = (amount: number, currency?: string) => {
     return new Intl.NumberFormat('fr-DZ', {
@@ -295,3 +294,4 @@ export function KPIMetricsComponent({ refreshInterval = 30000 }: KPIMetricsProps
     </div>
   )
 }
+

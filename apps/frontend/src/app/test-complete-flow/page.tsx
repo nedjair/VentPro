@@ -70,20 +70,19 @@ export default function TestCompleteFlowPage() {
       setTestStep('🚀 Soumission de la commande d\'achat...')
       
       const result = await submitForm()
-      console.log('✅ Commande créée:', result)
 
-      if (result && result.data && result.data.id) {
-        setCreatedOrderId(result.data.id)
+      if (result && result.id) {
+        setCreatedOrderId(result.id)
         setTestStep('🎉 Commande créée avec succès!')
         setTestResult(`🎉 SUCCÈS COMPLET! 
         
 Commande d'achat créée avec succès:
-• ID: ${result.data.id}
-• Numéro: ${result.data.number || 'N/A'}
-• Statut: ${result.data.status || 'N/A'}
-• Total: ${result.data.total || 'N/A'}€
-• Fournisseur: ${result.data.supplier?.name || 'N/A'}
-• Articles: ${result.data.items?.length || 0} article(s)
+• ID: ${result.id}
+• Numéro: ${result.number || 'N/A'}
+• Statut: ${result.status || 'N/A'}
+• Total: ${result.total || 'N/A'}€
+• Fournisseur: ${result.supplier?.name || 'N/A'}
+• Articles: ${result.items?.length || 0} article(s)
 
 ✅ Toutes les corrections fonctionnent parfaitement!`)
       } else {

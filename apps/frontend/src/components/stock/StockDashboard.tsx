@@ -63,7 +63,7 @@ export function StockDashboard({
               <AlertTriangle className="h-5 w-5 mr-2" />
               <span>Erreur: {error}</span>
             </div>
-            <Button variant="outline" size="sm" onClick={refetch}>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>

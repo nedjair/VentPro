@@ -75,8 +75,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const resolved = resolveTheme(newTheme)
     setResolvedTheme(resolved)
     applyTheme(resolved)
-    
-    console.log(`🎨 Thème changé: ${newTheme} (résolu: ${resolved})`)
   }
 
   // Fonction pour basculer entre clair et sombre
@@ -97,8 +95,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     applyTheme(resolved)
     
     setMounted(true)
-    
-    console.log(`🎨 Thème initialisé: ${savedTheme} (résolu: ${resolved})`)
   }, [])
 
   // Écouter les changements de préférences système pour le mode auto
@@ -112,7 +108,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         const newResolvedTheme = e.matches ? 'dark' : 'light'
         setResolvedTheme(newResolvedTheme)
         applyTheme(newResolvedTheme)
-        console.log(`🎨 Thème système changé: ${newResolvedTheme}`)
       }
     }
 
@@ -138,7 +133,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
             const resolved = resolveTheme(newTheme)
             setResolvedTheme(resolved)
             applyTheme(resolved)
-            console.log(`🎨 Thème synchronisé depuis autre onglet: ${newTheme}`)
           }
         } catch (error) {
           console.error('Erreur lors de la synchronisation du thème:', error)
@@ -181,7 +175,12 @@ export function useTheme(): ThemeContextType {
   const context = useContext(ThemeContext)
   
   if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider')
+    return {
+      theme: 'light',
+      resolvedTheme: 'light',
+      setTheme: () => {},
+      toggleTheme: () => {}
+    }
   }
   
   return context

@@ -485,6 +485,25 @@ export interface DashboardStats {
   lastUpdated: string
 }
 
+export interface DashboardChartData {
+  salesTrend: Array<{
+    month: string
+    sales: number
+    orders: number
+  }>
+  topProducts: Array<{
+    id: string
+    name: string
+    sales: number
+    revenue: number
+  }>
+  clientDistribution: Array<{
+    type: string
+    count: number
+    percentage: number
+  }>
+}
+
 export interface DashboardActivityItem {
   id: string
   type: string
@@ -644,6 +663,59 @@ export interface EvolutionData {
   }>
 }
 
+interface CachedRequestEntry<T> {
+  expiresAt: number
+  value: T
+}
+
+const MAX_API_PAGE_LIMIT = 100
+
+function normalizeRequestCacheValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeRequestCacheValue(item))
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((accumulator, key) => {
+        accumulator[key] = normalizeRequestCacheValue((value as Record<string, unknown>)[key])
+        return accumulator
+      }, {})
+  }
+
+  return value
+}
+
+/**
+ * Normalise les paramètres de pagination avant l'appel HTTP.
+ *
+ * Pourquoi : plusieurs routes backend refusent explicitement `limit > 100`.
+ * En bornant ici les requêtes paginées, on évite d'exposer une erreur AJV/AJV-like
+ * au runtime et on garde un comportement cohérent dans toute l'application.
+ */
+function normalizePaginationParams<T extends { page?: number; limit?: number }>(
+  params?: T,
+  defaultLimit = 20
+): T | undefined {
+  if (!params) {
+    return undefined
+  }
+
+  const normalized: T = { ...params }
+
+  if (normalized.page !== undefined) {
+    normalized.page = Math.max(1, Math.floor(Number(normalized.page) || 1))
+  }
+
+  if (normalized.limit !== undefined) {
+    const requestedLimit = Math.floor(Number(normalized.limit) || defaultLimit)
+    normalized.limit = Math.min(Math.max(1, requestedLimit), MAX_API_PAGE_LIMIT)
+  }
+
+  return normalized
+}
+
 /**
  * Lit une réponse HTTP sans supposer que le backend renvoie toujours du JSON.
  * Cela évite d'exposer une erreur technique de parsing dans l'UI de connexion.
@@ -711,6 +783,8 @@ function normalizeLoginErrorMessage(error: unknown): string {
 class ApiClient {
   private client: AxiosInstance
   private authToken: string | null = null
+  private requestCache = new Map<string, CachedRequestEntry<unknown>>()
+  private inFlightRequests = new Map<string, Promise<unknown>>()
 
   constructor() {
     this.client = axios.create({
@@ -743,7 +817,6 @@ class ApiClient {
     // Intercepteur de requête
     this.client.interceptors.request.use(
       (config) => {
-        console.log(`🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`)
         return config
       },
       (error) => {
@@ -755,7 +828,6 @@ class ApiClient {
     // Intercepteur de réponse
     this.client.interceptors.response.use(
       (response: AxiosResponse) => {
-        console.log(`✅ API Success: ${response.config.method?.toUpperCase()} ${response.config.url}`)
         return response
       },
       (error) => {
@@ -770,26 +842,22 @@ class ApiClient {
         if (error.response) {
           // Gérer les erreurs d'authentification
           if (error.response.status === 401) {
-            console.log('⚠️ API: Erreur 401 détectée pour:', error.config?.url)
-
             // Ne pas nettoyer automatiquement si on est sur la page de login
             // ou si c'est une requête de login qui a échoué
             const isLoginPage = typeof window !== 'undefined' && window.location.pathname.includes('/login')
             const isLoginRequest = error.config?.url?.includes('/auth/login')
 
-            if (!isLoginPage && !isLoginRequest) {
-              console.log('⚠️ API: Nettoyage de l\'authentification pour erreur 401')
-              // Token expiré ou invalide, nettoyer le localStorage
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('auth-user')
-                localStorage.removeItem('auth-tokens')
-                this.clearAuthToken()
+          if (!isLoginPage && !isLoginRequest) {
+            // Token expiré ou invalide, nettoyer le localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('auth-user')
+              localStorage.removeItem('auth-tokens')
+              this.clearAuthToken()
+              this.clearRequestCache()
 
                 // Rediriger vers la page de connexion
                 window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname)
-              }
-            } else {
-              console.log('⚠️ API: Erreur 401 ignorée (page de login ou requête de login)')
+            }
             }
           }
 
@@ -800,6 +868,14 @@ class ApiClient {
           }
 
           const message = error.response.data?.message || error.response.data?.error || 'Erreur API'
+
+          if (
+            error.response.status === 400 &&
+            String(message).toLowerCase().includes('querystring/limit must be <= 100')
+          ) {
+            throw new Error('Le serveur limite la pagination à 100 éléments. Réduisez la taille de la page et réessayez.')
+          }
+
           throw new Error(`HTTP ${error.response.status}: ${message}`)
         }
 
@@ -818,7 +894,55 @@ class ApiClient {
     return withRetry(async () => {
       const response = await this.client.request<T>(config)
       return response.data
-    }, 3, 1000) // 3 tentatives avec 1 seconde d'attente
+    }, { retries: 3, delay: 1000 }) // 3 tentatives avec 1 seconde d'attente
+  }
+
+  /**
+   * Déduplication et cache court des lectures GET.
+   *
+   * Pourquoi : plusieurs composants du dashboard demandent les mêmes données
+   * en parallèle. Sans déduplication, on multiplie le trafic et le coût de
+   * rendu pour des réponses identiques.
+   */
+  private async cachedRequest<T>(config: AxiosRequestConfig, ttlMs = 10000): Promise<T> {
+    const cacheKey = JSON.stringify({
+      method: (config.method || 'GET').toUpperCase(),
+      url: config.url || '',
+      params: normalizeRequestCacheValue(config.params),
+      data: normalizeRequestCacheValue(config.data),
+    })
+
+    const now = Date.now()
+    const cachedEntry = this.requestCache.get(cacheKey) as CachedRequestEntry<T> | undefined
+    if (cachedEntry && cachedEntry.expiresAt > now) {
+      return cachedEntry.value
+    }
+
+    const pendingRequest = this.inFlightRequests.get(cacheKey) as Promise<T> | undefined
+    if (pendingRequest) {
+      return pendingRequest
+    }
+
+    const requestPromise = this.request<T>(config)
+      .then((value) => {
+        this.requestCache.set(cacheKey, {
+          expiresAt: Date.now() + ttlMs,
+          value,
+        })
+
+        return value
+      })
+      .finally(() => {
+        this.inFlightRequests.delete(cacheKey)
+      })
+
+    this.inFlightRequests.set(cacheKey, requestPromise as Promise<unknown>)
+    return requestPromise
+  }
+
+  private clearRequestCache() {
+    this.requestCache.clear()
+    this.inFlightRequests.clear()
   }
 
   // Méthode sans retry pour les cas spéciaux (login, etc.)
@@ -911,17 +1035,20 @@ class ApiClient {
     response: ApiResponse<PaginatedResponse<any>>
   ): ApiResponse<PaginatedResponse<Supplier>> {
     const payload = this.unwrapApiEnvelope<PaginatedResponse<any> | any[]>(response.data)
-    const normalizedPayload = payload && typeof payload === 'object' && !Array.isArray(payload)
-      ? payload
+    const normalizedPayload: Partial<PaginatedResponse<any>> = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Partial<PaginatedResponse<any>>)
       : { data: Array.isArray(payload) ? payload : [] }
 
     return {
       ...response,
       data: {
-        ...normalizedPayload,
         data: Array.isArray(normalizedPayload.data)
           ? normalizedPayload.data.map((supplier) => this.normalizeSupplier(supplier))
           : [],
+        total: Number(normalizedPayload.total ?? 0),
+        page: Number(normalizedPayload.page ?? 1),
+        limit: Number(normalizedPayload.limit ?? (Array.isArray(normalizedPayload.data) ? normalizedPayload.data.length : 0)),
+        totalPages: Number(normalizedPayload.totalPages ?? 1),
       },
     }
   }
@@ -933,27 +1060,6 @@ class ApiClient {
       ...response,
       data: this.normalizeSupplier(payload),
     }
-  }
-
-  // Méthodes HTTP standard pour compatibilité avec les composants existants
-  async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.get<T>(url, config)
-  }
-
-  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.post<T>(url, data, config)
-  }
-
-  async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.put<T>(url, data, config)
-  }
-
-  async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.delete<T>(url, config)
-  }
-
-  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.patch<T>(url, data, config)
   }
 
   // Health Check
@@ -974,22 +1080,29 @@ class ApiClient {
 
   // Dashboard
   async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
-    return this.request<ApiResponse<DashboardStats>>({
+    return this.cachedRequest<ApiResponse<DashboardStats>>({
       method: 'GET',
       url: '/api/v1/dashboard/stats',
     })
   }
 
   async getDashboardActivity(limit = 8): Promise<ApiResponse<DashboardActivityItem[]>> {
-    return this.request<ApiResponse<DashboardActivityItem[]>>({
+    return this.cachedRequest<ApiResponse<DashboardActivityItem[]>>({
       method: 'GET',
       url: '/api/v1/dashboard/activity',
       params: { limit },
     })
   }
 
+  async getDashboardCharts(): Promise<ApiResponse<DashboardChartData>> {
+    return this.cachedRequest<ApiResponse<DashboardChartData>>({
+      method: 'GET',
+      url: '/api/v1/dashboard/charts',
+    })
+  }
+
   async getDashboardAlerts(): Promise<ApiResponse<DashboardAlert[]>> {
-    return this.request<ApiResponse<DashboardAlert[]>>({
+    return this.cachedRequest<ApiResponse<DashboardAlert[]>>({
       method: 'GET',
       url: '/api/v1/dashboard/alerts',
     })
@@ -997,7 +1110,7 @@ class ApiClient {
 
   // Analytics Phase 5
   async getKPIMetrics(): Promise<ApiResponse<KPIMetrics>> {
-    return this.request<ApiResponse<KPIMetrics>>({
+    return this.cachedRequest<ApiResponse<KPIMetrics>>({
       method: 'GET',
       url: '/api/v1/analytics/kpi',
     })
@@ -1023,7 +1136,7 @@ class ApiClient {
     startDate?: string
     endDate?: string
   }): Promise<ApiResponse<SalesAnalytics>> {
-    return this.request<ApiResponse<SalesAnalytics>>({
+    return this.cachedRequest<ApiResponse<SalesAnalytics>>({
       method: 'GET',
       url: '/api/v1/analytics/sales',
       params,
@@ -1034,7 +1147,7 @@ class ApiClient {
     period?: string
     limit?: number
   }): Promise<ApiResponse<ProductAnalytics>> {
-    return this.request<ApiResponse<ProductAnalytics>>({
+    return this.cachedRequest<ApiResponse<ProductAnalytics>>({
       method: 'GET',
       url: '/api/v1/analytics/products',
       params,
@@ -1042,7 +1155,7 @@ class ApiClient {
   }
 
   async getClientAnalytics(): Promise<ApiResponse<ClientAnalytics>> {
-    return this.request<ApiResponse<ClientAnalytics>>({
+    return this.cachedRequest<ApiResponse<ClientAnalytics>>({
       method: 'GET',
       url: '/api/v1/analytics/clients',
     })
@@ -1052,7 +1165,7 @@ class ApiClient {
     metric?: string
     period?: string
   }): Promise<ApiResponse<EvolutionData>> {
-    return this.request<ApiResponse<EvolutionData>>({
+    return this.cachedRequest<ApiResponse<EvolutionData>>({
       method: 'GET',
       url: '/api/v1/analytics/evolution',
       params,
@@ -1067,10 +1180,10 @@ class ApiClient {
     type?: string
     city?: string
   }): Promise<ApiResponse<PaginatedResponse<Client>>> {
-    return this.request<ApiResponse<PaginatedResponse<Client>>>({
+    return this.cachedRequest<ApiResponse<PaginatedResponse<Client>>>({
       method: 'GET',
       url: '/api/v1/clients',
-      params,
+      params: normalizePaginationParams(params, 10),
     })
   }
 
@@ -1136,7 +1249,7 @@ class ApiClient {
 
   // Produits
   async getCategories(): Promise<ApiResponse<Category[]>> {
-    return this.request<ApiResponse<Category[]>>({
+    return this.cachedRequest<ApiResponse<Category[]>>({
       method: 'GET',
       url: '/api/v1/categories',
     })
@@ -1162,10 +1275,10 @@ class ApiClient {
     stock?: string
     price?: string
   }): Promise<ApiResponse<PaginatedResponse<Product>>> {
-    return this.request<ApiResponse<PaginatedResponse<Product>>>({
+    return this.cachedRequest<ApiResponse<PaginatedResponse<Product>>>({
       method: 'GET',
       url: '/api/v1/products',
-      params,
+      params: normalizePaginationParams(params, 10),
     })
   }
 
@@ -1236,17 +1349,17 @@ class ApiClient {
     city?: string
     isActive?: boolean
   }): Promise<ApiResponse<PaginatedResponse<Supplier>>> {
-    const response = await this.request<ApiResponse<PaginatedResponse<Supplier>>>({
+    const response = await this.cachedRequest<ApiResponse<PaginatedResponse<Supplier>>>({
       method: 'GET',
       url: '/api/v1/suppliers',
-      params,
+      params: normalizePaginationParams(params, 10),
     })
 
     return this.normalizeSuppliersResponse(response)
   }
 
   async getSupplier(id: string): Promise<ApiResponse<Supplier>> {
-    const response = await this.request<ApiResponse<Supplier>>({
+    const response = await this.cachedRequest<ApiResponse<Supplier>>({
       method: 'GET',
       url: `/api/v1/suppliers/${id}`,
     })
@@ -1368,10 +1481,10 @@ class ApiClient {
     status?: string
     clientId?: string
   }): Promise<ApiResponse<PaginatedResponse<Order>>> {
-    return this.request<ApiResponse<PaginatedResponse<Order>>>({
+    return this.cachedRequest<ApiResponse<PaginatedResponse<Order>>>({
       method: 'GET',
       url: '/api/v1/orders',
-      params,
+      params: normalizePaginationParams(params, 20),
     })
   }
 
@@ -1479,10 +1592,10 @@ class ApiClient {
     status?: string
     clientId?: string
   }): Promise<ApiResponse<PaginatedResponse<Invoice>>> {
-    return this.request<ApiResponse<PaginatedResponse<Invoice>>>({
+    return this.cachedRequest<ApiResponse<PaginatedResponse<Invoice>>>({
       method: 'GET',
       url: '/api/v1/invoices',
-      params,
+      params: normalizePaginationParams(params, 20),
     })
   }
 
@@ -1594,11 +1707,13 @@ class ApiClient {
   setAuthToken(token: string) {
     this.authToken = token
     this.client.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    this.clearRequestCache()
   }
 
   clearAuthToken() {
     this.authToken = null
     delete this.client.defaults.headers.common['Authorization']
+    this.clearRequestCache()
   }
 
   getAuthToken(): string | null {
@@ -1608,9 +1723,6 @@ class ApiClient {
   // Authentification
   async login(credentials: { email: string; password: string }): Promise<ApiResponse<any>> {
     try {
-      console.log('🔍 Login attempt with:', { email: credentials.email, password: '***' })
-      console.log('🔍 API Base URL:', API_BASE_URL || '[same-origin via Next.js rewrite]')
-
       // Utiliser une URL relative par défaut évite les erreurs CORS côté
       // navigateur et laisse Next.js proxyfier la requête vers le backend.
       const response = await fetch(buildApiUrl('/api/v1/auth/login'), {
@@ -1623,13 +1735,9 @@ class ApiClient {
         mode: 'cors', // Explicitement activer CORS
       })
 
-      console.log('🔍 Response status:', response.status)
-      console.log('🔍 Response ok:', response.ok)
-
       // Parser de façon tolérante pour éviter qu'une réponse vide/HTML masque
       // l'erreur métier de connexion côté utilisateur.
       const data = await parseJsonResponse<ApiResponse<any>>(response)
-      console.log('🔍 Response data:', data)
 
       if (!response.ok) {
         const errorMessage = data?.message || data?.error || 'Erreur de connexion'
@@ -1660,8 +1768,6 @@ class ApiClient {
     city?: string;
   }): Promise<ApiResponse<any>> {
     try {
-      console.log('🔍 Register attempt with:', { ...userData, password: '***' })
-
       // Même stratégie que le login : passer par le proxy Next.js par défaut.
       const response = await fetch(buildApiUrl('/api/v1/auth/register'), {
         method: 'POST',
@@ -1739,3 +1845,4 @@ class ApiClient {
 
 // Instance globale
 export const api = new ApiClient()
+

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
 import { UnifiedStockService } from './unified-stock.service'
+import { getFallbackProductById, getFallbackProductStats, getFallbackProducts, isDatabaseUnavailableError } from './dev-fallback-data.service'
 
 export interface CreateProductData {
   name: string
@@ -452,6 +453,9 @@ export class ProductService {
 
       return product
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackProductById(ownerScopeId, id) as unknown as Product | null
+      }
       logger.error('Erreur lors de la récupération du produit', { error, id })
       throw error
     }
@@ -624,6 +628,9 @@ export class ProductService {
         },
       }
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackProducts(companyId, filters, pagination) as unknown as PaginationResponse<Product>
+      }
       logger.error('Erreur lors de la récupération des produits', { error })
       throw new Error('Erreur lors de la récupération des produits')
     }
@@ -1018,6 +1025,9 @@ export class ProductService {
         totalStockQuantity: totalValue._sum.stockQuantity || 0,
       }
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackProductStats(companyId)
+      }
       logger.error('Erreur lors du calcul des statistiques produits', { error })
       throw error
     }
@@ -1260,5 +1270,4 @@ export class ProductService {
     }
   }
 }
-
 

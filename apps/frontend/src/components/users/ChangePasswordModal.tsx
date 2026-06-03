@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { X, Eye, EyeOff, Lock, Shield } from 'lucide-react'
 import { userService } from '@/services/userService'
-import { User } from '@/types/user'
 import { usePasswordForm } from '@/hooks/useUserForm'
 
 interface ChangePasswordModalProps {
-  user: User
+  user: { id: string }
   onClose: () => void
   onPasswordChanged: () => void
 }
@@ -41,27 +40,22 @@ export function ChangePasswordModal({ user, onClose, onPasswordChanged }: Change
 
     // Validation complète avant soumission
     if (!validateForm()) {
-      console.log('Validation échouée')
       return
     }
 
     // Vérifier que tous les champs sont remplis
     if (!formData.currentPassword || !formData.newPassword || !formData.confirmPassword) {
-      console.log('Champs manquants')
       return
     }
 
     try {
       setLoading(true)
-      console.log('Tentative de changement de mot de passe pour:', user.email)
 
       await userService.changePassword(user.id, {
         currentPassword: formData.currentPassword,
         newPassword: formData.newPassword,
         confirmPassword: formData.confirmPassword
       })
-
-      console.log('Mot de passe changé avec succès')
       resetForm()
       onPasswordChanged()
 

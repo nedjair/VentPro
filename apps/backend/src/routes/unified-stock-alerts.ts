@@ -97,7 +97,9 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
             enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] 
           },
           productId: { type: 'string' },
-          limit: { type: 'number', minimum: 1, maximum: 100, default: 20 },
+          // Même stratégie que les autres endpoints paginés : validation large,
+          // taille réellement servie plafonnée ensuite.
+          limit: { type: 'number', minimum: 1, maximum: 10000, default: 20 },
           offset: { type: 'number', minimum: 0, default: 0 },
         },
       },
@@ -129,7 +131,7 @@ export default async function unifiedStockAlertsRoutes(server: FastifyInstance) 
         type: query.type,
         severity: query.severity,
         productId: query.productId,
-        limit: query.limit || 20,
+        limit: Math.min(Math.max(1, Number(query.limit || 20) || 20), 100),
         offset: query.offset || 0,
       })
 

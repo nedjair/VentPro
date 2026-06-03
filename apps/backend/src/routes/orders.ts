@@ -161,7 +161,10 @@ export default async function orderRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          // On accepte une marge plus large pour éviter de renvoyer un 400
+          // à d'anciens clients qui envoient encore une page trop large.
+          // Le handler reste la source de vérité et plafonne effectivement à 100.
+          limit: { type: 'integer', minimum: 1, maximum: 10000, default: 20 },
           sortBy: { type: 'string', default: 'createdAt' },
           sortOrder: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
           search: { type: 'string' },
@@ -217,66 +220,54 @@ export default async function orderRoutes(server: FastifyInstance) {
     }
   })
 
-  // Export PDF d'une commande
-  server.get('/:id/pdf', {
-    preHandler: [(server as any).authenticate],
-    schema: {
-      description: 'Export PDF d\'une commande',
-      tags: ['Commandes'],
-      security: [{ bearerAuth: [] }],
-      params: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-        },
-        required: ['id'],
-      },
-    },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { id } = request.params as { id: string }
-      const companyId = getOwnerScopeId(request)
+// Export PDF d'une commande
+   server.get('/:id/pdf', {
+     preHandler: [(server as any).authenticate],
+     schema: {
+       description: 'Export PDF d\'une commande',
+       tags: ['Commandes'],
+       security: [{ bearerAuth: [] }],
+       params: {
+         type: 'object',
+         properties: {
+           id: { type: 'string' },
+         },
+         required: ['id'],
+       },
+     },
+   }, async (request: FastifyRequest, reply: FastifyReply) => {
+     try {
+       const { id } = request.params as { id: string }
+       const companyId = getOwnerScopeId(request)
 
-      const order = await OrderService.getOrderById(id, companyId)
+       const order = await OrderService.getOrderById(id, companyId)
 
-      if (!order) {
-        return reply.status(404).send({
-          success: false,
-          message: 'Commande non trouvÃ©e',
-        })
-      }
+       if (!order) {
+         return reply.status(404).send({
+           success: false,
+           message: 'Commande non trouvée',
+         })
+       }
 
-      const exportService = new ExportService()
-      const filename = `commande_${order.number}_${Date.now()}.pdf`
-      const fs = require('fs')
-      const path = require('path')
+       const buffer = await ExportService.generateOrderPdfBuffer(order)
 
-      const exportsDir = path.join(process.cwd(), 'exports')
-      if (!fs.existsSync(exportsDir)) {
-        fs.mkdirSync(exportsDir, { recursive: true })
-      }
+       if (!buffer || buffer.length === 0) {
+         return reply.status(500).send({
+           success: false,
+           message: 'Le fichier généré est vide - erreur lors de la génération du PDF',
+         })
+       }
 
-      const outputPath = path.join(exportsDir, filename)
-      await exportService.generateOrderPDF(order, outputPath)
-
-      reply.type('application/pdf')
-      reply.header('Content-Disposition', `attachment; filename="${filename}"`)
-
-      const fileStream = fs.createReadStream(outputPath)
-      reply.send(fileStream)
-
-      fileStream.on('end', () => {
-        setTimeout(() => {
-          if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath)
-          }
-        }, 5000)
-      })
-    } catch (error: any) {
-      logger.error('Erreur lors de l\'export PDF de la commande', { error: error.message })
-      return reply.status(500).send({
-        success: false,
-        message: 'Erreur lors de l\'export PDF de la commande',
+       const filename = `commande_${order.number}_${Date.now()}.pdf`
+       reply.type('application/pdf')
+       reply.header('Content-Disposition', `attachment; filename="${filename}"`)
+       reply.header('Content-Length', String(buffer.length))
+       return reply.send(buffer)
+     } catch (error: any) {
+       logger.error('Erreur lors de l\'export PDF de la commande', { error: error.message })
+       return reply.status(500).send({
+         success: false,
+         message: error.message || 'Erreur lors de l\'export PDF de la commande',
       })
     }
   })
@@ -789,5 +780,4 @@ export default async function orderRoutes(server: FastifyInstance) {
     }
   });
 }
-
 

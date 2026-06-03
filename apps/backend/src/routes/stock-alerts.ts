@@ -107,7 +107,8 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'number', minimum: 1 },
-          limit: { type: 'number', minimum: 1, maximum: 100 },
+          // Validation souple, plafonnement effectif dans le service.
+          limit: { type: 'number', minimum: 1, maximum: 10000 },
           sortBy: { type: 'string' },
           sortOrder: { type: 'string', enum: ['asc', 'desc'] },
           type: { 
@@ -130,11 +131,17 @@ export default async function stockAlertRoutes(server: FastifyInstance) {
       const { companyId } = (request as any).user
 
       const { page, limit, sortBy, sortOrder, ...filters } = query
+      const normalizedPagination = {
+        page: Math.max(1, Number(page || 1) || 1),
+        limit: Math.min(Math.max(1, Number(limit || 20) || 20), 100),
+        sortBy,
+        sortOrder,
+      }
 
       const result = await StockAlertService.getAlerts(
         companyId,
         filters,
-        { page, limit, sortBy, sortOrder }
+        normalizedPagination
       )
 
       return reply.send({

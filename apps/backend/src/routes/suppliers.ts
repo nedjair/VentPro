@@ -60,7 +60,9 @@ export default async function supplierRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          // Même logique que pour les autres listes paginées : on évite le 400
+          // côté validation et on garde le plafonnement effectif dans le handler.
+          limit: { type: 'integer', minimum: 1, maximum: 10000, default: 20 },
           search: { type: 'string' },
           type: { type: 'string', enum: ['COMPANY', 'INDIVIDUAL'] },
           isActive: { type: 'boolean' },
@@ -91,8 +93,8 @@ export default async function supplierRoutes(server: FastifyInstance) {
       }
 
       const pagination = {
-        page: parseInt(query.page || '1'),
-        limit: parseInt(query.limit || '20')
+        page: Math.max(1, parseInt(query.page || '1', 10) || 1),
+        limit: Math.min(Math.max(1, parseInt(query.limit || '20', 10) || 20), 100)
       }
 
       const result = await suppliersService.getSuppliers(ownerScopeId, filters, pagination)
@@ -734,4 +736,3 @@ export default async function supplierRoutes(server: FastifyInstance) {
     }
   })
 }
-

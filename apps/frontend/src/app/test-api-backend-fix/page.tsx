@@ -27,9 +27,6 @@ export default function TestApiBackendFixPage() {
 
     try {
       setTestStep('🔍 Vérification de l\'authentification...')
-      console.log('🧪 Test Backend: Vérification de l\'utilisateur')
-      console.log('User:', user)
-      console.log('isAuthenticated:', isAuthenticated)
 
       if (!user) {
         setTestResult('❌ ÉCHEC: Utilisateur non trouvé')
@@ -42,7 +39,6 @@ export default function TestApiBackendFixPage() {
       }
 
       setTestStep('📋 Préparation du formulaire de test...')
-      console.log('🧪 Test Backend: Préparation du formulaire')
       
       // Remplir les champs requis avec des données de test
       updateField('supplierId', 'supplier-alger-distrib')
@@ -60,7 +56,6 @@ export default function TestApiBackendFixPage() {
       await new Promise(resolve => setTimeout(resolve, 200))
 
       setTestStep('✅ Validation du formulaire...')
-      console.log('🧪 Test Backend: Validation:', validation)
 
       if (!validation.isValid) {
         setTestResult(`❌ ÉCHEC: Formulaire invalide - ${Object.keys(validation.errors).join(', ')}`)
@@ -68,18 +63,9 @@ export default function TestApiBackendFixPage() {
       }
 
       setTestStep('🚀 Tentative de soumission à l\'API backend...')
-      console.log('🧪 Test Backend: Tentative de soumission')
-      console.log('Données à envoyer:', {
-        supplierId: formData.supplierId,
-        orderDate: formData.orderDate,
-        expectedDate: formData.expectedDate,
-        notes: formData.notes,
-        items: formData.items
-      })
       
       try {
         const result = await submitForm()
-        console.log('✅ Soumission réussie:', result)
         setTestResult('🎉 SUCCÈS COMPLET: Commande d\'achat créée avec succès ! La correction backend fonctionne parfaitement.')
         setTestStep('✅ Test terminé avec succès')
       } catch (submitError: any) {

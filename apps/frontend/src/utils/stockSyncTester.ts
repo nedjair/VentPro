@@ -50,8 +50,6 @@ export class StockSyncTester {
     const startTime = Date.now()
     const timestamp = new Date()
 
-    console.log('🔍 Début du test de synchronisation...')
-
     const result: SyncTestResult = {
       timestamp,
       success: false,
@@ -116,8 +114,6 @@ export class StockSyncTester {
 
       result.duration = Date.now() - startTime
 
-      console.log(`✅ Test terminé en ${result.duration}ms - Score: ${result.score}/100`)
-
       // Ajouter à l'historique
       this.testHistory.unshift(result)
       this.testHistory = this.testHistory.slice(0, 50) // Garder les 50 derniers
@@ -137,11 +133,8 @@ export class StockSyncTester {
    */
   startAutoTesting(intervalMs: number = 60000): void {
     if (this.isRunning) {
-      console.log('⚠️ Tests automatiques déjà en cours')
       return
     }
-
-    console.log(`🚀 Démarrage des tests automatiques (${intervalMs}ms)`)
     this.isRunning = true
 
     // Premier test immédiat
@@ -162,7 +155,6 @@ export class StockSyncTester {
       this.intervalId = undefined
     }
     this.isRunning = false
-    console.log('🛑 Tests automatiques arrêtés')
   }
 
   /**

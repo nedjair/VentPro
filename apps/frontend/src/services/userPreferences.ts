@@ -44,6 +44,10 @@ class UserPreferencesService {
    */
   static getPreferences(): UserPreferences {
     try {
+      if (typeof window === 'undefined') {
+        return DEFAULT_PREFERENCES
+      }
+
       const stored = localStorage.getItem(this.STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored)
@@ -77,6 +81,10 @@ class UserPreferencesService {
    */
   static savePreferences(preferences: UserPreferences): void {
     try {
+      if (typeof window === 'undefined') {
+        return
+      }
+
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(preferences))
       
       // Déclencher un événement pour notifier les composants

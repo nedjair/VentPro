@@ -2,6 +2,7 @@ import { prisma as prismaClient } from '../lib/prisma'
 import { PaginationParams, PaginationResponse } from '@gestion/shared'
 import { logger } from '../utils/logger'
 import { PaymentService, PaymentMethodValue } from './payment-sales.service'
+import { getFallbackInvoiceById, getFallbackInvoiceStats, getFallbackInvoices, isDatabaseUnavailableError } from './dev-fallback-data.service'
 
 const prisma: any = prismaClient
 export type InvoiceType = 'INVOICE' | 'CREDIT_NOTE' | 'PROFORMA'
@@ -102,13 +103,30 @@ export class InvoiceService {
     return this.createInvoice({ type: 'INVOICE', clientId: order.clientId, orderId: order.id, notes: order.notes, items: order.items.map((item: any) => ({ productId: item.productId, quantity: Number(item.quantity || 0), unitPrice: Number(item.price || 0), vatRate: Number(item.product?.tvaRate || 0), discount: 0 })) }, ownerScopeId)
   }
 
-  static async getInvoiceById(id: string, ownerScopeId: string): Promise<any | null> { const invoice = await prisma.invoice.findFirst({ where: { id, userId: ownerScopeId }, include: { client: true, user: true, order: { include: { items: { include: { product: true } } } }, payments: { orderBy: { paymentDate: 'desc' } } } }); return invoice ? mapInvoice(invoice) : null }
+  static async getInvoiceById(id: string, ownerScopeId: string): Promise<any | null> {
+    try {
+      const invoice = await prisma.invoice.findFirst({ where: { id, userId: ownerScopeId }, include: { client: true, user: true, order: { include: { items: { include: { product: true } } } }, payments: { orderBy: { paymentDate: 'desc' } } } })
+      return invoice ? mapInvoice(invoice) : null
+    } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackInvoiceById(ownerScopeId, id)
+      }
+      throw error
+    }
+  }
 
   static async getInvoices(ownerScopeId: string, filters: InvoiceFilters = {}, pagination?: PaginationParams): Promise<PaginationResponse<any>> {
-    const page = Math.max(1, Number(pagination?.page) || 1), limit = Math.max(1, Number(pagination?.limit) || 10)
-    const rows = (await prisma.invoice.findMany({ where: { userId: ownerScopeId, ...(filters.clientId && { clientId: filters.clientId }), ...(filters.status && { status: dbStatus(filters.status) }), ...(filters.dateFrom || filters.dateTo ? { createdAt: { ...(filters.dateFrom && { gte: filters.dateFrom }), ...(filters.dateTo && { lte: filters.dateTo }) } } : {}), ...(filters.dueDateFrom || filters.dueDateTo ? { dueDate: { ...(filters.dueDateFrom && { gte: filters.dueDateFrom }), ...(filters.dueDateTo && { lte: filters.dueDateTo }) } } : {}) }, include: { client: true, user: true, order: { include: { items: { include: { product: true } } } }, payments: { orderBy: { paymentDate: 'desc' } } }, orderBy: { createdAt: 'desc' } })) as any[]
-    const search = filters.search?.toLowerCase(); const filtered = !search ? rows : rows.filter((i) => [i.invoiceNumber, i.notes, i.client?.name, i.client?.email, i.order?.orderNumber].filter(Boolean).some((v) => String(v).toLowerCase().includes(search)))
-    return { data: filtered.slice((page - 1) * limit, page * limit).map((invoice) => mapInvoice(invoice)), pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) || 1, hasNext: page * limit < filtered.length, hasPrev: page > 1 } }
+    try {
+      const page = Math.max(1, Number(pagination?.page) || 1), limit = Math.max(1, Number(pagination?.limit) || 10)
+      const rows = (await prisma.invoice.findMany({ where: { userId: ownerScopeId, ...(filters.clientId && { clientId: filters.clientId }), ...(filters.status && { status: dbStatus(filters.status) }), ...(filters.dateFrom || filters.dateTo ? { createdAt: { ...(filters.dateFrom && { gte: filters.dateFrom }), ...(filters.dateTo && { lte: filters.dateTo }) } } : {}), ...(filters.dueDateFrom || filters.dueDateTo ? { dueDate: { ...(filters.dueDateFrom && { gte: filters.dueDateFrom }), ...(filters.dueDateTo && { lte: filters.dueDateTo }) } } : {}) }, include: { client: true, user: true, order: { include: { items: { include: { product: true } } } }, payments: { orderBy: { paymentDate: 'desc' } } }, orderBy: { createdAt: 'desc' } })) as any[]
+      const search = filters.search?.toLowerCase(); const filtered = !search ? rows : rows.filter((i) => [i.invoiceNumber, i.notes, i.client?.name, i.client?.email, i.order?.orderNumber].filter(Boolean).some((v) => String(v).toLowerCase().includes(search)))
+      return { data: filtered.slice((page - 1) * limit, page * limit).map((invoice) => mapInvoice(invoice)), pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) || 1, hasNext: page * limit < filtered.length, hasPrev: page > 1 } }
+    } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackInvoices(ownerScopeId, filters, pagination)
+      }
+      throw error
+    }
   }
 
   static async updateInvoice(id: string, data: UpdateInvoiceData, ownerScopeId: string): Promise<any> {
@@ -132,10 +150,17 @@ export class InvoiceService {
   static async deleteInvoice(id: string, ownerScopeId: string): Promise<void> { const invoice = await prisma.invoice.findFirst({ where: { id, userId: ownerScopeId }, include: { payments: true } }); if (!invoice) throw new Error('Facture non trouvée'); if ((invoice.payments || []).length > 0) throw new Error('Impossible de supprimer une facture ayant des paiements'); await prisma.invoice.delete({ where: { id } }) }
 
   static async getInvoiceStats(ownerScopeId: string) {
-    const invoices = await prisma.invoice.findMany({ where: { userId: ownerScopeId }, include: { payments: true } })
-    const paid = invoices.filter((i: any) => apiStatus(i.status) === 'PAID'), overdue = invoices.filter((i: any) => apiStatus(i.status) === 'OVERDUE'), draft = invoices.filter((i: any) => apiStatus(i.status) === 'DRAFT')
-    const pending = invoices.filter((i: any) => ['SENT', 'PARTIAL', 'OVERDUE'].includes(apiStatus(i.status)))
-    return { totalInvoices: invoices.length, paidInvoices: paid.length, overdueInvoices: overdue.length, draftInvoices: draft.length, totalRevenue: paid.reduce((sum: number, i: any) => sum + Number(i.total || 0), 0), pendingRevenue: pending.reduce((sum: number, i: any) => sum + Number(i.total || 0), 0) }
+    try {
+      const invoices = await prisma.invoice.findMany({ where: { userId: ownerScopeId }, include: { payments: true } })
+      const paid = invoices.filter((i: any) => apiStatus(i.status) === 'PAID'), overdue = invoices.filter((i: any) => apiStatus(i.status) === 'OVERDUE'), draft = invoices.filter((i: any) => apiStatus(i.status) === 'DRAFT')
+      const pending = invoices.filter((i: any) => ['SENT', 'PARTIAL', 'OVERDUE'].includes(apiStatus(i.status)))
+      return { totalInvoices: invoices.length, paidInvoices: paid.length, overdueInvoices: overdue.length, draftInvoices: draft.length, totalRevenue: paid.reduce((sum: number, i: any) => sum + Number(i.total || 0), 0), pendingRevenue: pending.reduce((sum: number, i: any) => sum + Number(i.total || 0), 0) }
+    } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        return getFallbackInvoiceStats(ownerScopeId)
+      }
+      throw error
+    }
   }
 
   private static async generateInvoiceNumber(ownerScopeId: string) { const year = new Date().getFullYear(), month = String(new Date().getMonth() + 1).padStart(2, '0'), prefix = `FAC-${year}${month}-`, last = await prisma.invoice.findFirst({ where: { userId: ownerScopeId, invoiceNumber: { startsWith: prefix } }, orderBy: { invoiceNumber: 'desc' } }); const next = (last?.invoiceNumber ? parseInt(String(last.invoiceNumber).split('-').pop() || '0', 10) : 0) + 1; return `${prefix}${String(next).padStart(4, '0')}` }

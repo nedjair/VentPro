@@ -1,91 +1,82 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { UserPlus, CheckCircle, AlertTriangle, FileText } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { CheckCircle, CreditCard, FileText, Package2, ShoppingCart, UserPlus } from 'lucide-react'
 import { api } from '@/lib/api'
 
-interface Activity {
+interface ActivityItem {
   id: string
   type: string
+  title: string
   description: string
-  date: string
+  timestamp: string
 }
 
-// Données par défaut en cas d'erreur
-const defaultActivities = [
-  {
-    id: '1',
-    type: 'client',
-    message: 'Nouveau client ajouté',
-    details: 'Jean Dupont',
-    time: '5 min',
-    icon: UserPlus,
-    color: 'blue',
-  },
-  {
-    id: '2',
-    type: 'order',
-    message: 'Commande terminée',
-    details: 'Commande #1234',
-    time: '15 min',
-    icon: CheckCircle,
-    color: 'green',
-  },
-  {
-    id: '3',
-    type: 'product',
-    message: 'Stock faible',
-    details: 'Produit ABC',
-    time: '1h',
-    icon: AlertTriangle,
-    color: 'orange',
-  },
-  {
-    id: '4',
-    type: 'invoice',
-    message: 'Facture générée',
-    details: 'Facture #5678',
-    time: '2h',
-    icon: FileText,
-    color: 'purple',
-  },
-]
+const iconByType: Record<string, typeof UserPlus> = {
+  CLIENT: UserPlus,
+  ORDER: ShoppingCart,
+  INVOICE: FileText,
+  PAYMENT: CreditCard,
+  PURCHASE: Package2,
+  DELIVERY: CheckCircle,
+}
 
-const colorClasses = {
-  blue: 'text-blue-500',
-  green: 'text-green-500',
-  orange: 'text-orange-500',
-  purple: 'text-purple-500',
+const toneByType: Record<string, string> = {
+  CLIENT: 'bg-blue-500 text-blue-500',
+  ORDER: 'bg-emerald-500 text-emerald-500',
+  INVOICE: 'bg-violet-500 text-violet-500',
+  PAYMENT: 'bg-amber-500 text-amber-500',
+  PURCHASE: 'bg-cyan-500 text-cyan-500',
+  DELIVERY: 'bg-lime-500 text-lime-500',
+}
+
+function formatRelativeTime(timestamp: string): string {
+  const diffMs = Date.now() - new Date(timestamp).getTime()
+  const diffMinutes = Math.max(Math.floor(diffMs / 60000), 0)
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `${diffHours} h`
+  }
+
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays} j`
 }
 
 export function RecentActivity() {
-  const [activities, setActivities] = useState<any[]>([])
+  const [activities, setActivities] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadRecentActivity()
-  }, [])
-
-  const loadRecentActivity = async () => {
+  const loadRecentActivity = useCallback(async () => {
     try {
-      console.log('🔍 Chargement de l\'activité récente...')
-      // Pour l'instant, utilisons les données par défaut
-      // TODO: Implémenter l'API getRecentActivity
-      setActivities(defaultActivities)
-      setError(null)
+      const response = await api.getDashboardActivity(8)
+
+      if (response.success && Array.isArray(response.data)) {
+        setActivities(response.data)
+        setError(null)
+        return
+      }
+
+      throw new Error('Activité récente non disponible')
     } catch (err) {
       console.error('❌ Erreur lors du chargement de l\'activité récente:', err)
       setError(err instanceof Error ? err.message : 'Erreur de chargement')
-      // Utiliser les données par défaut en cas d'erreur
-      setActivities(defaultActivities)
+      setActivities([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  // Programmation défensive : s'assurer que activities est un tableau
-  const safeActivities = Array.isArray(activities) ? activities : defaultActivities
+  useEffect(() => {
+    void loadRecentActivity()
+  }, [loadRecentActivity])
+
+  const safeActivities = Array.isArray(activities) ? activities : []
 
   return (
     <div className="card">
@@ -100,23 +91,28 @@ export function RecentActivity() {
         {error && (
           <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
             <p className="text-sm text-yellow-700">
-              Données d'activité non disponibles, affichage des données par défaut
+              Les données d'activité n'ont pas pu être chargées. Le widget reste vide pour éviter d'afficher de faux événements.
             </p>
           </div>
         )}
 
         <div className="space-y-4">
           {safeActivities.length > 0 ? (
-            safeActivities.map((activity) => (
-              <div key={activity.id} className="flex items-center space-x-3">
-                <div className={`h-2 w-2 rounded-full bg-${activity.color}-500`} />
-                <div className="flex-1">
-                  <p className="text-sm text-gray-900">{activity.message}</p>
-                  <p className="text-xs text-gray-500">{activity.details} • il y a {activity.time}</p>
+            safeActivities.map((activity) => {
+              const Icon = iconByType[activity.type] || FileText
+              const tone = toneByType[activity.type] || 'bg-slate-500 text-slate-500'
+
+              return (
+                <div key={activity.id} className="flex items-start space-x-3">
+                  <div className={`h-2 w-2 rounded-full ${tone.split(' ')[0]}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900">{activity.title}</p>
+                    <p className="text-xs text-gray-500">{activity.description} • il y a {formatRelativeTime(activity.timestamp)}</p>
+                  </div>
+                  <Icon className={`h-4 w-4 ${tone.split(' ')[1]}`} />
                 </div>
-                <activity.icon className={`h-4 w-4 ${colorClasses[activity.color as keyof typeof colorClasses]}`} />
-              </div>
-            ))
+              )
+            })
           ) : (
             <div className="text-center py-4">
               <p className="text-gray-500">Aucune activité récente</p>
@@ -127,3 +123,4 @@ export function RecentActivity() {
     </div>
   )
 }
+

@@ -115,8 +115,9 @@ export default async function clientRoutes(server: FastifyInstance) {
         logger.info('📋 Query reçue:', { query })
 
         const pagination = {
-          page: parseInt(query.page || '1') || 1,
-          limit: parseInt(query.limit || '10') || 10,
+          page: Math.max(1, parseInt(query.page || '1', 10) || 1),
+          // Le handler reste la source de vérité et borne la charge réellement renvoyée.
+          limit: Math.min(Math.max(1, parseInt(query.limit || '10', 10) || 10), 100),
           sortBy: query.sortBy,
           sortOrder: query.sortOrder,
         }

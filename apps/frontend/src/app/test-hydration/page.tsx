@@ -6,19 +6,14 @@ export default function TestHydrationPage() {
   const [mounted, setMounted] = useState(false)
   const [counter, setCounter] = useState(0)
 
-  console.log('🧪 TestHydration: Rendu du composant', { mounted, counter })
-
   useEffect(() => {
-    console.log('🚀 TestHydration: useEffect déclenché - Premier montage')
     setMounted(true)
   }, [])
 
   useEffect(() => {
-    console.log('🔄 TestHydration: useEffect avec dépendance counter:', counter)
   }, [counter])
 
   const handleClick = () => {
-    console.log('🖱️ TestHydration: Clic détecté')
     setCounter(prev => prev + 1)
   }
 

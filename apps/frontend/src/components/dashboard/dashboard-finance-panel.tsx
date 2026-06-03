@@ -8,6 +8,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { Invoice, ProductAnalytics, SalesAnalytics } from '@/lib/api'
 import { formatCurrencyAmount, normalizeCurrencyCode } from '@/lib/currency'
 
+type FinanceInvoice = Invoice & {
+  salesperson?: {
+    name?: string
+    email?: string
+  }
+  paidAmount?: number
+  paidDate?: string
+  invoiceDate?: string
+  total?: number
+}
+
 interface FinanceStatsSnapshot {
   invoices: {
     total: number
@@ -21,7 +32,7 @@ interface FinanceStatsSnapshot {
 interface DashboardFinancePanelProps {
   currency?: string | null
   stats?: FinanceStatsSnapshot | null
-  invoices?: Invoice[]
+  invoices?: FinanceInvoice[]
   salesData?: SalesAnalytics | null
   productData?: ProductAnalytics | null
   loading?: boolean
@@ -63,7 +74,7 @@ function FinanceEmptyState({
   )
 }
 
-const getInvoiceClientLabel = (invoice: Invoice) => {
+const getInvoiceClientLabel = (invoice: FinanceInvoice) => {
   if (invoice.client?.companyName) {
     return invoice.client.companyName
   }
@@ -72,7 +83,7 @@ const getInvoiceClientLabel = (invoice: Invoice) => {
   return fullName || invoice.client?.email || 'Client non renseigné'
 }
 
-const getInvoiceStatusMeta = (status: Invoice['status']) => {
+const getInvoiceStatusMeta = (status: FinanceInvoice['status']) => {
   switch (status) {
     case 'PAID':
       return { label: 'Payée', className: 'border-emerald-200 bg-emerald-50 text-emerald-600' }
@@ -91,11 +102,11 @@ const getInvoiceStatusMeta = (status: Invoice['status']) => {
 
 // Repli défensif : la donnée peut venir du backend recentré ventes,
 // ou rester absente sur d'anciens enregistrements.
-const getSalespersonLabel = (invoice: Invoice) => invoice.salesperson?.name || invoice.salesperson?.email || 'Non attribué'
+const getSalespersonLabel = (invoice: FinanceInvoice) => invoice.salesperson?.name || invoice.salesperson?.email || 'Non attribué'
 
 // Repli défensif : l'API facture n'expose pas toujours explicitement le pays,
 // on tente donc d'utiliser le champ dédié puis le dernier segment d'adresse.
-const getCountryLabel = (invoice: Invoice) => {
+const getCountryLabel = (invoice: FinanceInvoice) => {
   const explicitCountry = invoice.client?.country?.trim()
   if (explicitCountry) {
     return explicitCountry
@@ -105,10 +116,11 @@ const getCountryLabel = (invoice: Invoice) => {
   return addressTokens[addressTokens.length - 1] || 'Non renseigné'
 }
 
-const getAverageCollectionDelay = (invoices: Invoice[]) => {
+const getAverageCollectionDelay = (invoices: FinanceInvoice[]) => {
   const delays = invoices.map((invoice) => {
-    const invoiceDate = new Date(invoice.invoiceDate).getTime()
-    const endDate = new Date(invoice.paidDate || invoice.dueDate || invoice.invoiceDate).getTime()
+    const referenceInvoiceDate = invoice.invoiceDate || invoice.dueDate || invoice.createdAt
+    const invoiceDate = new Date(referenceInvoiceDate).getTime()
+    const endDate = new Date(invoice.paidDate || invoice.dueDate || referenceInvoiceDate).getTime()
 
     if (!Number.isFinite(invoiceDate) || !Number.isFinite(endDate)) {
       return null
@@ -380,7 +392,9 @@ export function DashboardFinancePanel({
 }: DashboardFinancePanelProps) {
   const safeCurrency = normalizeCurrencyCode(currency)
 
-  const topInvoices = useMemo(() => [...invoices].sort((left, right) => right.total - left.total).slice(0, 5), [invoices])
+  const topInvoices = useMemo(() => [...invoices]
+    .sort((left, right) => Number(right.total || 0) - Number(left.total || 0))
+    .slice(0, 5), [invoices])
 
   const monthlyData = useMemo<TrendDatum[]>(() => (salesData?.monthlyRevenue || []).slice(-6).map((month) => ({
     label: formatMonthLabel(month.month),
@@ -400,7 +414,9 @@ export function DashboardFinancePanel({
 
       return [...productData.categoryDistribution]
         .map((category) => ({
-          label: category.category || 'Non catégorisé',
+          label: typeof category.category === 'string'
+            ? category.category
+            : category.category?.name || 'Non catégorisé',
           value: Number(category.totalRevenue || 0),
           ratio: total > 0 ? (Number(category.totalRevenue || 0) / total) * 100 : 0,
         }))
@@ -540,8 +556,8 @@ export function DashboardFinancePanel({
                         <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${status.className}`}>{status.label}</span>
                       </td>
                       <td className="px-6 py-4 text-slate-800">{getInvoiceClientLabel(invoice)}</td>
-                      <td className="px-6 py-4 text-slate-500">{new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(new Date(invoice.invoiceDate))}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-950">{formatCurrencyAmount(invoice.total, safeCurrency)}</td>
+                      <td className="px-6 py-4 text-slate-500">{invoice.invoiceDate ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(new Date(invoice.invoiceDate)) : '—'}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-950">{formatCurrencyAmount(Number(invoice.total || 0), safeCurrency)}</td>
                       <td className="px-6 py-4 text-slate-500">{formatCurrencyAmount(outstandingAmount, safeCurrency)}</td>
                     </tr>
                   )

@@ -23,6 +23,10 @@ export function ClientsPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+  const itemsPerPage = 20
   const [filters, setFilters] = useState({
     type: '',
     city: '',
@@ -32,7 +36,7 @@ export function ClientsPage() {
 
   useEffect(() => {
     loadClients()
-  }, [])
+  }, [currentPage, searchTerm, filters.type, filters.city])
 
   // Centralise la restauration du token au lieu de relancer un login local fragile.
   const ensureAuthentication = () => ensureApiAuthentication({ redirectToLogin: true })
@@ -40,7 +44,6 @@ export function ClientsPage() {
   const loadClients = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement des clients...')
 
       // S'assurer que l'utilisateur est authentifié
       const isAuthenticated = await ensureAuthentication()
@@ -49,8 +52,15 @@ export function ClientsPage() {
         return
       }
 
-      const response = await api.getClients()
-      console.log('📊 Réponse clients:', response)
+      const queryParams = {
+        page: currentPage,
+        limit: itemsPerPage,
+        ...(searchTerm.trim() ? { search: searchTerm.trim() } : {}),
+        ...(filters.type ? { type: filters.type } : {}),
+        ...(filters.city.trim() ? { city: filters.city.trim() } : {}),
+      }
+
+      const response = await api.getClients(queryParams)
 
       // Approche simplifiée et robuste
       let clientsData: Client[] = []
@@ -76,11 +86,12 @@ export function ClientsPage() {
         }
       }
 
-      // Assurer que nous avons toujours un tableau
       const safeClients = ensureArray<Client>(clientsData)
-      console.log('✅ Clients chargés avec succès:', safeClients.length, 'clients')
 
+      const apiResponse = response as any
       setClients(safeClients)
+      setTotalPages(apiResponse?.pagination?.totalPages || 1)
+      setTotalItems(apiResponse?.pagination?.total || safeClients.length)
       setError(null)
     } catch (err) {
       console.error('❌ Erreur lors du chargement des clients:', err)
@@ -99,6 +110,8 @@ export function ClientsPage() {
       setError(errorMessage)
       // Garantir que clients reste toujours un tableau valide
       setClients([])
+      setTotalPages(1)
+      setTotalItems(0)
     } finally {
       setLoading(false)
     }
@@ -125,12 +138,26 @@ export function ClientsPage() {
     setError(`Erreur d'export: ${error}`)
   }
 
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value)
+    setCurrentPage(1)
+  }
+
+  const handleFilterChange = (key: 'type' | 'city', value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }))
+    setCurrentPage(1)
+  }
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
   // Utilisation du filtrage sécurisé pour éviter les erreurs "filter is not a function"
   const filteredClients = safeFilter(clients, (client) => {
     const searchLower = searchTerm.toLowerCase()
 
     // Filtrage par recherche textuelle
-    const matchesSearch = (
+    const matchesSearch = Boolean(
       client.firstName?.toLowerCase().includes(searchLower) ||
       client.lastName?.toLowerCase().includes(searchLower) ||
       client.companyName?.toLowerCase().includes(searchLower) ||
@@ -143,23 +170,20 @@ export function ClientsPage() {
     const matchesType = !filters.type || client.type === filters.type
 
     // Filtrage par ville
-    const matchesCity = !filters.city || client.city?.toLowerCase().includes(filters.city.toLowerCase())
+    const matchesCity = !filters.city || Boolean(client.city?.toLowerCase().includes(filters.city.toLowerCase()))
 
     return matchesSearch && matchesType && matchesCity
   })
 
   const handleFilters = () => {
-    console.log('Ouverture des filtres...')
     setShowFilters(!showFilters)
   }
 
   const handleNewClient = () => {
-    console.log('Navigation vers création client...')
     router.push('/clients/new')
   }
 
   const handleEditClient = (clientId: string) => {
-    console.log('Navigation vers modification client:', clientId)
     router.push(`/clients/${clientId}/edit`)
   }
 
@@ -171,7 +195,6 @@ export function ClientsPage() {
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer le client "${clientName}" ?\n\nCette action est irréversible.`)) {
       try {
-        console.log('Suppression du client:', clientId)
         setLoading(true)
 
         // S'assurer que l'utilisateur est authentifié
@@ -186,8 +209,6 @@ export function ClientsPage() {
 
         // Recharger la liste des clients
         await loadClients()
-
-        console.log('✅ Client supprimé avec succès')
       } catch (error) {
         console.error('❌ Erreur lors de la suppression:', error)
 
@@ -210,7 +231,6 @@ export function ClientsPage() {
   }
 
   const handleViewClient = (clientId: string) => {
-    console.log('Navigation vers détails client:', clientId)
     router.push(`/clients/${clientId}`)
   }
 
@@ -220,10 +240,13 @@ export function ClientsPage() {
     ...(filters.city.trim() ? { city: filters.city.trim() } : {}),
   }
 
+  const startItem = totalItems === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems)
+
   return (
     <MainLayout 
       title="Clients" 
-      subtitle={`${filteredClients.length} client${filteredClients.length > 1 ? 's' : ''} trouvé${filteredClients.length > 1 ? 's' : ''}`}
+      subtitle={`${totalItems} client${totalItems > 1 ? 's' : ''} trouvé${totalItems > 1 ? 's' : ''}`}
     >
       <div className="space-y-6">
         {/* Interface de filtrage */}
@@ -238,7 +261,7 @@ export function ClientsPage() {
                 <select
                   id="filter-type"
                   value={filters.type}
-                  onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value }))}
+                  onChange={(e) => handleFilterChange('type', e.target.value)}
                   className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground"
                 >
                   <option value="">Tous les types</option>
@@ -256,7 +279,7 @@ export function ClientsPage() {
                   type="text"
                   placeholder="Filtrer par ville..."
                   value={filters.city}
-                  onChange={(e) => setFilters(prev => ({ ...prev, city: e.target.value }))}
+                  onChange={(e) => handleFilterChange('city', e.target.value)}
                   className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground placeholder:text-muted-foreground"
                 />
               </div>
@@ -264,7 +287,11 @@ export function ClientsPage() {
               <div className="flex items-end">
                 <Button
                   variant="outline"
-                  onClick={() => setFilters({ type: '', city: '', status: '' })}
+                  onClick={() => {
+                    setFilters({ type: '', city: '', status: '' })
+                    setSearchTerm('')
+                    setCurrentPage(1)
+                  }}
                   className="w-full"
                 >
                   Réinitialiser
@@ -321,7 +348,7 @@ export function ClientsPage() {
                 type="text"
                 placeholder="Rechercher un client..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-10 pr-4 py-2 w-full border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-card-foreground placeholder:text-muted-foreground"
               />
             </div>
@@ -466,6 +493,37 @@ export function ClientsPage() {
             </table>
           </div>
         </div>
+
+        {totalPages > 1 && (
+          <div className="rounded-2xl border border-border/70 bg-white px-4 py-4 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="text-sm text-muted-foreground">
+                Affichage de {startItem} à {endItem} sur {totalItems} clients
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Précédent
+                </Button>
+                <span className="px-3 text-sm text-muted-foreground">
+                  Page {currentPage} sur {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Suivant
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </MainLayout>
   )

@@ -25,14 +25,12 @@ export default function AutoCorrection() {
     setResults([])
 
     try {
-      console.log('🔧 Démarrage de la correction automatique...')
 
       // Utiliser le service de correction automatique
       const corrections = await stockCorrection.executeAllActions()
       setResults(corrections)
 
       const successCount = corrections.filter(c => c.success).length
-      console.log(`✅ Correction automatique terminée: ${successCount}/${corrections.length} actions réussies`)
 
       // Attendre 2 secondes puis recharger la page si des corrections ont réussi
       if (successCount > 0) {
@@ -61,14 +59,12 @@ export default function AutoCorrection() {
     setResults([])
 
     try {
-      console.log('⚡ Démarrage des corrections critiques...')
 
       // Utiliser le service de correction critique
       const corrections = await stockCorrection.executeHighPriorityActions()
       setResults(corrections)
 
       const successCount = corrections.filter(c => c.success).length
-      console.log(`✅ Corrections critiques terminées: ${successCount}/${corrections.length} actions réussies`)
 
       // Attendre 2 secondes puis recharger la page si des corrections ont réussi
       if (successCount > 0) {
@@ -94,7 +90,6 @@ export default function AutoCorrection() {
 
   const runManualSync = async () => {
     try {
-      console.log('🔄 Synchronisation manuelle...')
 
       // Forcer le rafraîchissement des données côté frontend
       window.dispatchEvent(new CustomEvent('forceRefreshStockData', {

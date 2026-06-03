@@ -12,7 +12,6 @@ export default function TestJSPage() {
   const authStore = useAuthStore()
 
   const addLog = (message: string) => {
-    console.log(message)
     setLogs(prev => [...prev, `${new Date().toISOString()}: ${message}`])
   }
 
@@ -76,7 +75,7 @@ export default function TestJSPage() {
     try {
       addLog('🔄 Test de connexion...')
       await authStore.login({
-        email: 'admin@technocommerce.dz',
+        email: 'admin@example.com',
         password: 'admin123'
       })
       addLog('✅ Connexion réussie')
@@ -142,3 +141,4 @@ export default function TestJSPage() {
     </div>
   )
 }
+

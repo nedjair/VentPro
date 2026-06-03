@@ -113,29 +113,16 @@ export function useUnifiedStockData(): UnifiedStockData {
     try {
       // Vérifier le cache si pas de force refresh
       if (!force && globalCache.data && (Date.now() - globalCache.timestamp) < CACHE_DURATION) {
-        console.log('📦 Utilisation du cache pour les données de stock')
         setData(globalCache.data)
         return
       }
-
-      console.log('🔄 Chargement des données de stock unifiées...')
       
       setData(prev => ({ ...prev, loading: true, error: null }))
-
-      // Appel des endpoints existants avec logique unifiée côté frontend
-      console.log('🔄 Récupération des données depuis les APIs existantes...')
       const [dashboardResponse, alertsResponse, productsResponse] = await Promise.all([
         api.get('/api/v1/stock/dashboard?t=' + Date.now()),
         api.get('/api/v1/stock-alerts/alerts?isActive=true&limit=100&t=' + Date.now()),
         api.get('/api/v1/products?limit=100&t=' + Date.now())
       ])
-      console.log('✅ Données récupérées avec succès')
-
-      console.log('📡 Réponses API reçues:', {
-        dashboard: dashboardResponse.data.success,
-        alerts: alertsResponse.data.success,
-        products: productsResponse.data.success
-      })
 
       if (!dashboardResponse.data.success || !alertsResponse.data.success || !productsResponse.data.success) {
         throw new Error('Erreur lors du chargement des données')
@@ -164,13 +151,6 @@ export function useUnifiedStockData(): UnifiedStockData {
           productsData = []
         }
       }
-
-      console.log('📊 Données traitées (logique unifiée frontend):', {
-        dashboard: !!dashboardData,
-        alertsCount: alertsData.length,
-        productsCount: productsData.length,
-        source: 'frontend-unified'
-      })
 
       // Calcul des alertes par sévérité
       const alertsBySeverity = alertsData.reduce((acc: any, alert: UnifiedStockAlert) => {
@@ -217,13 +197,6 @@ export function useUnifiedStockData(): UnifiedStockData {
           value: stockQuantity * price,
           unit: product.unit || 'pièce'
         }
-      })
-
-      console.log('🏷️  Produits traités:', {
-        total: processedProducts.length,
-        outOfStock: processedProducts.filter(p => p.status === 'out').length,
-        lowStock: processedProducts.filter(p => p.status === 'low').length,
-        overStock: processedProducts.filter(p => p.status === 'over').length
       })
 
       // Calcul des compteurs basés sur les données réelles (source de vérité = produits traités)
@@ -305,13 +278,6 @@ export function useUnifiedStockData(): UnifiedStockData {
       })
 
       setData(unifiedData)
-
-      console.log('✅ Données de stock unifiées chargées:', {
-        totalProducts: unifiedData.dashboard.totalProducts,
-        activeAlerts: unifiedData.dashboard.activeAlerts,
-        alertsCount: unifiedData.alerts.length,
-        productsCount: unifiedData.products.length
-      })
 
     } catch (error: any) {
       console.error('❌ Erreur lors du chargement des données unifiées:', error)

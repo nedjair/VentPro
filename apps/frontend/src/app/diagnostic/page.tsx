@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { MainLayout } from '@/components/layout/main-layout'
 import { 
   AlertTriangle, 
   CheckCircle, 
@@ -31,7 +32,6 @@ export default function DiagnosticPage() {
     setDiagnostics([])
 
     try {
-      console.log('🔍 Démarrage du diagnostic des stocks...')
 
       const results: DiagnosticResult[] = []
 
@@ -188,105 +188,105 @@ export default function DiagnosticPage() {
   const errorCount = diagnostics.filter(d => d.status === 'error').length
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* En-tête */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-            <Database className="h-6 w-6 mr-2 text-blue-600" />
-            Diagnostic des Stocks
-          </h1>
-          <button
-            onClick={runDiagnostic}
-            disabled={isRunning}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isRunning ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            {isRunning ? 'Diagnostic en cours...' : 'Relancer le Diagnostic'}
-          </button>
-        </div>
-
-        {lastRun && (
-          <p className="text-sm text-gray-600">
-            Dernier diagnostic: {lastRun.toLocaleString('fr-FR')}
-          </p>
-        )}
-
-        {/* Résumé */}
-        {diagnostics.length > 0 && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                <span className="font-medium text-green-900">{successCount} Réussis</span>
-              </div>
-            </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
-                <span className="font-medium text-yellow-900">{warningCount} Avertissements</span>
-              </div>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
-                <span className="font-medium text-red-900">{errorCount} Erreurs</span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Résultats du diagnostic */}
-      {diagnostics.length > 0 && (
+    <MainLayout
+      title="Diagnostic des Stocks"
+      subtitle="Vérification locale des données, du cache et de l'authentification"
+      actions={
+        <button
+          onClick={runDiagnostic}
+          disabled={isRunning}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isRunning ? (
+            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          {isRunning ? 'Diagnostic en cours...' : 'Relancer le Diagnostic'}
+        </button>
+      }
+    >
+      <div className="space-y-6">
+        {/* Résumé rapide du dernier passage */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            <TrendingUp className="h-5 w-5 mr-2 text-blue-600" />
-            Résultats du Diagnostic
-          </h2>
+          {lastRun && (
+            <p className="text-sm text-gray-600">
+              Dernier diagnostic: {lastRun.toLocaleString('fr-FR')}
+            </p>
+          )}
 
-          <div className="space-y-3">
-            {diagnostics.map((diagnostic, index) => (
-              <div key={index} className={`p-4 rounded-lg border ${getStatusColor(diagnostic.status)}`}>
-                <div className="flex items-start">
-                  {getStatusIcon(diagnostic.status)}
-                  <div className="ml-3 flex-1">
-                    <div className="font-medium text-gray-900">{diagnostic.category}</div>
-                    <div className="text-sm text-gray-600">{diagnostic.message}</div>
-                    {diagnostic.details && (
-                      <div className="text-xs text-gray-500 mt-1">{diagnostic.details}</div>
-                    )}
-                    {diagnostic.count !== undefined && (
-                      <div className="text-xs text-gray-500 mt-1">Nombre: {diagnostic.count}</div>
-                    )}
-                  </div>
+          {/* Résumé */}
+          {diagnostics.length > 0 && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                  <span className="font-medium text-green-900">{successCount} Réussis</span>
                 </div>
               </div>
-            ))}
-          </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
+                  <span className="font-medium text-yellow-900">{warningCount} Avertissements</span>
+                </div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+                  <span className="font-medium text-red-900">{errorCount} Erreurs</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Composant de correction automatique */}
-      <AutoCorrection />
+        {/* Résultats du diagnostic */}
+        {diagnostics.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+              <TrendingUp className="h-5 w-5 mr-2 text-blue-600" />
+              Résultats du Diagnostic
+            </h2>
 
-      {/* Instructions */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="font-medium text-blue-900 mb-2 flex items-center">
-          <Package className="h-4 w-4 mr-2" />
-          Instructions d'utilisation :
-        </h3>
-        <ul className="text-sm text-blue-800 space-y-1">
-          <li>• <strong>Diagnostic automatique</strong> : Se lance automatiquement au chargement de la page</li>
-          <li>• <strong>Correction automatique</strong> : Utilisez les boutons de correction ci-dessous selon vos besoins</li>
-          <li>• <strong>Relancer</strong> : Cliquez sur "Relancer le Diagnostic" pour une nouvelle vérification</li>
-          <li>• <strong>Problèmes détectés</strong> : Les erreurs et avertissements nécessitent votre attention</li>
-        </ul>
+            <div className="space-y-3">
+              {diagnostics.map((diagnostic, index) => (
+                <div key={index} className={`p-4 rounded-lg border ${getStatusColor(diagnostic.status)}`}>
+                  <div className="flex items-start">
+                    {getStatusIcon(diagnostic.status)}
+                    <div className="ml-3 flex-1">
+                      <div className="font-medium text-gray-900">{diagnostic.category}</div>
+                      <div className="text-sm text-gray-600">{diagnostic.message}</div>
+                      {diagnostic.details && (
+                        <div className="text-xs text-gray-500 mt-1">{diagnostic.details}</div>
+                      )}
+                      {diagnostic.count !== undefined && (
+                        <div className="text-xs text-gray-500 mt-1">Nombre: {diagnostic.count}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Composant de correction automatique */}
+        <AutoCorrection />
+
+        {/* Instructions */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="font-medium text-blue-900 mb-2 flex items-center">
+            <Package className="h-4 w-4 mr-2" />
+            Instructions d'utilisation :
+          </h3>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• <strong>Diagnostic automatique</strong> : Se lance automatiquement au chargement de la page</li>
+            <li>• <strong>Correction automatique</strong> : Utilisez les boutons de correction ci-dessous selon vos besoins</li>
+            <li>• <strong>Relancer</strong> : Cliquez sur "Relancer le Diagnostic" pour une nouvelle vérification</li>
+            <li>• <strong>Problèmes détectés</strong> : Les erreurs et avertissements nécessitent votre attention</li>
+          </ul>
+        </div>
       </div>
-    </div>
+    </MainLayout>
   )
 }

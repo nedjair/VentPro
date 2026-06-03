@@ -20,6 +20,7 @@
     "prisma:reset": "prisma migrate reset --schema=../../packages/database/schema.prisma --force",
     "db:seed": "tsx scripts/seed-database.ts --dry-run",
     "db:seed:dev": "tsx scripts/seed-database.ts --confirm-reset",
+    "db:seed:algerian": "node scripts/seed-algerian-sample-data.js",
     "db:seed:stocks": "tsx scripts/seed-stocks.ts",
     "test": "jest",
     "test:watch": "jest --watch",

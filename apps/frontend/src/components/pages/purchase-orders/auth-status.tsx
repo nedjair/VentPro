@@ -43,9 +43,7 @@ export function AuthStatus() {
   const testLogin = async () => {
     setIsLoading(true)
     try {
-      console.log('🔍 Test de connexion avec admin@test.com...')
-      await login('admin@test.com', 'admin123')
-      console.log('✅ Connexion réussie')
+      await login('admin@example.com', 'admin123')
       checkTokenInfo()
     } catch (error) {
       console.error('❌ Erreur de connexion:', error)
@@ -56,9 +54,7 @@ export function AuthStatus() {
 
   const testLogout = async () => {
     try {
-      console.log('🔍 Test de déconnexion...')
       await logout()
-      console.log('✅ Déconnexion réussie')
       checkTokenInfo()
     } catch (error) {
       console.error('❌ Erreur de déconnexion:', error)
@@ -70,7 +66,6 @@ export function AuthStatus() {
     localStorage.removeItem('refreshToken')
     localStorage.removeItem('user')
     checkTokenInfo()
-    console.log('🧹 LocalStorage nettoyé')
   }
 
   return (
@@ -277,3 +272,4 @@ export function AuthStatus() {
     </div>
   )
 }
+

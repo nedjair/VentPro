@@ -58,7 +58,6 @@ export default function DatabaseCleanupPage() {
     setError(null)
 
     try {
-      console.log('🔄 Chargement des données de cohérence...')
 
       const response = await api.get('/api/v1/auto-sync/check-consistency')
 

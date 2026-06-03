@@ -161,7 +161,10 @@ export default async function productRoutes(server: FastifyInstance) {
         type: 'object',
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          // On autorise une borne large à l'entrée, puis le handler plafonne
+          // réellement la pagination. Cela évite les 400 sur d'anciens clients
+          // qui envoient encore des tailles de page élevées.
+          limit: { type: 'integer', minimum: 1, maximum: 10000, default: 10 },
           search: { type: 'string' },
           categoryId: { type: 'string' },
           isActive: { type: 'boolean' },
@@ -189,7 +192,13 @@ export default async function productRoutes(server: FastifyInstance) {
         })
       }
 
-      const result = await ProductService.getProducts(ownerScopeId, filters, pagination)
+      const normalizedPagination = {
+        ...pagination,
+        page: Math.max(1, Math.floor(Number(pagination.page) || 1)),
+        limit: Math.min(Math.max(1, Math.floor(Number(pagination.limit) || 10)), 100),
+      }
+
+      const result = await ProductService.getProducts(ownerScopeId, filters, normalizedPagination)
 
       return reply.send({
         success: true,
